@@ -8,6 +8,16 @@
 
 **Input**: User description: "A user submits a source (pasted text or a URL) in the web frontend and gets back one task. The hub dispatches one agent run for it. The agent operates in a loop with tools, reads the existing wiki, and decides by itself, under its instruction file, what to create or update; a single structured model call is not an agent and does not satisfy this spec. The harness grants the agent a read tool and a write tool for the wiki only, records the grant, and commits everything the run changed as exactly one git commit when the run ends; an aborted or crashed run leaves the wiki at the commit before it. The task shows the instruction-file version used, the tool calls made, the resulting diff, and a revert action that restores the previous commit and marks the task as reverted. The user can open the task while the run is queued, running, completed, failed, or reverted."
 
+## Clarifications
+
+### Session 2026-09-16
+
+- Q: When a task's commit is no longer the wiki's latest commit, because later ingests have committed on top of it, what should the revert action on that older task do? → A: Revert is offered only while the task's commit is the wiki's latest commit; an older task offers no revert and the task view shows that it was superseded by a later commit.
+- Q: When the user triggers revert, should the harness add a new wiki commit that undoes the run's changes, or move the wiki back onto the previous commit? → A: Revert adds a new commit on top that restores the previous content; the run's commit stays in history and the undo is one ingest deep.
+- Q: If the hub stops while one run is in progress and other tasks are still queued, what happens to those tasks when it starts again? → A: On startup every task recorded as running becomes failed with a reason naming the interruption, queued tasks are dispatched in submission order, and no run is ever retried automatically.
+- Q: What happens when a submitted source is far larger than the agent can take in? → A: No size limit; the source is accepted and passed to the run whole, and if the run cannot proceed the run ends failed with the reason recorded.
+- Q: How does the user get back to a task submitted earlier — a task list, or only the task handed back at submission? → A: The frontend provides a task list showing every task newest first with its state, from which any task can be opened.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Ingest a source and inspect what the agent did (Priority: P1)
@@ -31,17 +41,18 @@ A user has something worth keeping in the wiki — a page of pasted notes, an ar
 
 ### User Story 2 - Revert an ingest (Priority: P2)
 
-The user opens a task, reads the diff, and decides the wiki was better before. One revert action on the task view restores the wiki to the state it was in before that run, and the task is marked reverted. The run record stays intact and readable, because the point of a bad run is to learn what the instruction told the agent to do.
+The user opens the task they just got back, reads the diff, and decides the wiki was better before. One revert action on the task view restores the wiki to the state it was in before that run, and the task is marked reverted. Revert is an undo of the most recent ingest, one ingest deep: the restoration is itself a wiki commit, and once anything has committed on top of a task's commit, that task shows as superseded instead. The run record stays intact and readable, because the point of a bad run is to learn what the instruction told the agent to do.
 
 **Why this priority**: Reversibility is what makes it safe to let the agent decide. It is second only because the first story must exist to have something to revert.
 
-**Independent Test**: Run an ingest that changes the wiki, revert it from the task view, and confirm the wiki content is identical to its pre-run state, the task reads reverted, and the original diff and tool-call record are still shown.
+**Independent Test**: Run an ingest that changes the wiki, reopen the task from the task list, revert it from the task view, and confirm the wiki content is identical to its pre-run state, the task reads reverted, and the original diff and tool-call record are still shown.
 
 **Acceptance Scenarios**:
 
-1. **Given** a completed task with a commit, **When** the user triggers revert, **Then** the wiki content is restored to the state at the commit preceding that task's commit with no manual step, and the task state becomes reverted.
+1. **Given** a completed task whose commit is the wiki's latest, **When** the user triggers revert, **Then** the wiki content is restored to the state at the commit preceding that task's commit with no manual step, a new commit records that restoration, the task's own commit remains in wiki history, and the task state becomes reverted.
 2. **Given** a reverted task, **When** the user opens it, **Then** the instruction-file version, the tool calls, and the original diff are still shown, and no revert action is offered.
 3. **Given** a task with no commit (failed, or completed with no change), **When** the user opens it, **Then** no revert action is offered.
+4. **Given** a completed task whose commit has since been followed by a later wiki commit, **When** the user opens it, **Then** no revert action is offered and the view shows that the task was superseded by a later commit.
 
 ---
 
@@ -55,23 +66,27 @@ The user opens the task the moment they get it — before the agent has done any
 
 **Acceptance Scenarios**:
 
-1. **Given** a run in progress, **When** a second source is submitted, **Then** its task is created in state queued and is openable, showing that it has not started.
+1. **Given** a run in progress, **When** a second source is submitted, **Then** its task is created in state queued, appears in the task list as queued, and is openable, showing that it has not started.
 2. **Given** a running task, **When** the user opens it, **Then** the view shows state running, the instruction-file version, the granted tool set, and the tool calls recorded so far.
 3. **Given** a run that crashes after the agent has written wiki content, **When** the user opens the task, **Then** the task is failed, no commit exists for it, and the wiki content is identical to the commit that was current before the run started.
+4. **Given** a task that was running and a second task that was queued when the hub stopped, **When** the hub starts again and the user opens both, **Then** the first is failed with a reason naming the interruption and was not run a second time, and the second has been dispatched.
 
 ---
 
 ### Edge Cases
 
-- **URL cannot be retrieved** (unreachable, error response, non-text content): the task fails with a recorded reason; no run is dispatched or the run is not started; the wiki is untouched.
+- **URL cannot be retrieved** (unreachable, error response, non-text content): the task fails with a recorded reason, no run is dispatched, and the wiki is untouched.
 - **Agent changes nothing**: the run ends completed with no commit and an empty diff; the task says so explicitly rather than appearing broken.
 - **Agent writes, then the run crashes or is aborted**: no commit; the wiki stays at the pre-run commit; the partial writes are not visible in the wiki.
 - **Run never stops on its own**: the run ends as failed when its run limit is reached; no commit.
+- **Hub stops mid-run**: on the next startup the interrupted task is failed with a reason naming the interruption and is not run again; the wiki is at the pre-run commit; tasks that were still queued are dispatched in submission order.
 - **Write tool aimed outside the wiki**: the call is refused, the refusal is recorded as a tool call in the task, and the run continues under the agent's own decision.
 - **A tool outside the granted set is attempted**: the attempt is refused and recorded; no such tool is available to the run.
 - **Revert triggered twice** (double click, two open tabs): the second attempt is refused; the task is reverted exactly once.
-- **Revert of a task whose commit is no longer the latest wiki commit**: [NEEDS CLARIFICATION: is revert offered only for the most recent commit-producing task, or for any task — and if any, does reverting an older task discard the later runs on top of it or leave them in place?]
+- **Revert immediately after a revert**: because the revert itself commits, no task's commit is the wiki's latest afterwards, so no revert action is offered until the next ingest commits. Undo reaches one ingest back, not further.
+- **Revert of a task whose commit is no longer the latest wiki commit**: no revert action is offered; the task view shows that the task has been superseded by a later wiki commit. The wiki is unchanged, and the task stays completed. Correcting a superseded ingest means editing the ingest instruction and submitting the source again.
 - **Empty or whitespace-only submission**: rejected at submission; no task is created.
+- **Source far larger than the agent can take in**: the submission is accepted and the task is created; the source is passed whole; the run ends failed with a reason identifying the source size, and the wiki is untouched. Splitting an oversized source is left to the user.
 - **Second submission arrives while a run is executing**: queued; exactly one run executes at a time.
 
 ## Requirements *(mandatory)*
@@ -84,6 +99,7 @@ Per Constitution I.1, every behaviour in this feature is classified below. Only 
 |-----------|-------|----------------|
 | Accepting a pasted-text or URL submission; rejecting an empty one | Control | Harness |
 | Retrieving URL content and attaching it to the task as source text | Control | Harness |
+| Passing the source to the run whole, with no size limit and no truncation | Control | Harness |
 | Creating exactly one task per accepted submission | Control | Harness |
 | Dispatching exactly one agent run per task | Control | Harness |
 | Running the agent as an iterative tool-use loop until it stops or hits its limit | Control | Harness |
@@ -94,9 +110,11 @@ Per Constitution I.1, every behaviour in this feature is classified below. Only 
 | Committing a run's changes as exactly one commit at run end | Control | Harness |
 | Leaving the wiki at the pre-run commit when a run fails, aborts, or crashes | Control | Harness |
 | Task states and their transitions; openability in every state | Control | Harness |
+| Listing every task newest first with its state | Control | Harness |
 | Showing state, source, instruction version, tool calls, and diff | Control | Harness |
-| Offering revert, restoring the previous commit, marking the task reverted | Control | Harness |
-| Serialising runs so at most one executes at a time | Control | Harness |
+| Offering revert only on the latest commit, restoring the previous content as a new commit, marking the task reverted | Control | Harness |
+| Serialising runs so at most one executes at a time, in submission order | Control | Harness |
+| Failing interrupted tasks and resuming the queue after a restart | Control | Harness |
 | Whether the source warrants one page or several | Judgment | Ingest instruction |
 | Whether to create a new page or update an existing one | Judgment | Ingest instruction |
 | What a page is named and where it sits | Judgment | Ingest instruction |
@@ -114,12 +132,13 @@ Per Constitution I.1, every behaviour in this feature is classified below. Only 
 
 - **FR-001**: The web frontend MUST accept a source submission as either pasted text or a URL, and MUST reject a submission that is empty or whitespace-only without creating a task.
 - **FR-002**: Each accepted submission MUST produce exactly one task with a stable identifier, and that task MUST be openable from the moment it is created.
-- **FR-003**: For a URL submission, the harness MUST retrieve the source content and store the retrieved text with the task; if retrieval fails, the task MUST end in state failed with a recorded human-readable reason and the wiki MUST be unchanged.
+- **FR-003**: For a URL submission, the harness MUST retrieve the source content before dispatching a run and store the retrieved text with the task. If retrieval fails, the harness MUST NOT dispatch a run, the task MUST end in state failed with a recorded human-readable reason, and the wiki MUST be unchanged.
 - **FR-004**: The task MUST retain the source text it was created from for as long as the task is retained.
+- **FR-029**: The harness MUST NOT impose a maximum size on a source and MUST NOT truncate, summarise, or otherwise reduce the source text it passes to the run. If the run cannot proceed because the source is too large for it, the run MUST end failed with a recorded reason identifying the source size as the cause, and MUST produce no commit.
 
 **Dispatch and the agent loop**
 
-- **FR-005**: The hub MUST dispatch exactly one agent run per task. A task MUST NOT have more than one run.
+- **FR-005**: The hub MUST dispatch exactly one agent run for every task whose source is available, and MUST NOT dispatch more than one run for any task. A task whose source could not be retrieved, or whose run was interrupted by a hub stop, therefore has at most one run and never a second.
 - **FR-006**: At dispatch the run MUST be given the task's source text and the ingest instruction file's content as loaded for that run.
 - **FR-007**: The run MUST execute as an iterative loop in which the agent issues tool calls, receives each call's result, and continues deciding on that basis, until the agent stops of its own accord or the run limit is reached. A single model call whose output the harness then applies to the wiki MUST NOT satisfy this requirement.
 - **FR-008**: The number of iterations and the sequence of tool calls MUST be determined by the agent during the run, not fixed by the harness.
@@ -139,20 +158,23 @@ Per Constitution I.1, every behaviour in this feature is classified below. Only 
 - **FR-016**: When a run ends having changed no wiki content, the harness MUST create no commit, and the task MUST end completed and state explicitly that nothing changed.
 - **FR-017**: When a run fails, aborts, crashes, or reaches its run limit, the harness MUST create no commit and MUST leave the wiki content identical to the commit that was current before the run started.
 - **FR-018**: A failed task MUST record a human-readable failure reason.
-- **FR-019**: At most one run MUST execute at a time; a submission accepted while a run is executing MUST produce a task in state queued that is dispatched after the running one ends.
+- **FR-019**: At most one run MUST execute at a time; a submission accepted while a run is executing MUST produce a task in state queued that is dispatched after the running one ends. Queued tasks MUST be dispatched in the order they were submitted.
+- **FR-028**: On startup the harness MUST mark every task recorded as running as failed, with a recorded reason naming the interruption, and MUST then dispatch queued tasks in submission order. A task whose run was interrupted MUST NOT be dispatched again, and the harness MUST NOT leave any task in state running while no run is executing.
 
-**Task view**
+**Task list and task view**
 
+- **FR-030**: The frontend MUST provide a task list showing every retained task, newest first, each with an identification of its source and its current state, and MUST allow any listed task to be opened.
 - **FR-020**: A task MUST expose exactly these states: queued, running, completed, failed, reverted; and MUST be openable in every one of them, showing what is known so far.
 - **FR-021**: The task view MUST show, for every task: its state, its source, the instruction-file version recorded for its run, the granted tool set, and the tool calls recorded so far in the order they were made, each with its target and its outcome.
 - **FR-022**: The task view MUST show the resulting wiki diff — per file, the content added, changed, and removed — for a task whose run produced a commit, and MUST show the commit identity.
-- **FR-023**: The recorded instruction-file version, granted tool set, tool calls, and diff of a finished run MUST NOT be altered afterwards; the only permitted post-run change to a task is its transition to reverted.
+- **FR-023**: The recorded instruction-file version, granted tool set, tool calls, and diff of a finished run MUST NOT be altered afterwards. The only permitted post-run changes to a task are its transition to reverted and the revert-commit identity recorded with it.
 
 **Revert**
 
-- **FR-024**: The task view MUST offer a revert action exactly when the task's run produced a commit and the task is not already reverted, and MUST NOT offer it otherwise.
-- **FR-025**: Revert MUST restore wiki content to its state at the commit preceding the task's commit, MUST complete without any manual intervention outside the task view, and MUST set the task's state to reverted.
-- **FR-026**: A reverted task MUST remain openable with its instruction-file version, tool calls, and original diff intact, and MUST NOT offer revert again. A second revert attempt on the same task MUST be refused.
+- **FR-024**: The task view MUST offer a revert action exactly when all of the following hold: the task's run produced a commit, that commit is the wiki's latest commit, and the task is not already reverted. The action MUST NOT be offered otherwise.
+- **FR-027**: When a task's run produced a commit that is no longer the wiki's latest commit, the task view MUST show, in place of the revert action, that the task has been superseded by a later wiki commit.
+- **FR-025**: Revert MUST restore wiki content to its state at the commit preceding the task's commit by adding a new wiki commit that leaves the task's own commit in history; it MUST NOT rewrite or discard existing wiki history. It MUST complete without any manual intervention outside the task view, MUST set the task's state to reverted, and MUST record the identity of the revert commit on the task.
+- **FR-026**: A reverted task MUST remain openable with its instruction-file version, tool calls, and original diff intact, MUST show the identity of its revert commit, and MUST NOT offer revert again. A second revert attempt on the same task MUST be refused.
 
 ### Judgment Boundary *(non-requirements)*
 
@@ -174,12 +196,12 @@ No test in this feature asserts that a run produced particular wiki content, par
 ### Key Entities
 
 - **Source**: what the user submitted — either pasted text or a URL plus the text retrieved from it. Belongs to exactly one task.
-- **Task**: the user-facing, inspectable record of one ingest. Has an identifier, a state (queued, running, completed, failed, reverted), timestamps, its source, and exactly one agent run. Openable in every state.
+- **Task**: the user-facing, inspectable record of one ingest. Has an identifier, a state (queued, running, completed, failed, reverted), timestamps, its source, and exactly one agent run — never more, including across a hub restart. Openable in every state.
 - **Agent run**: one execution of the agent for one task. Carries the instruction-file version loaded for it, the tool grant record, the ordered tool-call record, an outcome (completed, failed) with a failure reason when failed, and at most one resulting commit.
 - **Tool grant record**: the set of tools the run was given, recorded at dispatch; for this feature, the wiki read tool and the wiki write tool.
 - **Tool call record**: one entry per call the agent made — order, tool, target, outcome — including refused calls.
 - **Wiki commit**: the single commit produced by a run that changed content, and the diff derived from it.
-- **Revert record**: the fact that a task's commit was undone, and when; makes the task's state reverted.
+- **Revert record**: the fact that a task's commit was undone, when, and the identity of the commit that performed the restoration; makes the task's state reverted.
 - **Ingest instruction**: the versioned instruction file loaded at dispatch. Its version is recorded on every task; its content is the sole home of the judgment listed in Judgment Boundary.
 
 ## Success Criteria *(mandatory)*
@@ -190,8 +212,8 @@ No test in this feature asserts that a run produced particular wiki content, par
 - **SC-002**: Across all runs that changed wiki content, the ratio of commits to runs is exactly 1:1 — never zero, never more than one.
 - **SC-003**: After any run that failed, aborted, crashed, or hit its limit, the wiki content is byte-identical to the commit that was current before the run started, in 100% of cases, and no commit exists for that task.
 - **SC-004**: Every run's task records the instruction-file version and the granted tool set, and the granted set is exactly the two wiki tools in 100% of runs. No run performs an effective action outside that set.
-- **SC-005**: One revert action from the task view restores the wiki to its pre-run content byte-for-byte and marks the task reverted, with zero manual steps, in 100% of attempts on eligible tasks.
-- **SC-006**: A task can be opened in each of the five states without error, and shows its state, instruction-file version, granted tool set, and tool calls so far in every state where those exist.
+- **SC-005**: One revert action from the task view restores the wiki to its pre-run content byte-for-byte, as a new commit that leaves earlier history intact, and marks the task reverted, with zero manual steps, in 100% of attempts on eligible tasks — a task whose commit is the wiki's latest and which is not already reverted. Revert is offered on 100% of eligible tasks and on no ineligible task.
+- **SC-006**: A task can be opened in each of the five states without error, and shows its state, instruction-file version, granted tool set, and tool calls so far in every state where those exist. Every task created remains reachable from the task list, with its current state, for as long as it is retained — closing the browser loses access to no task. After a hub restart, no task remains in state running while no run is executing, and every task that was queued is still dispatched.
 - **SC-007**: The run mechanism feeds every tool call's result back to the agent and continues from it: an agent driven by scripted responses that issues N tool calls across N iterations has all N executed and recorded within a single run, for any N up to the run limit. A mechanism that applies one model output and stops fails this criterion.
 
 ### Judgment Outcomes *(operator-observable, per Constitution III.5)*
@@ -210,8 +232,10 @@ Explicitly excluded from this feature: querying or searching the wiki; linting o
 - The wiki is a markdown wiki held in a git repository, and commits and reverts are the mutation and undo mechanism. This is a constitutional given (Constitution II.1), not a technology choice made by this spec.
 - Because the granted tool set is the wiki read and write tools only, the agent has no means of fetching a URL. The harness therefore retrieves URL content before or at dispatch and passes the retrieved text to the run as the task's source.
 - The system is single-user in this feature; authentication is out of scope, so "the user" and "the operator" are the same person.
-- A run limit exists and its values (elapsed time, maximum tool calls) are configuration rather than part of this specification; only the existence of the limit and its consequence (failed, no commit) are specified.
+- A run limit exists and its values (elapsed time, maximum tool calls) are configuration rather than part of this specification; only the existence of the limit and its consequence (failed, no commit) are specified. Source size is not one of these limits: there is no maximum source size, and an oversized source surfaces as a failed run rather than a rejected submission.
 - Exactly one versioned instruction file — the ingest instruction — is loaded for an ingest run in this feature.
 - Tasks and their run records are retained indefinitely; no retention or cleanup policy is part of this feature.
 - The task view reflects state as of when it is loaded or refreshed; live updating is out of scope.
 - Commit identity is shown to the user as an opaque reference; the user is not expected to use git directly.
+- The wiki repository exists and has at least one commit before the first ingest, so every run has a pre-run commit to be contained at and every commit has a predecessor. Creating and initialising the wiki repository is outside this feature.
+- Wiki history is append-only: neither an ingest nor a revert rewrites or discards existing commits.

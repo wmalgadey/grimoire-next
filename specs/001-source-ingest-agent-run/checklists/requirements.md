@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -43,5 +43,5 @@
 
 ## Notes
 
-- One open clarification: revert eligibility for a task whose commit is no longer the latest wiki commit (edge case list, affects FR-024 and FR-025). Question presented to the user; spec to be updated with the answer before `/speckit-plan`.
+- All clarifications resolved in the 2026-09-16 `/speckit-clarify` session (5 questions): revert eligibility, revert mechanism, restart reconciliation, source size, task list. See the spec's Clarifications section.
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
