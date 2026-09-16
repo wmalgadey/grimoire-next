@@ -1,37 +1,3 @@
-<!--
-SYNC IMPACT REPORT (scratch material for amendment review — remove before committing)
-
-Version change: [CONSTITUTION_VERSION] (unpopulated template) → 1.0.0
-Bump rationale: initial ratification. The prior file contained only unreplaced
-template placeholders, so there is no prior governance to be backward compatible
-with. First concrete constitution is 1.0.0.
-
-Modified principles (template slot → ratified principle):
-  [PRINCIPLE_1_NAME] → I. Judgment in Instructions, Control in Code
-  [PRINCIPLE_2_NAME] → II. Reversibility and Containment
-  [PRINCIPLE_3_NAME] → III. Testing
-  [PRINCIPLE_4_NAME] → IV. Observability as Operator Loop
-  [PRINCIPLE_5_NAME] → V. Architecture
-  (added beyond template)  VI. ADRs
-  (added beyond template)  VII. Simplicity
-
-Added sections:
-  Workflow Phases   (was [SECTION_2_NAME]) — defines specify/plan/tasks/implement/CI
-                    inline so each principle's enforcement point is self-contained
-  Quality Gates     (was [SECTION_3_NAME]) — consolidated CI checks
-  Governance        — authority, change types, Instruction Change Workflow,
-                      amendment procedure, versioning, non-retroactivity,
-                      decision precedence
-
-Removed sections: none
-
-Follow-up TODOs: none. RATIFICATION_DATE set to the date of this initial adoption.
-Note: this constitution deliberately defers three decisions to ADRs rather than
-fixing them here — host trust boundary mechanism (II.6), frontend/hub contract
-mechanism (V.6), and the per-method complexity threshold value, which lives in CI
-configuration (VII.4).
--->
-
 # Grimoire Constitution
 
 Grimoire is a hub with a web frontend that dispatches LLM agents which maintain a
@@ -51,18 +17,21 @@ depends on reading any other document.
    Judgment MUST NOT be expressed as harness branching, prompt fragments embedded
    in application code, or hard-coded content rules.
 2. Exactly one component, the instruction loader, MUST compose the system prompt
-   passed to the model port. An architecture test MUST assert that no namespace
-   other than the instruction loader calls the model port with instruction text it
-   built itself.
+   passed to the model port. The model port MUST accept that prompt only as a
+   dedicated type whose constructor is internal to the instruction loader's
+   namespace, and an architecture test MUST assert that no other namespace
+   constructs it.
 3. The harness MUST own dispatch, agent lifecycle, credentials, tool-boundary
    guardrails, task artifacts, and observability. The harness MUST NOT decide wiki
    content.
-4. Every operation performed on the user's behalf MUST produce a task artifact
-   recording the instruction-file version dispatched, the inputs, the tool calls
-   made, and the resulting commits; that artifact MUST be inspectable by the user.
-5. A change to an instruction file is a first-class change type and MUST follow the
-   Instruction Change Workflow defined under Governance. It MUST NOT ride along as
-   an incidental edit inside a feature or bug change.
+4. Every operation performed on the user's behalf MUST produce an inspectable task
+   artifact recording the instruction-file version dispatched and the tool set
+   granted. Artifact content beyond that is feature scope.
+5. A change that touches only instruction files runs the Instruction Change Workflow
+   defined under Governance. A feature or bug change MAY include instruction-file
+   edits when the harness change requires them — a new tool and the instruction that
+   introduces it, for example. Such a PR MUST name the instruction files it changes
+   and the behaviour change expected.
 
 **Rationale.** Behaviour that is judgment changes by editing text; behaviour that is
 control changes by editing code under test. Collapsing the two means every wiki
@@ -143,10 +112,10 @@ tasks), implement, CI.
    does not satisfy this.
 3. Each declared signal MUST be reachable by an operator on a named user-facing
    surface, and the plan MUST name that surface.
-4. A signal no surface exposes MUST NOT be added, and a surface MUST NOT be claimed
-   for a signal it does not actually show.
-5. Task artifacts are an observability surface: every dispatch MUST be
-   reconstructible after the fact from its artifact alone.
+4. A signal declared under IV.1 MUST NOT be added without a surface, and a surface
+   MUST NOT be claimed for a signal it does not show. Undeclared diagnostic logging
+   is not covered by this rule.
+5. Task artifacts are an observability surface.
 
 **Rationale.** Because agent judgment is never a CI gate (III.4), observe → edit
 instructions → re-dispatch is the only correction mechanism this system has.
@@ -162,12 +131,16 @@ only in test composition is a control that is not connected.
 1. The first-level directory order MUST be vertical slices named after domain
    concepts. Technical-layer names — controllers, services, utils, helpers, models —
    MUST NOT appear at the first level.
-2. Every external system — model provider, git, filesystem, clock, process spawning,
-   network — MUST be reached only through a port declared at a slice boundary.
+2. A port declared at a slice boundary is required only for an external system that
+   is replaced by a test double or has more than one adapter — today, the model port
+   alone. Filesystem, git, clock, process spawning, and network get adapter
+   containment (V.3) and a single write path (II.2), not a port.
 3. Adapters MUST be confined: an architecture test MUST assert that no namespace
-   outside a port's adapter references that external system's library directly.
+   outside an external system's adapter references that system's library directly.
 4. Ports are the sole sanctioned abstraction layer. An interface with one
-   implementation and no external system behind it MUST NOT be introduced.
+   implementation and no external system behind it MUST NOT be introduced. This is
+   why filesystem and git have no port: a port with one implementation and no double
+   is a wrapper (VII.1).
 5. The frontend and the hub MUST communicate only through an explicit API contract
    versioned in this repository, and runtime behaviour MUST derive from the
    committed contract so that every contract change is visible in the PR diff.
@@ -205,7 +178,8 @@ and invisible in the diff. Restricting ADRs to four kinds keeps the set small en
 to actually read; superseding whole keeps the history of why honest rather than
 retconned.
 
-**Enforced at:** plan, implement (PR review), CI (template and status lint).
+**Enforced at:** plan, implement (PR review), CI (ADR lint, which MUST exist before
+this rule is counted as enforced; until then: PR review).
 
 ### VII. Simplicity
 
@@ -250,10 +224,10 @@ These are the enforcement points referenced by each principle.
 
 CI MUST enforce, on every PR:
 
-1. Architecture test: only the instruction loader composes system prompts for the
-   model port (I.2).
-2. Architecture test: external-system libraries are referenced only inside their
-   port's adapter (V.3).
+1. Architecture test: the system-prompt type is constructed only inside the
+   instruction loader's namespace (I.2).
+2. Architecture test: external-system libraries are referenced only inside that
+   system's adapter (V.3).
 3. Architecture test: first-level directories are domain slices (V.1).
 4. Trust-boundary test proving containment holds against adversarial instruction,
    task, and wiki content (II.5).
@@ -265,7 +239,7 @@ CI MUST enforce, on every PR:
    processes, and HTTP hosting; the LLM is the only double (III.2, III.3).
 8. Per-method complexity regression gate, failing only on regressions (VII.4–VII.5).
 9. ADR lint: single aspect, required headings, valid status, supersession link
-   resolves (VI.1–VI.3).
+   resolves (VI.1–VI.3) — pending until the ADR lint exists.
 
 A gate MUST NOT be disabled to land a change. If a gate is wrong, the PR that fixes
 the gate is a separate PR.
@@ -289,8 +263,7 @@ required kinds (VI.4); otherwise the plan states the trade-off and the choice ma
 
 - *Feature* — runs the SDD workflow: specify → plan → tasks → implement. Phases are
   not skipped, and implementation does not begin before its tasks exist.
-- *Bug* — runs the bug extension workflow, beginning with a test that reproduces the
-  defect and fails for the reason reported.
+- *Bug* — runs the bug extension workflow: assess → fix → test.
 - *Instruction change* — runs the Instruction Change Workflow below.
 - *Agent autonomy change* — a new tool, a widened tool grant, or a relaxed boundary.
   Requires an ADR (VI.4) and compliance with II, and MUST NOT be bundled with any
@@ -300,22 +273,21 @@ required kinds (VI.4); otherwise the plan states the trade-off and the choice ma
 
 1. Opens by citing the observed behaviour that motivates it, identified by task
    artifact id or by the observability surface and signal where it was seen.
-2. Touches instruction files only. A PR that changes both instruction files and
-   harness code MUST be split into two PRs.
-3. States the expected behaviour change in operator-observable terms and names the
+2. States the expected behaviour change in operator-observable terms and names the
    surface on which the change will be visible.
-4. Adds no CI assertion over model output (III.4).
-5. Is reviewed for whether the behaviour belongs in instructions at all. If the
+3. Adds no CI assertion over model output (III.4).
+4. Is reviewed for whether the behaviour belongs in instructions at all. If the
    desired behaviour is deterministic, it is harness control, and it goes through the
    SDD workflow as a feature instead.
-6. Produces a new instruction-file version, which every subsequent dispatch records
+5. Produces a new instruction-file version, which every subsequent dispatch records
    in its task artifact (I.4), so any behaviour change is attributable to a specific
    instruction revision.
 
 **Amendment procedure.** An amendment is proposed as a PR that modifies this file and
-nothing else. It states the principles affected, the rules added, changed, or
-removed, the proposed version bump, and the reasoning for that bump. It requires
-review approval and takes effect when merged.
+nothing else. It states the principles affected, the rules added, changed, or removed,
+the proposed version bump, the reasoning for that bump, and the templates requiring
+synchronization under the next clause. It requires review approval and takes effect
+when merged.
 
 **Versioning policy.** MAJOR for backward-incompatible governance or principle
 removals and redefinitions. MINOR for a new principle or section, or materially
@@ -328,8 +300,6 @@ pre-amendment code is modified for an independent reason, the parts actually cha
 come into compliance; untouched parts stay as they are.
 
 **Compliance review.** Every PR names the principles it touches, and review verifies
-them against the rules above. The Quality Gates run on every PR. A gate failure is
-fixed, not waived; where a waiver is genuinely warranted for a security boundary or
-an autonomy change, it requires an ADR.
+them against the rules above. The Quality Gates run on every PR.
 
 **Version**: 1.0.0 | **Ratified**: 2026-09-16 | **Last Amended**: 2026-09-16
