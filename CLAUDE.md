@@ -15,6 +15,12 @@ Vocabulary is used precisely (see `docs/adr/index.md`):
 
 ## Commands
 
+`Makefile` wraps everything below — `make build`, `make test`, `make test-cs`, `make test-hub
+ARGS='--filter-method "*Readyz*"'`, `make run`, `make dev-setup`, `make help`. It encodes the build
+order the tests depend on and runs the C# test applications directly rather than through the broken
+`dotnet test`. The raw commands are kept here because they are what CI runs and what a target that
+misbehaves has to be checked against.
+
 ### Build
 
 ```bash
