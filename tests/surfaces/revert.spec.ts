@@ -29,9 +29,9 @@ test.describe("revert an ingest", () => {
     await expect(page.getByTestId("revert-commit")).toBeVisible();
     await expect(page.getByTestId("revert-commit")).toContainText(/[0-9a-f]{12}/);
 
-    // A reverted task offers no revert, and says why in words.
+    // A reverted task offers no revert. The revert commit above is the answer to "what happened
+    // here", so the view states that rather than repeating the eligibility reason.
     await expect(page.getByTestId("revert")).toHaveCount(0);
-    await expect(page.getByTestId("revert-reason")).toContainText("already been reverted");
 
     // The record of what the agent did survives the undo (FR-023).
     await expect(page.getByTestId("tool-call")).toHaveCount(2);

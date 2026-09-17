@@ -1,13 +1,14 @@
 <script lang="ts">
   import { page } from "$app/state";
   import TaskStateBadge from "$lib/TaskState.svelte";
-  import { getTask, type TaskDetail } from "$lib/api/client.js";
+  import { getTask, revertTask, type TaskDetail } from "$lib/api/client.js";
 
   // The task view. This page alone has to answer: which instruction version ran, what the agent
   // looked at, what it wrote, and what the wiki looks like now versus before — without opening a
   // terminal or the repository (FR-021, FR-022, SC-008, SC-010, SC-011).
   let task = $state<TaskDetail | null>(null);
   let problem = $state<string | null>(null);
+  let reverting = $state(false);
 
   async function load() {
     problem = null;
@@ -15,6 +16,21 @@
       task = await getTask(page.params.taskId!);
     } catch (error) {
       problem = String(error);
+    }
+  }
+
+  // One action, no confirmation step and no second page (SC-005). The hub answers with the updated
+  // task view, so the result is rendered from the same response that performed the revert — a
+  // reload here could show a tip someone else has already moved.
+  async function revert() {
+    reverting = true;
+    problem = null;
+    try {
+      task = await revertTask(page.params.taskId!);
+    } catch (error) {
+      problem = String(error);
+    } finally {
+      reverting = false;
     }
   }
 
@@ -100,7 +116,9 @@
         <p class="quiet" data-testid="no-tool-calls">
           {task.state === "queued"
             ? "This run has not started."
-            : "The agent made no tool calls."}
+            : task.state === "running"
+              ? "The agent has not called a tool yet."
+              : "The agent made no tool calls."}
         </p>
       {:else}
         <table data-testid="tool-calls">
@@ -148,6 +166,13 @@
             The wiki is exactly as it was before the run started.
           {/if}
         </p>
+      {:else if task.state === "running"}
+        <!-- Nothing is decided yet: the commit happens at run end, so "no commit" here would be a
+             conclusion about a run that is still working (FR-020). -->
+        <p class="quiet" data-testid="run-in-flight">
+          This run is still working. Anything it has written is uncommitted, and stays that way
+          until the run ends.
+        </p>
       {:else}
         <p class="quiet" data-testid="no-commit">
           This run produced no commit. Anything it wrote was discarded, and the wiki is exactly as
@@ -174,12 +199,9 @@
         on {new Date(task.revert.revertedAt).toLocaleString()}.
       </p>
     {:else if task.revertEligibility.eligible}
-      <!-- The hub does not serve POST /api/tasks/{taskId}/revert yet — that endpoint is Phase 4.
-           An offered action that always answers 404 is worse than none, so this is explanatory
-           text rather than the button, exactly as an ineligible task already reads (FR-027). -->
-      <p class="quiet" data-testid="revert-reason">
-        Revert is not available yet. This ingest could be undone once that capability ships.
-      </p>
+      <button onclick={revert} disabled={reverting} data-testid="revert">
+        {reverting ? "Reverting…" : "Revert this ingest"}
+      </button>
     {:else}
       <p class="quiet" data-testid="revert-reason">
         {eligibilityExplanation(task.revertEligibility.reason)}
