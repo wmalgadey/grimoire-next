@@ -40,8 +40,12 @@ public sealed class ContainmentWikiContentTests : IDisposable
     public async Task RefusesTraversalAbsolutePathsAndSymlinksOutOfTheRepository()
     {
         using var wiki = new WikiRepositoryFixture();
-        // A symlink an earlier run could have committed into wiki content.
+        // A symlink an earlier run committed into wiki content. Committed, not merely planted:
+        // startup recovery resets the working tree with `git clean -fdx`, so untracked residue is
+        // gone before the first run — which would quietly turn this into a test about an ordinary
+        // subdirectory (contracts/deployment.md "Startup", step 3).
         Directory.CreateSymbolicLink(Path.Combine(wiki.Path, "out"), _outsideRoot);
+        wiki.CommitTracked("a symlink an earlier run left in wiki content");
 
         using var model = ScriptedModelFixture.Start("escape-through-write-paths");
         using var hub = GrimoireHub.Start(wiki, model);
@@ -66,6 +70,7 @@ public sealed class ContainmentWikiContentTests : IDisposable
     {
         using var wiki = new WikiRepositoryFixture();
         Directory.CreateSymbolicLink(Path.Combine(wiki.Path, "out"), _outsideRoot);
+        wiki.CommitTracked("a symlink an earlier run left in wiki content");
 
         using var model = ScriptedModelFixture.Start("escape-through-write-paths");
         using var hub = GrimoireHub.Start(wiki, model);

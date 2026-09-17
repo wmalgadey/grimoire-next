@@ -56,6 +56,13 @@ builder.Services.AddSingleton(new DispatchSettings(
 
 builder.Services.AddSingleton<Dispatcher>();
 builder.Services.AddSingleton<RunQueue>();
+builder.Services.AddSingleton<StartupRecovery>();
+builder.Services.AddSingleton<GracefulShutdown>();
+
+// The drain has to outlast the runner it is terminating, or the host would abandon the sequence
+// half-done and leave exactly the state SIGTERM exists to avoid (contracts/deployment.md
+// "SIGTERM"). The default five seconds is shorter than the grace the shutdown itself allows.
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
 builder.Services.AddOperations(configuration);
 builder.Services.AddOpenApi();
@@ -77,6 +84,26 @@ app.MapOperations();
 // app shell — the more specific pattern wins the fallback routing.
 app.MapFallback("/api/{**path}", () => Results.NotFound());
 app.MapFallbackToFile("index.html");
+
+// Startup, steps 3 and 4 (contracts/deployment.md "Lifecycle"), in that order and before the
+// listener opens: whatever the previous process left running is failed, the working tree is reset,
+// and only then is the backlog dispatched. Awaited rather than backgrounded — step 5 is "/readyz
+// starts reporting ready", and a replica that answered ready while a dirty tree was still being
+// reset would be lying about the one thing readiness is for.
+await app.Services.GetRequiredService<StartupRecovery>().Recover(CancellationToken.None);
+
+// SIGTERM. ApplicationStopping runs while the server is still answering, which is what lets
+// /readyz report draining long enough for traffic to leave (step 1). Blocking here is deliberate:
+// the host must not proceed to close the listener until the run is settled and the tree is reset.
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    // Step 1 is here rather than inside GracefulShutdown because readiness is this slice's
+    // surface and the shutdown is the dispatch slice's; the order between them is wiring, and
+    // wiring lives in the composition root.
+    app.Services.GetRequiredService<DrainState>().BeginDraining();
+    app.Services.GetRequiredService<GracefulShutdown>().Drain(CancellationToken.None)
+        .GetAwaiter().GetResult();
+});
 
 app.Run();
 
