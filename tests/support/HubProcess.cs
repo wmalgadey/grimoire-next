@@ -1,0 +1,241 @@
+using System.Diagnostics;
+using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
+
+namespace Grimoire.Tests.Support;
+
+/// <summary>
+/// The hub run as a <b>real operating-system process</b>, so its stdout is the stdout production
+/// has and a real <c>SIGTERM</c> can be sent to it.
+/// </summary>
+/// <remarks>
+/// In-process hosting (<see cref="GrimoireHub"/>) is right for asserting behaviour through the
+/// composition root; it cannot assert the logging transport or the shutdown signal, because
+/// neither exists in a test host. Those two need this.
+/// </remarks>
+public sealed class HubProcess : IDisposable
+{
+    private readonly Process _process;
+    private readonly List<string> _stdout = [];
+    private readonly object _lock = new();
+
+    private HubProcess(Process process, string baseAddress)
+    {
+        _process = process;
+        BaseAddress = baseAddress;
+        Client = new HttpClient { BaseAddress = new Uri(baseAddress) };
+    }
+
+    /// <summary>Where the hub is listening.</summary>
+    public string BaseAddress { get; }
+
+    /// <summary>A client against the running hub.</summary>
+    public HttpClient Client { get; }
+
+    /// <summary>Every line the hub has written to stdout so far.</summary>
+    public IReadOnlyList<string> Stdout
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _stdout];
+            }
+        }
+    }
+
+    /// <summary>Whether the process has exited.</summary>
+    public bool HasExited => _process.HasExited;
+
+    /// <summary>The process's exit code. Only meaningful once it has exited.</summary>
+    public int ExitCode => _process.ExitCode;
+
+    /// <summary>Starts a hub process against the given wiki, state file and model endpoint.</summary>
+    public static async Task<HubProcess> Start(
+        WikiRepositoryFixture wiki,
+        ScriptedModelFixture? model = null,
+        string? stateDatabasePath = null,
+        IReadOnlyDictionary<string, string?>? extraEnvironment = null,
+        CancellationToken cancellationToken = default)
+    {
+        var port = FreePort();
+        var root = ScriptedModelFixture.RepositoryRoot;
+        var info = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        info.ArgumentList.Add("run");
+        info.ArgumentList.Add("--project");
+        info.ArgumentList.Add(Path.Combine(root, "src", "hub"));
+        info.ArgumentList.Add("--no-build");
+
+        info.Environment["ASPNETCORE_URLS"] = $"http://127.0.0.1:{port}";
+        info.Environment["GRIMOIRE_WIKI_REPO"] = wiki.Path;
+        info.Environment["GRIMOIRE_STATE_DB"] = stateDatabasePath
+            ?? Path.Combine(Path.GetTempPath(), $"grimoire-state-{Guid.NewGuid():N}.db");
+        info.Environment["GRIMOIRE_MODEL_BASE_URL"] = model?.BaseUrl ?? "http://127.0.0.1:1";
+        info.Environment["GRIMOIRE_MODEL_TOKEN"] = "an-opaque-internal-token";
+        info.Environment["GRIMOIRE_INSTRUCTION"] = Path.Combine(root, "src", "instructions", "ingest.md");
+
+        foreach (var (name, value) in extraEnvironment ?? new Dictionary<string, string?>())
+        {
+            info.Environment[name] = value;
+        }
+
+        var process = Process.Start(info)
+            ?? throw new InvalidOperationException("The hub process could not be started.");
+
+        var hub = new HubProcess(process, $"http://127.0.0.1:{port}");
+        process.OutputDataReceived += (_, args) =>
+        {
+            if (args.Data is not null)
+            {
+                lock (hub._lock)
+                {
+                    hub._stdout.Add(args.Data);
+                }
+            }
+        };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        await hub.WaitUntilServing(cancellationToken);
+        return hub;
+    }
+
+    /// <summary>
+    /// Starts a hub, drives one ingest to its end, and returns everything the process logged —
+    /// the shape the observability transport assertions need.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> RunOneIngest(
+        string scriptName,
+        CancellationToken cancellationToken)
+    {
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start(scriptName);
+        using var hub = await Start(wiki, model, cancellationToken: cancellationToken);
+
+        var response = await hub.Client.PostAsJsonAsync(
+            "/api/tasks", new { kind = "text", value = "notes worth keeping" }, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var created = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
+        var id = created.GetProperty("id").GetString()!;
+
+        await hub.WaitForEnd(id, cancellationToken);
+        // Give the logger a moment to flush the last line before the process is torn down.
+        await Task.Delay(500, cancellationToken);
+        return hub.Stdout;
+    }
+
+    /// <summary>Waits until a task reaches a terminal state.</summary>
+    public async Task<JsonElement> WaitForEnd(string taskId, CancellationToken cancellationToken, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(90));
+        JsonElement task = default;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            task = await Client.GetFromJsonAsync<JsonElement>($"/api/tasks/{taskId}", cancellationToken);
+            if (task.GetProperty("state").GetString() is "completed" or "failed" or "reverted")
+            {
+                return task;
+            }
+
+            await Task.Delay(150, cancellationToken);
+        }
+
+        throw new TimeoutException($"Task {taskId} did not reach a terminal state in time.");
+    }
+
+    /// <summary>Sends a real <c>SIGTERM</c> and waits for the process to exit.</summary>
+    public async Task<bool> Terminate(TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        if (_process.HasExited)
+        {
+            return true;
+        }
+
+        // A real signal, not Kill(): the graceful path is what is under test (TS-19).
+        using var kill = Process.Start(new ProcessStartInfo("kill")
+        {
+            ArgumentList = { "-TERM", _process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+            UseShellExecute = false,
+            RedirectStandardError = true,
+        })!;
+        await kill.WaitForExitAsync(cancellationToken);
+
+        try
+        {
+            return await Task.Run(() => _process.WaitForExit((int)timeout.TotalMilliseconds), cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Client.Dispose();
+
+        try
+        {
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+                _process.WaitForExit(5_000);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Already gone.
+        }
+
+        _process.Dispose();
+    }
+
+    private async Task WaitUntilServing(CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_process.HasExited)
+            {
+                throw new InvalidOperationException(
+                    $"The hub exited during startup with code {_process.ExitCode}:{Environment.NewLine}"
+                    + string.Join(Environment.NewLine, Stdout));
+            }
+
+            try
+            {
+                using var response = await Client.GetAsync("/healthz", cancellationToken);
+                if (response.IsSuccessStatusCode)
+                {
+                    return;
+                }
+            }
+            catch (HttpRequestException)
+            {
+                // Not listening yet.
+            }
+
+            await Task.Delay(200, cancellationToken);
+        }
+
+        throw new TimeoutException("The hub did not start serving in time.");
+    }
+
+    private static int FreePort()
+    {
+        using var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        probe.Start();
+        var port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+        return port;
+    }
+}
