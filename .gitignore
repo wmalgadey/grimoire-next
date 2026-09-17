@@ -23,6 +23,11 @@ blob-report/
 *.db-wal
 *.db-shm
 
+# Local development: the scratch wiki repository and state database `make dev-setup` creates,
+# and the hub environment `make run` reads (it holds GRIMOIRE_MODEL_TOKEN).
+.local/
+.env
+
 # Editors and OS
 .DS_Store
 Thumbs.db
