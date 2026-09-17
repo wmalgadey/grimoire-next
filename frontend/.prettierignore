@@ -1,0 +1,7 @@
+dist/
+node_modules/
+build/
+.svelte-kit/
+coverage/
+package-lock.json
+src/lib/api/schema.d.ts

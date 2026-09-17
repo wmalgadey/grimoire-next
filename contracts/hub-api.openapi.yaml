@@ -1,0 +1,399 @@
+openapi: 3.1.0
+info:
+  title: Grimoire Hub API
+  version: 1.0.0
+  description: |
+    The only contract between the Grimoire frontend and the hub (constitution V.5).
+    This document is committed and reviewed; the frontend's types are generated from it at build
+    time, and CI fails if the hub's served document drifts from it (ADR-0008).
+
+    Single-operator feature: no authentication (out of scope for 001).
+servers:
+  - url: /
+    description: Hub, same origin as the frontend assets it serves
+
+tags:
+  - name: Tasks
+    description: The user-facing surfaces — submit, task list, task view.
+  - name: Operations
+    description: |
+      Liveness and readiness for the container runtime. Not used by the frontend, but part of the
+      hub's served surface and therefore covered by the contract drift test.
+
+paths:
+  /api/tasks:
+    post:
+      operationId: submitSource
+      tags: [Tasks]
+      summary: Submit a source and get back exactly one task
+      description: |
+        Accepts pasted text or a URL (FR-001). Rejects an empty or whitespace-only submission
+        without creating a task. A URL submission is retrieved before dispatch; if retrieval
+        fails the task is still created and ends `failed` with a reason, and no run is
+        dispatched (FR-003).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Submission' }
+      responses:
+        '201':
+          description: Exactly one task created and immediately openable (FR-002, SC-001)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400':
+          description: Empty or whitespace-only submission; no task created (FR-001)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+    get:
+      operationId: listTasks
+      tags: [Tasks]
+      summary: List every retained task, newest first
+      description: Task list surface (FR-030, SC-006). Every retained task is reachable here.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor from a previous response's `nextCursor`.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Tasks ordered by submission time, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskList' }
+
+  /api/tasks/{taskId}:
+    get:
+      operationId: getTask
+      tags: [Tasks]
+      summary: Open a task in any of its five states
+      description: |
+        Task view surface. Returns what is known so far in every state (FR-020, FR-021, FR-022).
+        Reflects state as of when it is loaded; live updating is out of scope.
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: The task
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskDetail' }
+        '404':
+          description: No such task
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/tasks/{taskId}/revert:
+    post:
+      operationId: revertTask
+      tags: [Tasks]
+      summary: Restore the wiki to its state before this task's run
+      description: |
+        Permitted only while the task's commit is the wiki's latest commit and the task is not
+        already reverted (FR-024). Adds a new commit that restores the previous content, leaving
+        the task's own commit in history (FR-025), and sets the task's state to `reverted`.
+        A second attempt is refused (FR-026).
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Wiki restored; task now `reverted` with its revert commit recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskDetail' }
+        '404':
+          description: No such task
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: |
+            Not eligible. `detail` names which condition failed: the task produced no commit,
+            its commit has been superseded by a later wiki commit (FR-027), it is already
+            reverted, or it lost a concurrent revert race.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /healthz:
+    get:
+      operationId: liveness
+      tags: [Operations]
+      summary: Is the process up and serving?
+      description: |
+        Liveness only. A failure means the process is wedged and should be restarted; it says
+        nothing about whether dependencies are reachable.
+      responses:
+        '200':
+          description: Serving
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+  /readyz:
+    get:
+      operationId: readiness
+      tags: [Operations]
+      summary: Should this replica take traffic?
+      description: |
+        Checks the wiki repository is reachable, the state database is writable, and the egress
+        endpoint is reachable. Reports not-ready while draining after SIGTERM. Surface for the
+        `grimoire.hub.readiness` signal.
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+        '503':
+          description: Not ready — `checks` names which dependency failed, or the hub is draining
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+
+components:
+  parameters:
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema: { type: string }
+
+  schemas:
+    Submission:
+      type: object
+      additionalProperties: false
+      required: [kind, value]
+      properties:
+        kind:
+          type: string
+          enum: [text, url]
+        value:
+          type: string
+          description: |
+            The pasted text or the URL. No maximum length is imposed: an oversized source is
+            accepted and surfaces as a failed run, not a rejected submission (FR-029).
+          minLength: 1
+
+    TaskState:
+      type: string
+      enum: [queued, running, completed, failed, reverted]
+
+    Task:
+      description: Task summary as shown in the task list.
+      type: object
+      additionalProperties: false
+      required: [id, state, submittedAt, source]
+      properties:
+        id: { type: string }
+        state: { $ref: '#/components/schemas/TaskState' }
+        submittedAt: { type: string, format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        endedAt: { type: [string, 'null'], format: date-time }
+        source: { $ref: '#/components/schemas/SourceSummary' }
+        failureReason:
+          type: [string, 'null']
+          description: Human-readable; always present when state is `failed` (FR-018).
+
+    TaskList:
+      type: object
+      additionalProperties: false
+      required: [tasks]
+      properties:
+        tasks:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+        nextCursor: { type: [string, 'null'] }
+
+    TaskDetail:
+      description: Everything the task view renders.
+      allOf:
+        - $ref: '#/components/schemas/Task'
+        - type: object
+          additionalProperties: false
+          required: [source, revertEligibility]
+          properties:
+            source: { $ref: '#/components/schemas/Source' }
+            run:
+              oneOf:
+                - $ref: '#/components/schemas/AgentRun'
+                - type: 'null'
+            revert:
+              oneOf:
+                - $ref: '#/components/schemas/RevertRecord'
+                - type: 'null'
+            revertEligibility: { $ref: '#/components/schemas/RevertEligibility' }
+
+    SourceSummary:
+      type: object
+      additionalProperties: false
+      required: [kind, preview]
+      properties:
+        kind: { type: string, enum: [text, url] }
+        preview:
+          type: string
+          description: Short identification of the source for the list row; never the whole text.
+        byteLength: { type: integer }
+
+    Source:
+      type: object
+      additionalProperties: false
+      required: [kind, submittedValue, byteLength]
+      properties:
+        kind: { type: string, enum: [text, url] }
+        submittedValue: { type: string }
+        retrievedText:
+          type: [string, 'null']
+          description: Text fetched for a URL submission; null if retrieval failed (FR-003).
+        retrievedAt: { type: [string, 'null'], format: date-time }
+        byteLength: { type: integer }
+
+    AgentRun:
+      type: object
+      additionalProperties: false
+      required: [instructionVersion, toolGrant, toolCalls]
+      properties:
+        instructionVersion: { $ref: '#/components/schemas/InstructionVersion' }
+        toolGrant: { $ref: '#/components/schemas/ToolGrant' }
+        toolCalls:
+          type: array
+          description: Every call the agent made, in order, refusals included (FR-021).
+          items: { $ref: '#/components/schemas/ToolCall' }
+        outcome:
+          type: [string, 'null']
+          enum: [completed, failed, null]
+        failureReason: { type: [string, 'null'] }
+        toolCallCount: { type: integer }
+        durationMs: { type: [integer, 'null'] }
+        changedNothing:
+          type: boolean
+          description: |
+            True for a run that completed without changing wiki content — stated explicitly so a
+            no-op does not read as broken (FR-016, SC-011).
+        commit:
+          oneOf:
+            - $ref: '#/components/schemas/WikiCommit'
+            - type: 'null'
+
+    InstructionVersion:
+      type: object
+      additionalProperties: false
+      required: [path, sha256, byteLength]
+      properties:
+        path: { type: string, examples: ['src/instructions/ingest.md'] }
+        sha256: { type: string, description: Full content hash; the view shows the first 12 hex. }
+        byteLength: { type: integer }
+
+    ToolGrant:
+      type: object
+      additionalProperties: false
+      required: [tools, recordedAt]
+      properties:
+        tools:
+          type: array
+          description: Exactly the two wiki tools in 100% of runs (FR-010, SC-004).
+          items: { type: string }
+          examples: [['mcp__wiki__read_page', 'mcp__wiki__write_page']]
+        recordedAt: { type: string, format: date-time }
+
+    ToolCall:
+      type: object
+      additionalProperties: false
+      required: [seq, tool, outcome, at]
+      properties:
+        seq: { type: integer, minimum: 1 }
+        tool: { type: string }
+        target: { type: [string, 'null'] }
+        outcome: { type: string, enum: [ok, failed, refused] }
+        detail:
+          type: [string, 'null']
+          description: Why it failed or was refused — target outside the wiki, tool not granted.
+        at: { type: string, format: date-time }
+
+    WikiCommit:
+      type: object
+      additionalProperties: false
+      required: [sha, parentSha, message, committedAt, fileDiffs]
+      properties:
+        sha: { type: string }
+        parentSha: { type: string }
+        message: { type: string }
+        committedAt: { type: string, format: date-time }
+        fileDiffs:
+          type: array
+          items: { $ref: '#/components/schemas/FileDiff' }
+
+    FileDiff:
+      type: object
+      additionalProperties: false
+      required: [path, changeKind, patch]
+      properties:
+        path: { type: string }
+        changeKind: { type: string, enum: [added, modified, removed] }
+        patch: { type: string }
+
+    RevertRecord:
+      type: object
+      additionalProperties: false
+      required: [revertCommitSha, revertedAt]
+      properties:
+        revertCommitSha: { type: string }
+        revertedAt: { type: string, format: date-time }
+
+    RevertEligibility:
+      description: |
+        What the task view renders where the revert action would be. `eligible` is true exactly
+        when the run produced a commit, that commit is the wiki tip, and the task is not already
+        reverted (FR-024). `superseded` is the case the view must explain rather than hide
+        (FR-027).
+      type: object
+      additionalProperties: false
+      required: [eligible]
+      properties:
+        eligible: { type: boolean }
+        reason:
+          type: [string, 'null']
+          enum: [no-commit, superseded, already-reverted, null]
+
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [healthy] }
+
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [status, checks]
+      properties:
+        status: { type: string, enum: [ready, not-ready] }
+        draining:
+          type: boolean
+          description: True while shutting down after SIGTERM.
+        checks:
+          type: object
+          additionalProperties: false
+          required: [wikiRepo, stateDb, egress]
+          properties:
+            wikiRepo: { type: string, enum: [ok, failed] }
+            stateDb: { type: string, enum: [ok, failed] }
+            egress: { type: string, enum: [ok, failed] }
+
+    Problem:
+      description: RFC 9457 problem details.
+      type: object
+      required: [title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
