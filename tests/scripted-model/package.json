@@ -1,0 +1,24 @@
+{
+  "name": "@grimoire/scripted-model",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The single sanctioned test double (ADR-0004): an Anthropic-compatible HTTP server the runner reaches through ANTHROPIC_BASE_URL. It is a server, not a client \u2014 it has no Anthropic dependency.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.20.3",
+    "eslint": "^9.0.0",
+    "prettier": "^3.9.7",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.0"
+  }
+}
