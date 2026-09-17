@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>Grimoire.Hub</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Microsoft.AspNetCore.OpenApi lives here and nowhere else. The health-check API
+       (Microsoft.Extensions.Diagnostics.HealthChecks) ships in the ASP.NET Core shared
+       framework on .NET 10, so it is reachable only from the Web SDK projects and needs
+       no PackageReference. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ingest/Grimoire.Ingest.csproj" />
+    <ProjectReference Include="../tasks/Grimoire.Tasks.csproj" />
+    <ProjectReference Include="../dispatch/Grimoire.Dispatch.csproj" />
+    <ProjectReference Include="../wiki/Grimoire.Wiki.csproj" />
+  </ItemGroup>
+
+</Project>

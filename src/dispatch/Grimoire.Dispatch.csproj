@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Grimoire.Dispatch</RootNamespace>
+  </PropertyGroup>
+
+  <!-- System.Diagnostics.Process is confined to this slice and src/wiki/ (architecture gate 2). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../tasks/Grimoire.Tasks.csproj" />
+    <ProjectReference Include="../wiki/Grimoire.Wiki.csproj" />
+  </ItemGroup>
+
+</Project>

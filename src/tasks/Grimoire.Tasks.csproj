@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Grimoire.Tasks</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Microsoft.Data.Sqlite lives here and nowhere else (plan V.3, architecture gate 2). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ingest/Grimoire.Ingest.csproj" />
+    <!-- The artifact stores commit identities, never wiki content (data-model "Storage notes").
+         WikiCommit exists once, in the slice that owns the mutation path (constitution VII.2). -->
+    <ProjectReference Include="../wiki/Grimoire.Wiki.csproj" />
+  </ItemGroup>
+
+</Project>
