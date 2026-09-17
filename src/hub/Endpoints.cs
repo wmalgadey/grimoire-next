@@ -44,6 +44,14 @@ public static class Endpoints
             .Produces<Contracts.TaskDetail>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        app.MapPost("/api/tasks/{taskId}/revert", RevertTask)
+            .WithName("revertTask")
+            .WithTags("Tasks")
+            .WithSummary("Restore the wiki to its state before this task's run")
+            .Produces<Contracts.TaskDetail>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         return app;
     }
 
@@ -110,7 +118,8 @@ public static class Endpoints
         }
     }
 
-    private static IResult GetTask(string taskId, SqliteStore store, WikiMutation wiki)
+    private static IResult GetTask(
+        string taskId, SqliteStore store, WikiMutation wiki, ILoggerFactory loggerFactory)
     {
         var task = store.GetTask(taskId);
         if (task is null)
@@ -118,23 +127,104 @@ public static class Endpoints
             return Problem("No such task.", $"There is no task '{taskId}'.", StatusCodes.Status404NotFound);
         }
 
-        return Results.Ok(Detail(task, wiki));
+        return Results.Ok(Detail(task, wiki, loggerFactory.CreateLogger("Grimoire.Hub.Endpoints")));
+    }
+
+    /// <summary>
+    /// Restores the wiki to the content the task's run changed, as a new commit (FR-025), and
+    /// marks the task reverted.
+    /// </summary>
+    /// <remarks>
+    /// Eligibility is decided twice on purpose. The first decision answers the request and names
+    /// the refusal; the second happens inside <see cref="WikiMutation.RevertIfStillTip"/> under the
+    /// single-writer lock, where the tip cannot move underneath it. A double-click or a second
+    /// browser tab therefore loses the race and is refused rather than reverting twice (FR-024,
+    /// FR-026).
+    /// </remarks>
+    private static async Task<IResult> RevertTask(
+        string taskId,
+        SqliteStore store,
+        WikiMutation wiki,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("Grimoire.Hub.Endpoints");
+
+        var task = store.GetTask(taskId);
+        if (task is null)
+        {
+            return Problem("No such task.", $"There is no task '{taskId}'.", StatusCodes.Status404NotFound);
+        }
+
+        var tip = wiki.Tip();
+        var verdict = Eligibility(task, tip, logger);
+        if (!verdict.Eligible)
+        {
+            return Problem("This ingest cannot be reverted.", Explain(verdict.Reason), StatusCodes.Status409Conflict);
+        }
+
+        var revertCommitSha = await wiki.RevertIfStillTip(task.Run!.Commit!.Sha, tip, cancellationToken);
+        if (revertCommitSha is null)
+        {
+            // The tip moved between the check and the lock. Same fact as `superseded`, reached a
+            // few milliseconds later, and the reader is told the same thing. Recorded for its own
+            // sake: the decision changed between the two reads, and that is what the row says.
+            _ = Eligibility(task, wiki.Tip(), logger);
+            return Problem("This ingest cannot be reverted.", Explain(RevertEligibility.Superseded),
+                StatusCodes.Status409Conflict);
+        }
+
+        store.RecordRevert(taskId, new RevertRecord(revertCommitSha, DateTimeOffset.UtcNow));
+        logger.LogInformation("grimoire.wiki.reverted {TaskId} {RevertCommitSha}", taskId, revertCommitSha);
+        logger.LogInformation("grimoire.task.state_changed {TaskId} {State}", taskId, "reverted");
+
+        return Results.Ok(Detail(store.GetTask(taskId)!, wiki, logger));
     }
 
     /// <summary>
     /// Builds the task view's body: the task, its diff read back from history, and whether revert
     /// is offered.
     /// </summary>
-    internal static Contracts.TaskDetail Detail(Grimoire.Tasks.Task task, WikiMutation wiki)
+    internal static Contracts.TaskDetail Detail(
+        Grimoire.Tasks.Task task, WikiMutation wiki, ILogger logger)
     {
         // Derived from the commit on read, never stored, so the artifact cannot drift from what
         // the wiki actually contains (FR-022).
         var diffs = task.Run?.Commit is { } commit ? wiki.DiffOf(commit.Sha) : [];
-        var verdict = RevertEligibility.For(
-            task.Run?.Commit?.Sha, task.State is TaskState.Reverted, wiki.Tip());
+        var verdict = Eligibility(task, wiki.Tip(), logger);
         return TaskProjection.ToDetail(
             task, diffs, new Contracts.RevertEligibilityDetail(verdict.Eligible, verdict.Reason));
     }
+
+    /// <summary>
+    /// Decides whether revert is offered and records the decision. One emission point, so the row
+    /// and the field the surface renders cannot disagree (constitution IV).
+    /// </summary>
+    private static RevertEligibility.Verdict Eligibility(
+        Grimoire.Tasks.Task task, string tip, ILogger logger)
+    {
+        var verdict = RevertEligibility.For(
+            task.Run?.Commit?.Sha, task.State is TaskState.Reverted, tip);
+        logger.LogInformation(
+            "grimoire.wiki.revert_eligibility {TaskId} {Eligible} {Reason}",
+            task.Id, verdict.Eligible, verdict.Reason);
+        return verdict;
+    }
+
+    /// <summary>
+    /// The refusal in the reader's words. `superseded` is the one that has to explain itself: it
+    /// is not a failure, it is the boundary of what undo reaches (FR-027).
+    /// </summary>
+    private static string Explain(string? reason) => reason switch
+    {
+        RevertEligibility.NoCommit =>
+            "This run produced no commit, so there is nothing to undo.",
+        RevertEligibility.Superseded =>
+            "This ingest was superseded by a later wiki commit. Undo reaches one ingest back, not further.",
+        RevertEligibility.AlreadyReverted =>
+            "This ingest has already been reverted.",
+        _ => "Revert is not available for this task.",
+    };
 
     private static async Task RetrieveBeforeDispatch(
         Grimoire.Tasks.Task task,
