@@ -29,8 +29,23 @@ import {
 /** The instruction file to load, from the hub's own configuration. */
 const DEFAULT_INSTRUCTION_PATH = "src/instructions/ingest.md";
 
-function emit(event: RunnerEvent): void {
-  process.stdout.write(`${serialiseRunnerEvent(event)}\n`);
+/**
+ * Writes one event and waits for it to actually leave the process. `main()` calls
+ * `process.exit()` right after its last event to close the stdin readline interface (otherwise
+ * nothing ends the event loop); without waiting here first, that exit can happen before an
+ * asynchronous stdout write — routine when stdout is a pipe, as it is to the hub — has flushed,
+ * so the hub observes a crash with no `run_end` and resets a run that actually completed.
+ */
+function emit(event: RunnerEvent): Promise<void> {
+  return new Promise((resolve, reject) => {
+    process.stdout.write(`${serialiseRunnerEvent(event)}\n`, (error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
 }
 
 function diagnostic(message: string): void {
@@ -43,9 +58,21 @@ function hubMessages(): {
   proceed: Promise<void>;
 } {
   let resolveDispatch: (message: DispatchMessage) => void;
+  let rejectDispatch: (cause: Error) => void;
   let resolveProceed: () => void;
-  const dispatch = new Promise<DispatchMessage>((resolve) => (resolveDispatch = resolve));
-  const proceed = new Promise<void>((resolve) => (resolveProceed = resolve));
+  let rejectProceed: (cause: Error) => void;
+  const dispatch = new Promise<DispatchMessage>((resolve, reject) => {
+    resolveDispatch = resolve;
+    rejectDispatch = reject;
+  });
+  const proceed = new Promise<void>((resolve, reject) => {
+    resolveProceed = resolve;
+    rejectProceed = reject;
+  });
+  // A promise a caller never attached a rejection handler to (because it awaits the *other* one
+  // first) would otherwise be an unhandled rejection the moment the catch below fires.
+  dispatch.catch(() => {});
+  proceed.catch(() => {});
 
   const lines = createInterface({ input: process.stdin });
   lines.on("line", (line) => {
@@ -63,7 +90,13 @@ function hubMessages(): {
       }
     } catch (cause) {
       // A hub speaking an envelope this runner does not know is a failed run, not a quiet one.
-      diagnostic(`protocol error: ${(cause as ProtocolError).message}`);
+      // Rejecting whichever of dispatch/proceed main() is still waiting on is what makes that
+      // true promptly — settling a promise that already settled is a documented no-op, so
+      // rejecting both unconditionally is safe whichever stage this arrives at.
+      const error = new Error(`protocol error: ${(cause as ProtocolError).message}`);
+      diagnostic(error.message);
+      rejectDispatch(error);
+      rejectProceed(error);
       process.exitCode = 1;
       lines.close();
     }
@@ -77,14 +110,14 @@ async function main(): Promise<void> {
   const instructionPath = process.env["GRIMOIRE_INSTRUCTION"] ?? DEFAULT_INSTRUCTION_PATH;
 
   const instruction = await loadInstruction(instructionPath);
-  emit({
+  await emit({
     type: "instruction_loaded",
     path: instruction.path,
     sha256: instruction.sha256,
     byteLength: instruction.byteLength,
   });
 
-  emit({ type: "tool_grant", tools: [...GRANTED_TOOLS] });
+  await emit({ type: "tool_grant", tools: [...GRANTED_TOOLS] });
 
   const dispatched = await dispatch;
   // The gate. Nothing has been asked of the model yet, and nothing will be until the hub has the
@@ -92,8 +125,11 @@ async function main(): Promise<void> {
   await proceed;
 
   const guard = new ToolGuard();
-  guard.onRecorded = (call) =>
-    emit({
+  guard.onRecorded = (call) => {
+    // Not awaited: the callback is synchronous (ToolGuard does not await it) and Node's stdout
+    // is one ordered stream, so these writes still complete, in order, before the final `emit`
+    // below is awaited — which is the one that has to happen before `process.exit()`.
+    void emit({
       type: "tool_call",
       seq: call.seq,
       tool: call.tool,
@@ -102,6 +138,7 @@ async function main(): Promise<void> {
       detail: call.detail,
       at: call.at,
     });
+  };
 
   const result = await runModel({
     systemPrompt: instruction.systemPrompt,
@@ -119,7 +156,7 @@ async function main(): Promise<void> {
     ? `The run made ${guard.count} tool calls, past its ceiling of ${dispatched.maxToolCalls}.`
     : result.failureReason;
 
-  emit({
+  await emit({
     type: "run_end",
     outcome: failureReason === null ? "completed" : "failed",
     failureReason,

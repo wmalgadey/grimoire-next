@@ -47,29 +47,90 @@ public sealed class UrlFetch(HttpClient httpClient, bool checksDestinationItself
     /// </summary>
     public static UrlFetch Create(string? fetchProxy)
     {
-        var handler = new HttpClientHandler
+        var checksDestinationItself = string.IsNullOrWhiteSpace(fetchProxy);
+
+        // A plain HttpClientHandler resolves the hostname once for Refuse(uri) below and again,
+        // independently, for the actual connection — a DNS-rebinding host can answer the first
+        // lookup with a public address and the second with a loopback or private one, passing the
+        // check and reaching the destination it was refused. SocketsHttpHandler's ConnectCallback
+        // makes resolution and the policy check the same lookup as the connection itself, so there
+        // is no second answer for a rebinding host to give (research R16).
+        var handler = new SocketsHttpHandler
         {
             // Redirects are followed by hand below so every hop passes the same policy: an origin
             // that redirects to 169.254.169.254 must not be followed there.
             AllowAutoRedirect = false,
+            ConnectCallback = checksDestinationItself ? ConnectToACheckedAddress : null,
         };
 
         if (!string.IsNullOrWhiteSpace(fetchProxy))
         {
+            // Routed through the fetch proxy: the hub connects to the proxy, never resolving the
+            // submitted host itself, so pinning a destination address here would be wrong — the
+            // proxy is what reaches the destination and the proxy is what enforces the policy
+            // (ADR-0010).
             handler.Proxy = new WebProxy(fetchProxy);
             handler.UseProxy = true;
         }
 
         return new UrlFetch(
             new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) },
-            checksDestinationItself: string.IsNullOrWhiteSpace(fetchProxy));
+            checksDestinationItself);
+    }
+
+    /// <summary>
+    /// The connection SocketsHttpHandler actually opens, resolving and checking the destination in
+    /// the one step that also makes the connection — closing the gap between "checked" and
+    /// "connected to" that a separate resolution would leave open.
+    /// </summary>
+    private static async ValueTask<System.IO.Stream> ConnectToACheckedAddress(
+        SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+    {
+        var host = context.DnsEndPoint.Host;
+
+        IPAddress[] addresses;
+        try
+        {
+            addresses = IPAddress.TryParse(host, out var literal)
+                ? [literal]
+                : await Dns.GetHostAddressesAsync(host, cancellationToken);
+        }
+        catch (Exception exception) when (exception is SocketException or ArgumentException)
+        {
+            throw new HttpRequestException($"{host} could not be resolved.", exception);
+        }
+
+        if (addresses.Length is 0)
+        {
+            throw new HttpRequestException($"{host} resolved to no address.");
+        }
+
+        // Every address, not just the first: a host that resolves to one public and one private
+        // address is a way to get a private one connected to.
+        foreach (var address in addresses)
+        {
+            if (IsNotRoutableFromHere(address))
+            {
+                throw new HttpRequestException(
+                    $"{host} resolves to {address}, which is not a destination this system retrieves.");
+            }
+        }
+
+        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        try
+        {
+            await socket.ConnectAsync(addresses[0], context.DnsEndPoint.Port, cancellationToken);
+            return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     /// <summary>The most redirects a retrieval will follow before giving up.</summary>
     public const int MaxRedirects = 5;
-
-    /// <summary>The largest response the retrieval will read. Generous: there is no source-size limit.</summary>
-    private const int MaxResponseBytes = 64 * 1024 * 1024;
 
     /// <summary>
     /// Retrieves the text at a submitted URL, or says why it did not. Never throws for a bad URL,
@@ -134,12 +195,11 @@ public sealed class UrlFetch(HttpClient httpClient, bool checksDestinationItself
                         $"{uri} answered with content type '{mediaType ?? "unknown"}'. Only text can be ingested.");
                 }
 
+                // No size limit and no truncation (FR-029): the source is handed to the run
+                // whole. A hard cap here would not even buy memory safety — the body is already
+                // fully read by the time any cap could be checked — so it would only be a reason
+                // to refuse a source the spec says must be accepted.
                 var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-                if (bytes.Length > MaxResponseBytes)
-                {
-                    return Failed($"{uri} answered with {bytes.Length} bytes, more than this system will retrieve.");
-                }
-
                 return new RetrievalResult(Encoding.UTF8.GetString(bytes), null);
             }
         }

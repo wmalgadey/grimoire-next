@@ -106,7 +106,21 @@ public sealed class RunnerProcess(string repositoryRoot, RunnerEnvironment envir
                 if (runnerEvent is ToolGrantEvent && !gateOpened)
                 {
                     gateOpened = true;
-                    await gate();
+
+                    try
+                    {
+                        await gate();
+                    }
+                    catch
+                    {
+                        // The gate refused (e.g. a grant mismatch). The child is blocked on stdin
+                        // waiting for `proceed`, which must never be sent now — killing it here is
+                        // what makes "the model was never invoked" true rather than a race with
+                        // whatever this exception handler does next.
+                        Kill(process);
+                        throw;
+                    }
+
                     await process.StandardInput.WriteLineAsync(RunnerProtocol.Serialise(new ProceedMessage()));
                     await process.StandardInput.FlushAsync(cancellationToken);
                 }
@@ -202,7 +216,13 @@ public sealed record RunnerEnvironment(string EntryPointPath, IReadOnlyDictionar
             // third-party requests outside the gateway path, which under a deny-all egress policy
             // become failed connections and blocked-connection noise (contracts/deployment.md).
             ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1",
-            ["GRIMOIRE_INSTRUCTION"] = instructionPath,
+            // The child's cwd is the wiki working tree, not the application root (`repositoryRoot`
+            // below), so a relative instruction path has to be resolved here — otherwise the
+            // default `src/instructions/ingest.md` is looked up inside the wiki and every run
+            // fails before the model is ever called.
+            ["GRIMOIRE_INSTRUCTION"] = Path.IsPathRooted(instructionPath)
+                ? instructionPath
+                : Path.Combine(repositoryRoot, instructionPath),
         };
 
         return new RunnerEnvironment(Path.Combine(repositoryRoot, RunnerProcess.EntryPoint), variables);

@@ -59,7 +59,11 @@ public sealed class GitCli(string repositoryPath)
     public void ResetWorkingTree()
     {
         Execute("reset", "--hard", "HEAD");
-        Execute("clean", "-fd");
+        // -x as well as -d and -f: wiki content is exactly what a run wrote, and that can include
+        // a .gitignore (write_page accepts any repository-relative path). Without -x, a stray file
+        // matching a rule the wiki content itself introduced would survive a reset, breaking the
+        // byte-identical-to-the-pre-run-commit guarantee for reasons found nowhere in the diff.
+        Execute("clean", "-fdx");
     }
 
     /// <summary>

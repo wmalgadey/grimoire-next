@@ -147,8 +147,11 @@ export async function runModel(request: ModelRunRequest): Promise<ModelRunResult
           .map((block) => (block.type === "text" ? block.text : ""))
           .join("");
 
+        // Verbatim: the message reaches the hub exactly as the model wrote it (contracts/
+        // runner-protocol.md). Only the emptiness test trims — leading/trailing whitespace in an
+        // otherwise-real message is not this adapter's call to remove.
         if (text.trim().length > 0) {
-          finalMessage = text.trim();
+          finalMessage = text;
         }
 
         // Every tool_use block is an attempt, whether or not the SDK will dispatch it. A tool

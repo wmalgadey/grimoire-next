@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Grimoire.Tasks.Adapters;
 using Microsoft.Extensions.Logging;
 using Task = System.Threading.Tasks.Task;
@@ -11,25 +12,35 @@ namespace Grimoire.Dispatch;
 /// Serialisation is a property of the product, not a limitation awaiting a fix: runs hold the wiki
 /// working tree, so two at once would interleave their writes into one commit. That is also why
 /// the deployment is one replica (contracts/deployment.md).
+///
+/// FIFO is kept by a single background consumer draining one channel, not by a semaphore guarding
+/// a fire-and-forget <c>Task.Run</c> per submission: two enqueues racing to even start waiting on a
+/// semaphore is not the same guarantee as the order they were enqueued in, and the .NET thread
+/// pool does not promise one.
 /// </remarks>
-public sealed class RunQueue(SqliteStore store, Dispatcher dispatcher, ILogger<RunQueue> logger) : IDisposable
+public sealed class RunQueue : IDisposable
 {
-    private readonly SemaphoreSlim _oneAtATime = new(1, 1);
-    private readonly CancellationTokenSource _stopping = new();
-    private volatile bool _accepting = true;
+    private readonly SqliteStore store;
+    private readonly Dispatcher dispatcher;
+    private readonly ILogger<RunQueue> logger;
+    private readonly Channel<string> queue = Channel.CreateUnbounded<string>(
+        new UnboundedChannelOptions { SingleReader = true });
+    private readonly CancellationTokenSource stopping = new();
+    private readonly Task consumer;
+    private volatile bool dispatching;
+
+    public RunQueue(SqliteStore store, Dispatcher dispatcher, ILogger<RunQueue> logger)
+    {
+        this.store = store;
+        this.dispatcher = dispatcher;
+        this.logger = logger;
+        consumer = Task.Run(() => Consume(stopping.Token), CancellationToken.None);
+    }
 
     /// <summary>
     /// Queues a task for dispatch. Returns immediately: submitting is not waiting for a run.
     /// </summary>
-    public void Enqueue(string taskId)
-    {
-        if (!_accepting)
-        {
-            return;
-        }
-
-        _ = Task.Run(() => DispatchWhenFree(taskId), CancellationToken.None);
-    }
+    public void Enqueue(string taskId) => queue.Writer.TryWrite(taskId);
 
     /// <summary>
     /// Dispatches every queued task in submission order. Used at startup, after recovery has
@@ -49,32 +60,47 @@ public sealed class RunQueue(SqliteStore store, Dispatcher dispatcher, ILogger<R
     /// </summary>
     public void StopAccepting()
     {
-        _accepting = false;
-        _stopping.Cancel();
+        queue.Writer.TryComplete();
+        stopping.Cancel();
     }
 
     /// <summary>Whether a run is executing right now.</summary>
-    public bool IsRunning => _oneAtATime.CurrentCount is 0;
+    public bool IsRunning => dispatching;
 
     /// <inheritdoc />
     public void Dispose()
     {
-        _stopping.Dispose();
-        _oneAtATime.Dispose();
+        stopping.Cancel();
+        queue.Writer.TryComplete();
+        stopping.Dispose();
     }
 
-    private async Task DispatchWhenFree(string taskId)
+    /// <summary>
+    /// The one consumer: reads tasks strictly in the order they were written to the channel — the
+    /// order <see cref="Enqueue"/> was called in, which is <c>submittedAt</c> order both for a live
+    /// submission and for <see cref="EnqueueBacklog"/> — and dispatches them one at a time.
+    /// </summary>
+    private async Task Consume(CancellationToken cancellationToken)
     {
         try
         {
-            await _oneAtATime.WaitAsync(_stopping.Token);
+            while (await queue.Reader.WaitToReadAsync(cancellationToken))
+            {
+                while (queue.Reader.TryRead(out var taskId))
+                {
+                    await DispatchOne(taskId, cancellationToken);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
-            // Shutting down. The task stays queued and the next start dispatches it.
-            return;
+            // Shutting down.
         }
+    }
 
+    private async Task DispatchOne(string taskId, CancellationToken cancellationToken)
+    {
+        dispatching = true;
         try
         {
             var task = store.GetTask(taskId);
@@ -84,15 +110,39 @@ public sealed class RunQueue(SqliteStore store, Dispatcher dispatcher, ILogger<R
                 return;
             }
 
-            await dispatcher.Dispatch(task, _stopping.Token);
+            await dispatcher.Dispatch(task, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutting down. The task stays queued and the next start dispatches it.
         }
         catch (Exception exception)
         {
             logger.LogError(exception, "grimoire.run.ended {TaskId} {Outcome}", taskId, "failed");
+
+            // Dispatcher.Dispatch settles every outcome it reaches internally; this catches
+            // whatever happens before it gets that far (constructing the runner, resolving
+            // configuration). Without this, an exception here — not one Dispatch already turned
+            // into a failed run — would leave the task 'queued' forever: nothing else ever
+            // revisits it.
+            try
+            {
+                if (store.GetTask(taskId) is { State: Grimoire.Tasks.TaskState.Queued })
+                {
+                    store.FailTask(
+                        taskId,
+                        $"The run could not be started: {exception.Message}",
+                        DateTimeOffset.UtcNow);
+                }
+            }
+            catch (Exception storeException)
+            {
+                logger.LogError(storeException, "grimoire.run.ended {TaskId} {Outcome}", taskId, "failed");
+            }
         }
         finally
         {
-            _oneAtATime.Release();
+            dispatching = false;
         }
     }
 }

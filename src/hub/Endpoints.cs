@@ -51,7 +51,7 @@ public static class Endpoints
         Contracts.Submission submission,
         SqliteStore store,
         RunQueue queue,
-        HubConfiguration configuration,
+        UrlFetch urlFetch,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -80,7 +80,7 @@ public static class Endpoints
             // Retrieved before dispatch, so a run is never given a source that does not exist.
             // Deliberately awaited: the task is already created and openable, and the caller is
             // told about a refusal in the same breath as the task (FR-003).
-            await RetrieveBeforeDispatch(task, store, configuration, logger, cancellationToken);
+            await RetrieveBeforeDispatch(task, store, urlFetch, logger, cancellationToken);
             var retrieved = store.GetTask(task.Id)!;
             if (retrieved.State is TaskState.Failed)
             {
@@ -139,12 +139,11 @@ public static class Endpoints
     private static async Task RetrieveBeforeDispatch(
         Grimoire.Tasks.Task task,
         SqliteStore store,
-        HubConfiguration configuration,
+        UrlFetch urlFetch,
         ILogger logger,
         CancellationToken cancellationToken)
     {
-        var fetch = UrlFetch.Create(configuration.FetchProxy);
-        var result = await fetch.Retrieve(task.Source.SubmittedValue, cancellationToken);
+        var result = await urlFetch.Retrieve(task.Source.SubmittedValue, cancellationToken);
 
         if (!result.Succeeded)
         {

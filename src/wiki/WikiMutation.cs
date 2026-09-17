@@ -35,9 +35,10 @@ public sealed class WikiMutation(GitCli git)
         await _singleWriter.WaitAsync(cancellationToken);
         try
         {
+            // Verbatim, per the parameter's own contract: only the blank case is replaced.
             var message = string.IsNullOrWhiteSpace(commitMessage)
                 ? FallbackMessage(taskId)
-                : commitMessage.Trim();
+                : commitMessage;
 
             return git.CommitAll(message);
         }

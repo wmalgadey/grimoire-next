@@ -1,14 +1,13 @@
 <script lang="ts">
   import { page } from "$app/state";
   import TaskStateBadge from "$lib/TaskState.svelte";
-  import { getTask, revertTask, type TaskDetail } from "$lib/api/client.js";
+  import { getTask, type TaskDetail } from "$lib/api/client.js";
 
   // The task view. This page alone has to answer: which instruction version ran, what the agent
   // looked at, what it wrote, and what the wiki looks like now versus before — without opening a
   // terminal or the repository (FR-021, FR-022, SC-008, SC-010, SC-011).
   let task = $state<TaskDetail | null>(null);
   let problem = $state<string | null>(null);
-  let reverting = $state(false);
 
   async function load() {
     problem = null;
@@ -16,18 +15,6 @@
       task = await getTask(page.params.taskId!);
     } catch (error) {
       problem = String(error);
-    }
-  }
-
-  async function revert() {
-    reverting = true;
-    problem = null;
-    try {
-      task = await revertTask(page.params.taskId!);
-    } catch (error) {
-      problem = String(error);
-    } finally {
-      reverting = false;
     }
   }
 
@@ -149,10 +136,17 @@
           </article>
         {/each}
       {:else if task.run.changedNothing}
-        <!-- Stated explicitly, so a deliberate no-op does not read as breakage (FR-016, SC-011). -->
+        <!-- Stated explicitly, so a deliberate no-op does not read as breakage (FR-016, SC-011).
+             Worded from the recorded tool calls, not assumed: a run can complete having made no
+             tool calls at all, and "the agent read the wiki" would claim something that did not
+             happen. -->
         <p class="quiet" data-testid="changed-nothing">
-          This run changed nothing. The agent read the wiki and judged that it already said what
-          this source had to say.
+          This run changed nothing.
+          {#if task.run.toolCalls.some((call) => call.tool === "mcp__wiki__read_page" && call.outcome === "ok")}
+            The agent read the wiki and judged that it already said what this source had to say.
+          {:else}
+            The wiki is exactly as it was before the run started.
+          {/if}
         </p>
       {:else}
         <p class="quiet" data-testid="no-commit">
@@ -179,11 +173,13 @@
         Reverted by <code>{task.revert.revertCommitSha.slice(0, 12)}</code>
         on {new Date(task.revert.revertedAt).toLocaleString()}.
       </p>
-    {/if}
-    {#if task.revertEligibility.eligible}
-      <button onclick={revert} disabled={reverting} data-testid="revert">
-        {reverting ? "Reverting…" : "Revert this ingest"}
-      </button>
+    {:else if task.revertEligibility.eligible}
+      <!-- The hub does not serve POST /api/tasks/{taskId}/revert yet — that endpoint is Phase 4.
+           An offered action that always answers 404 is worse than none, so this is explanatory
+           text rather than the button, exactly as an ineligible task already reads (FR-027). -->
+      <p class="quiet" data-testid="revert-reason">
+        Revert is not available yet. This ingest could be undone once that capability ships.
+      </p>
     {:else}
       <p class="quiet" data-testid="revert-reason">
         {eligibilityExplanation(task.revertEligibility.reason)}

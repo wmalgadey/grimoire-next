@@ -13,6 +13,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "dev": "vite dev",
+    "precheck": "npm run api:types",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint .",
     "depcruise": "depcruise src --config .dependency-cruiser.cjs",

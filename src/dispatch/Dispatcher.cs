@@ -128,6 +128,17 @@ public sealed class Dispatcher(
                             "The runner asked to proceed before reporting its instruction version and grant.");
                     }
 
+                    // Refuse here, before the gate opens and `proceed` is ever sent: this is the
+                    // last point at which the model has not yet been invoked. Catching the
+                    // mismatch only in Interpret() after the run has already executed would let a
+                    // runner that reports a wider grant reach the model and use those tools before
+                    // the hub notices — a reset undoes the working tree, not whatever else those
+                    // tools touched (deny-by-default, constitution II).
+                    if (grantMismatch is not null)
+                    {
+                        throw new RunnerProtocolException(grantMismatch);
+                    }
+
                     store.StartRun(
                         task.Id,
                         new AgentRun(
@@ -207,6 +218,17 @@ public sealed class Dispatcher(
                 toolCallCount);
         }
 
+        // The runner reported success and then the process itself ended abnormally — a crash on
+        // the way out, after `run_end` was already written. Trusting the reported outcome here
+        // would commit a working tree the process never actually finished with (FR-017).
+        if (exit.ExitCode is not 0)
+        {
+            return new RunOutcome.Failed(
+                $"The runner reported a completed outcome but the process exited with code "
+                + $"{exit.ExitCode}.",
+                toolCallCount);
+        }
+
         return new RunOutcome.Changed(exit.RunEnd.CommitMessage, toolCallCount);
     }
 
@@ -220,13 +242,15 @@ public sealed class Dispatcher(
         var endedAt = DateTimeOffset.UtcNow;
         var durationMs = (int)(endedAt - startedAt).TotalMilliseconds;
 
-        store.EndRun(
-            taskId,
-            settlement.Succeeded ? RunOutcomeKind.Completed : RunOutcomeKind.Failed,
-            settlement.FailureReason,
-            settlement.Commit,
-            durationMs,
-            endedAt);
+        // A commit, once made, is a fact of wiki history that nothing here can safely undo: unlike
+        // every other settlement step, this persistence cannot be retried by falling through to
+        // the outer catch's Failed+Reset path — the working tree already matches the new commit,
+        // so a reset would no-op while the task got recorded as failed with no commit, leaving a
+        // real wiki mutation that no task artifact accounts for. A short retry directly here is
+        // the containment for that gap: most persistence failures this close to a successful
+        // commit are transient (a locked database file, a momentary I/O error), and retrying the
+        // exact same write is safe because EndRun is not otherwise called twice for one run.
+        PersistEndRun(taskId, settlement, durationMs, endedAt);
 
         if (settlement.Commit is { } commit)
         {
@@ -247,6 +271,45 @@ public sealed class Dispatcher(
             taskId, settlement.Succeeded ? "completed" : "failed");
     }
 
+    private void PersistEndRun(string taskId, RunSettlement settlement, int durationMs, DateTimeOffset endedAt)
+    {
+        var attempt = 0;
+        while (true)
+        {
+            attempt++;
+            try
+            {
+                store.EndRun(
+                    taskId,
+                    settlement.Succeeded ? RunOutcomeKind.Completed : RunOutcomeKind.Failed,
+                    settlement.FailureReason,
+                    settlement.Commit,
+                    durationMs,
+                    endedAt);
+                return;
+            }
+            catch (Exception exception) when (settlement.Commit is not null && attempt < 3)
+            {
+                logger.LogWarning(exception,
+                    "grimoire.run.ended {TaskId} retrying: the commit {CommitSha} exists in the wiki "
+                    + "but recording it against the task failed on attempt {Attempt}.",
+                    taskId, settlement.Commit.Sha, attempt);
+                Thread.Sleep(TimeSpan.FromMilliseconds(200 * attempt));
+            }
+            catch (Exception exception) when (settlement.Commit is not null)
+            {
+                // Out of retries. The commit stands regardless — this loudly says so rather than
+                // letting the generic failure path silently no-op a reset over it.
+                logger.LogCritical(exception,
+                    "grimoire.run.ended {TaskId} unrecorded: the commit {CommitSha} exists in the "
+                    + "wiki, but the task could not be updated to reflect it after {Attempts} attempts. "
+                    + "This needs an operator to reconcile the task artifact with wiki history by hand.",
+                    taskId, settlement.Commit.Sha, attempt);
+                throw;
+            }
+        }
+    }
+
     /// <summary>
     /// Why the model endpoint cannot be reached, or <c>null</c> when it can. A TCP connect, not a
     /// model call: this asks whether the one permitted destination is there, which is the same
@@ -258,6 +321,18 @@ public sealed class Dispatcher(
         {
             return $"The model endpoint '{modelBaseUrl}' is not an absolute URL. "
                 + "Check GRIMOIRE_MODEL_BASE_URL.";
+        }
+
+        // A URI can parse as absolute and still have no usable host or TCP port — `file:///tmp/x`
+        // does, with an empty host and Port == -1. Without this check that reaches TcpClient's own
+        // range validation, which throws ArgumentOutOfRangeException synchronously, before the
+        // catch below (or the call's own try) ever sees it: this method is called before Dispatch
+        // enters its try block, so the exception would propagate out of RunQueue's dispatch loop
+        // entirely and leave the task queued forever instead of recording a failed run.
+        if (string.IsNullOrEmpty(uri.Host) || uri.Port is < 0 or > 65535)
+        {
+            return $"The model endpoint '{modelBaseUrl}' is not a usable address: it has no host "
+                + "and port to connect to. Check GRIMOIRE_MODEL_BASE_URL.";
         }
 
         try

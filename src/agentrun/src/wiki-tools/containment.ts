@@ -8,7 +8,7 @@
  * catch the first two and miss the third.
  */
 
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 
 /** The reason a path was refused, in the words the tool-call record carries. */
@@ -84,8 +84,22 @@ async function resolveThroughSymlinks(candidate: string): Promise<string | null>
   try {
     return await realpath(candidate);
   } catch {
-    // Does not exist. Resolve the deepest ancestor that does, then re-append the rest: a write to
-    // `out/new.md` where `out` is a symlink out of the repository must still be refused.
+    // realpath fails two different ways here, and they must not be treated the same. One is
+    // "nothing at this path at all" — the ordinary new-file case, handled below by resolving the
+    // deepest existing ancestor and re-appending the rest. The other is "this path IS a directory
+    // entry, but it is a symlink whose target does not exist" — a dangling symlink. That entry is
+    // real: `writeFile` opens through it and follows it, wherever it points, however far outside
+    // the wiki that is. Reattaching the filename under its (contained) parent and calling that
+    // "not yet existing" would approve a path that is not the one actually written to, so any
+    // existing entry realpath could not resolve is refused rather than assumed absent.
+    const entryExists = await lstat(candidate).then(
+      () => true,
+      () => false,
+    );
+    if (entryExists) {
+      return null;
+    }
+
     const parent = dirname(candidate);
     if (parent === candidate) {
       return null;

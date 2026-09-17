@@ -147,7 +147,7 @@ Per Constitution I.1, every behaviour in this feature is classified below. Only 
 **Tool grant and containment**
 
 - **FR-010**: The harness MUST grant the run exactly two tools: one that reads wiki content and one that writes wiki content. Every other tool MUST be denied, including any means of network access, command execution, or filesystem access outside the wiki.
-- **FR-011**: The write tool MUST refuse any target outside the wiki, and the refusal MUST be recorded as a tool call with a failed outcome.
+- **FR-011**: The write tool MUST refuse any target outside the wiki, and the refusal MUST be recorded as a tool call with a refused outcome.
 - **FR-012**: A write performed by the run MUST NOT be visible in the wiki before that run's commit.
 - **FR-013**: The harness MUST record the granted tool set on the task at dispatch, before the first model call of the run.
 - **FR-014**: The harness MUST record on the task the version of the instruction file that was loaded for the run, at dispatch, before the first model call.
