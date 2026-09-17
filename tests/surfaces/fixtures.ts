@@ -137,6 +137,11 @@ async function startHub(script: string, seed?: Record<string, string>): Promise<
         ASPNETCORE_WEBROOT: join(repositoryRoot, "frontend", "build"),
       },
       stdio: ["ignore", "pipe", "pipe"],
+      // Its own process group, so teardown can kill the whole tree. `dotnet run` spawns the hub,
+      // and the hub spawns a runner; killing only the first leaves a runner holding a request open
+      // against the scripted model, and closing that model then waits for a client that will never
+      // answer. The C# fixture kills the tree for the same reason.
+      detached: true,
     },
   );
 
@@ -172,7 +177,12 @@ async function startHub(script: string, seed?: Record<string, string>): Promise<
     wiki,
     model,
     dispose: async () => {
-      child.kill("SIGKILL");
+      // Negative pid: the whole process group — the hub and whatever it spawned.
+      try {
+        process.kill(-child.pid!, "SIGKILL");
+      } catch {
+        // Already gone, which is the outcome this wanted.
+      }
       await model.close();
       wiki.dispose();
       rmSync(dirname(stateDb), { recursive: true, force: true });

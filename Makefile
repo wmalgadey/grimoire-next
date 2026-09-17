@@ -50,7 +50,7 @@ CS_SUITES := $(sort $(foreach p,$(CS_PROJECTS),\
 suite_bin = tests/$(1)/bin/$(CONFIG)/net10.0/$(basename $(notdir $(wildcard tests/$(1)/*.csproj)))
 CS_BINS := $(foreach s,$(CS_SUITES),$(call suite_bin,$(s)))
 
-NPM_WORKSPACES := src/agentrun tests/scripted-model frontend
+NPM_WORKSPACES := src/agentrun tests/scripted-model frontend tests/surfaces
 
 .DEFAULT_GOAL := help
 
@@ -163,10 +163,13 @@ test-e2e: build-hub build-runner build-model build-frontend | tests/surfaces/nod
 	GRIMOIRE_BUILD_CONFIGURATION=$(CONFIG) npm --prefix frontend run test:e2e
 
 .PHONY: lint
+# --if-present on both: not every workspace has both scripts. tests/surfaces carries only the
+# Playwright suite, and a missing script there must not fail a repository-wide lint — while a
+# workspace that does define one still fails the build when it reports a violation.
 lint: deps require-node-20
 	@for ws in $(NPM_WORKSPACES); do \
 	  echo "==> $$ws"; \
-	  npm --prefix $$ws run lint || exit 1; \
+	  npm --prefix $$ws run lint --if-present || exit 1; \
 	  npm --prefix $$ws run depcruise --if-present || exit 1; \
 	done
 
