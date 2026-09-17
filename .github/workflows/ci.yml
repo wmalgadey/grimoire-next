@@ -1,0 +1,59 @@
+name: CI
+
+# The nine constitution quality gates are wired into this file as their tests land;
+# T110 completes the wiring. Quality gates must not be disabled to land a change
+# (constitution "Quality gates"); fixing a wrong gate is a separate PR.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build the hub, the slices and the egress proxy
+        run: dotnet build --configuration Release
+
+      - name: Build the agent runner
+        run: |
+          npm --prefix src/agentrun ci
+          npm --prefix src/agentrun run build
+
+      - name: Build the scripted model (the single sanctioned double, ADR-0004)
+        run: |
+          npm --prefix tests/scripted-model ci
+          npm --prefix tests/scripted-model run build
+
+      - name: Build the frontend
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+
+      # Every automated test runs without an Anthropic key: the LLM is reached
+      # through ANTHROPIC_BASE_URL pointed at tests/scripted-model/.
+      - name: Hub slices, architecture gates, observability, contract drift
+        run: dotnet test --configuration Release --no-build
+
+      - name: Runner — the real SDK loop against the scripted model
+        run: npm --prefix src/agentrun test
+
+      - name: Surfaces
+        run: |
+          npx --prefix frontend playwright install --with-deps chromium
+          npm --prefix frontend run test:e2e

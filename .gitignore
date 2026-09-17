@@ -1,0 +1,31 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+[Tt]est[Rr]esults/
+
+# Node
+node_modules/
+dist/
+.svelte-kit/
+frontend/build/
+frontend/src/lib/api/schema.d.ts
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Local operational state (never committed; lives on a volume in deployment)
+*.db
+*.db-wal
+*.db-shm
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

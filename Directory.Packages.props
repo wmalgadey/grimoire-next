@@ -1,0 +1,32 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <!-- Slice packages. Which slice may reference which is asserted by tests/architecture/. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
+  </ItemGroup>
+
+  <!-- Test packages. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+    <!-- Test-only: reads the committed contract so the drift gate can compare it to the
+         document the hub actually serves (TS-15, ADR-0008). -->
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.1" />
+    <!-- Pinned ahead of the version xunit.v3 resolves, so `dotnet test` on SDK 10.0.4xx
+         can drive the test applications through Microsoft.Testing.Platform. -->
+    <PackageVersion Include="Microsoft.Testing.Platform" Version="2.4.1" />
+    <PackageVersion Include="Microsoft.Testing.Platform.MSBuild" Version="2.4.1" />
+  </ItemGroup>
+
+</Project>
