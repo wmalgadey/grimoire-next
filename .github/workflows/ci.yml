@@ -54,6 +54,10 @@ jobs:
         run: npm --prefix src/agentrun test
 
       - name: Surfaces
+        env:
+          # The hub the Playwright fixture spawns is the one built above.
+          GRIMOIRE_BUILD_CONFIGURATION: Release
         run: |
-          npx --prefix frontend playwright install --with-deps chromium
+          npm --prefix tests/surfaces ci
+          npm --prefix tests/surfaces exec -- playwright install --with-deps chromium
           npm --prefix frontend run test:e2e

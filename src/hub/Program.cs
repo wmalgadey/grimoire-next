@@ -65,6 +65,13 @@ app.MapOpenApi();
 app.MapTaskEndpoints();
 app.MapOperations();
 
+// SvelteKit is built as an SPA (adapter-static, `fallback: "index.html"`): client-side routing
+// owns every path under it, so a direct navigation or reload of e.g. /tasks/{taskId} has to reach
+// the same document `/` serves, at that same URL. An unmatched /api path is a real 404, not the
+// app shell — the more specific pattern wins the fallback routing.
+app.MapFallback("/api/{**path}", () => Results.NotFound());
+app.MapFallbackToFile("index.html");
+
 app.Run();
 
 // Where src/agentrun/dist/main.js is resolved from. The hub runs from its own output directory in

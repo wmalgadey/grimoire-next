@@ -17,11 +17,10 @@
     "lint": "eslint .",
     "depcruise": "depcruise src --config .dependency-cruiser.cjs",
     "pretest:e2e": "npm run build",
-    "test:e2e": "playwright test"
+    "test:e2e": "npm --prefix ../tests/surfaces test"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
-    "@playwright/test": "^1.63.0",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.70.3",
     "@sveltejs/vite-plugin-svelte": "^6.0.0",

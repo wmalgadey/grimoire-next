@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -13,7 +13,7 @@ import { startScriptedModel, type ScriptedModel } from "../scripted-model/src/se
  * (ADR-0004, constitution III.2).
  */
 
-const repositoryRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
+const repositoryRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
 
 /** A real wiki git repository with a seed commit. */
 export interface Wiki {
@@ -54,6 +54,32 @@ function createWiki(seed: Record<string, string> = { "index.md": "# Index\n" }):
   };
 }
 
+/**
+ * Which build of the hub to run. `dotnet run --no-build` looks for a Debug build unless told
+ * otherwise, and a Release-only CI has none: the hub exits 1 before it serves. CI says which
+ * through `GRIMOIRE_BUILD_CONFIGURATION`; a developer machine gets the build made most recently.
+ */
+function hubConfiguration(): string {
+  const fromEnvironment = process.env.GRIMOIRE_BUILD_CONFIGURATION;
+  if (fromEnvironment) {
+    return fromEnvironment;
+  }
+
+  const built = ["Debug", "Release"]
+    .map((configuration) => ({
+      configuration,
+      dll: join(repositoryRoot, "src", "hub", "bin", configuration, "net10.0", "Grimoire.Hub.dll"),
+    }))
+    .filter(({ dll }) => existsSync(dll))
+    .sort((a, b) => statSync(b.dll).mtimeMs - statSync(a.dll).mtimeMs);
+
+  if (built.length === 0) {
+    throw new Error("No hub build found under src/hub/bin. Run `dotnet build` first.");
+  }
+
+  return built[0].configuration;
+}
+
 async function freePort(): Promise<number> {
   return new Promise((resolvePort) => {
     const probe = createServer();
@@ -80,7 +106,14 @@ async function startHub(script: string, seed?: Record<string, string>): Promise<
 
   const child: ChildProcess = spawn(
     "dotnet",
-    ["run", "--project", join(repositoryRoot, "src", "hub"), "--no-build"],
+    [
+      "run",
+      "--project",
+      join(repositoryRoot, "src", "hub"),
+      "--no-build",
+      "--configuration",
+      hubConfiguration(),
+    ],
     {
       cwd: repositoryRoot,
       env: {
@@ -98,9 +131,21 @@ async function startHub(script: string, seed?: Record<string, string>): Promise<
     },
   );
 
+  // Kept for the startup error: a hub that fails inside the app logs JSON to stdout, while one
+  // that `dotnet run` could not even start explains itself on stderr.
+  const output: string[] = [];
+  child.stdout?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
+  child.stderr?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
+
   const baseUrl = `http://127.0.0.1:${port}`;
   const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        `The hub exited during startup with code ${child.exitCode}:\n${output.join("")}`,
+      );
+    }
+
     try {
       const response = await fetch(`${baseUrl}/healthz`);
       if (response.ok) {

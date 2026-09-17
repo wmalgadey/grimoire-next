@@ -19,6 +19,14 @@ public sealed class SqliteStore : IDisposable
 {
     private readonly SqliteConnection _connection;
 
+    // One connection, many callers: the request threads reading the task list and task view,
+    // and the dispatcher's thread appending tool calls and ending the run. A SqliteConnection
+    // is not safe to share without serialising them, and disposing it under a transaction
+    // another thread is committing throws from inside the driver. Every public member holds
+    // this gate for the whole of its work, Dispose included, so a call is either complete or
+    // refused — never torn apart by a host shutdown.
+    private readonly Lock _gate = new();
+
     /// <param name="databasePath">
     /// Path to the SQLite file, from <c>GRIMOIRE_STATE_DB</c> — a volume on local block storage,
     /// never a network filesystem (contracts/deployment.md).
@@ -38,57 +46,68 @@ public sealed class SqliteStore : IDisposable
     /// <summary>Creates the six tables if they are not there. Idempotent.</summary>
     public void EnsureSchema()
     {
-        using var command = _connection.CreateCommand();
-        command.CommandText = SqliteSchema.Ddl;
-        command.ExecuteNonQuery();
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText = SqliteSchema.Ddl;
+            command.ExecuteNonQuery();
+        }
     }
 
     /// <summary>Records an accepted submission as exactly one task with its source (FR-002, FR-004).</summary>
     public void AddTask(Task task)
     {
-        using var transaction = _connection.BeginTransaction();
+        lock (_gate)
+        {
+            using var transaction = _connection.BeginTransaction();
 
-        Execute(transaction,
-            """
-            INSERT INTO task (id, state, submitted_at, started_at, ended_at, failure_reason)
-            VALUES ($id, $state, $submittedAt, $startedAt, $endedAt, $failureReason);
-            """,
-            ("$id", task.Id),
-            ("$state", StateToDb(task.State)),
-            ("$submittedAt", Time(task.SubmittedAt)),
-            ("$startedAt", Time(task.StartedAt)),
-            ("$endedAt", Time(task.EndedAt)),
-            ("$failureReason", task.FailureReason));
+            Execute(transaction,
+                """
+                INSERT INTO task (id, state, submitted_at, started_at, ended_at, failure_reason)
+                VALUES ($id, $state, $submittedAt, $startedAt, $endedAt, $failureReason);
+                """,
+                ("$id", task.Id),
+                ("$state", StateToDb(task.State)),
+                ("$submittedAt", Time(task.SubmittedAt)),
+                ("$startedAt", Time(task.StartedAt)),
+                ("$endedAt", Time(task.EndedAt)),
+                ("$failureReason", task.FailureReason));
 
-        Execute(transaction,
-            """
-            INSERT INTO source (task_id, kind, submitted_value, retrieved_text, retrieved_at, byte_length)
-            VALUES ($taskId, $kind, $submittedValue, $retrievedText, $retrievedAt, $byteLength);
-            """,
-            ("$taskId", task.Id),
-            ("$kind", task.Source.Kind is SourceKind.Text ? "text" : "url"),
-            ("$submittedValue", task.Source.SubmittedValue),
-            ("$retrievedText", task.Source.RetrievedText),
-            ("$retrievedAt", Time(task.Source.RetrievedAt)),
-            ("$byteLength", task.Source.ByteLength));
+            Execute(transaction,
+                """
+                INSERT INTO source (task_id, kind, submitted_value, retrieved_text, retrieved_at, byte_length)
+                VALUES ($taskId, $kind, $submittedValue, $retrievedText, $retrievedAt, $byteLength);
+                """,
+                ("$taskId", task.Id),
+                ("$kind", task.Source.Kind is SourceKind.Text ? "text" : "url"),
+                ("$submittedValue", task.Source.SubmittedValue),
+                ("$retrievedText", task.Source.RetrievedText),
+                ("$retrievedAt", Time(task.Source.RetrievedAt)),
+                ("$byteLength", task.Source.ByteLength));
 
-        transaction.Commit();
+            transaction.Commit();
+        }
     }
 
     /// <summary>
     /// Attaches the text retrieved for a URL source before the run is dispatched (FR-003).
     /// </summary>
-    public void AttachRetrievedText(string taskId, string retrievedText, DateTimeOffset retrievedAt, int byteLength) =>
-        Execute(null,
-            """
-            UPDATE source
-               SET retrieved_text = $text, retrieved_at = $at, byte_length = $byteLength
-             WHERE task_id = $taskId;
-            """,
-            ("$text", retrievedText),
-            ("$at", Time(retrievedAt)),
-            ("$byteLength", byteLength),
-            ("$taskId", taskId));
+    public void AttachRetrievedText(string taskId, string retrievedText, DateTimeOffset retrievedAt, int byteLength)
+    {
+        lock (_gate)
+        {
+            Execute(null,
+                """
+                UPDATE source
+                   SET retrieved_text = $text, retrieved_at = $at, byte_length = $byteLength
+                 WHERE task_id = $taskId;
+                """,
+                ("$text", retrievedText),
+                ("$at", Time(retrievedAt)),
+                ("$byteLength", byteLength),
+                ("$taskId", taskId));
+        }
+    }
 
     /// <summary>
     /// Opens the task's one and only run and moves it to <see cref="TaskState.Running"/>.
@@ -97,56 +116,64 @@ public sealed class SqliteStore : IDisposable
     /// </summary>
     public void StartRun(string taskId, AgentRun run, DateTimeOffset startedAt)
     {
-        using var transaction = _connection.BeginTransaction();
+        lock (_gate)
+        {
+            using var transaction = _connection.BeginTransaction();
 
-        var runId = ExecuteScalar(transaction,
-            """
-            INSERT INTO agent_run (task_id, instruction_path, instruction_sha256, instruction_bytes, started_at)
-            VALUES ($taskId, $path, $sha, $bytes, $startedAt)
-            RETURNING id;
-            """,
-            ("$taskId", taskId),
-            ("$path", run.InstructionVersion.Path),
-            ("$sha", run.InstructionVersion.Sha256),
-            ("$bytes", run.InstructionVersion.ByteLength),
-            ("$startedAt", Time(startedAt)));
+            var runId = ExecuteScalar(transaction,
+                """
+                INSERT INTO agent_run (task_id, instruction_path, instruction_sha256, instruction_bytes, started_at)
+                VALUES ($taskId, $path, $sha, $bytes, $startedAt)
+                RETURNING id;
+                """,
+                ("$taskId", taskId),
+                ("$path", run.InstructionVersion.Path),
+                ("$sha", run.InstructionVersion.Sha256),
+                ("$bytes", run.InstructionVersion.ByteLength),
+                ("$startedAt", Time(startedAt)));
 
-        Execute(transaction,
-            """
-            INSERT INTO tool_grant (run_id, tools, recorded_at)
-            VALUES ($runId, $tools, $recordedAt);
-            """,
-            ("$runId", runId),
-            ("$tools", string.Join('\n', run.ToolGrant.Tools)),
-            ("$recordedAt", Time(run.ToolGrant.RecordedAt)));
+            Execute(transaction,
+                """
+                INSERT INTO tool_grant (run_id, tools, recorded_at)
+                VALUES ($runId, $tools, $recordedAt);
+                """,
+                ("$runId", runId),
+                ("$tools", string.Join('\n', run.ToolGrant.Tools)),
+                ("$recordedAt", Time(run.ToolGrant.RecordedAt)));
 
-        Execute(transaction,
-            """
-            UPDATE task SET state = 'running', started_at = $startedAt WHERE id = $taskId;
-            """,
-            ("$startedAt", Time(startedAt)),
-            ("$taskId", taskId));
+            Execute(transaction,
+                """
+                UPDATE task SET state = 'running', started_at = $startedAt WHERE id = $taskId;
+                """,
+                ("$startedAt", Time(startedAt)),
+                ("$taskId", taskId));
 
-        transaction.Commit();
+            transaction.Commit();
+        }
     }
 
     /// <summary>
     /// Appends one tool call to the run's record, refusals included (FR-011, FR-021). The record
     /// is only ever inserted into: it is append-only during the run and frozen after (FR-023).
     /// </summary>
-    public void AppendToolCall(string taskId, ToolCall call) =>
-        Execute(null,
-            """
-            INSERT INTO tool_call (run_id, seq, tool, target, outcome, detail, at)
-            VALUES ((SELECT id FROM agent_run WHERE task_id = $taskId), $seq, $tool, $target, $outcome, $detail, $at);
-            """,
-            ("$taskId", taskId),
-            ("$seq", call.Seq),
-            ("$tool", call.Tool),
-            ("$target", call.Target),
-            ("$outcome", OutcomeToDb(call.Outcome)),
-            ("$detail", call.Detail),
-            ("$at", Time(call.At)));
+    public void AppendToolCall(string taskId, ToolCall call)
+    {
+        lock (_gate)
+        {
+            Execute(null,
+                """
+                INSERT INTO tool_call (run_id, seq, tool, target, outcome, detail, at)
+                VALUES ((SELECT id FROM agent_run WHERE task_id = $taskId), $seq, $tool, $target, $outcome, $detail, $at);
+                """,
+                ("$taskId", taskId),
+                ("$seq", call.Seq),
+                ("$tool", call.Tool),
+                ("$target", call.Target),
+                ("$outcome", OutcomeToDb(call.Outcome)),
+                ("$detail", call.Detail),
+                ("$at", Time(call.At)));
+        }
+    }
 
     /// <summary>
     /// Closes the run and the task together. A failed run carries a reason and no commit
@@ -160,40 +187,43 @@ public sealed class SqliteStore : IDisposable
         int? durationMs,
         DateTimeOffset endedAt)
     {
-        using var transaction = _connection.BeginTransaction();
+        lock (_gate)
+        {
+            using var transaction = _connection.BeginTransaction();
 
-        Execute(transaction,
-            """
-            UPDATE agent_run
-               SET outcome = $outcome,
-                   failure_reason = $failureReason,
-                   commit_sha = $sha,
-                   commit_parent_sha = $parentSha,
-                   commit_message = $message,
-                   commit_committed_at = $committedAt,
-                   duration_ms = $durationMs
-             WHERE task_id = $taskId;
-            """,
-            ("$outcome", outcome is RunOutcomeKind.Completed ? "completed" : "failed"),
-            ("$failureReason", failureReason),
-            ("$sha", commit?.Sha),
-            ("$parentSha", commit?.ParentSha),
-            ("$message", commit?.Message),
-            ("$committedAt", Time(commit?.CommittedAt)),
-            ("$durationMs", durationMs),
-            ("$taskId", taskId));
+            Execute(transaction,
+                """
+                UPDATE agent_run
+                   SET outcome = $outcome,
+                       failure_reason = $failureReason,
+                       commit_sha = $sha,
+                       commit_parent_sha = $parentSha,
+                       commit_message = $message,
+                       commit_committed_at = $committedAt,
+                       duration_ms = $durationMs
+                 WHERE task_id = $taskId;
+                """,
+                ("$outcome", outcome is RunOutcomeKind.Completed ? "completed" : "failed"),
+                ("$failureReason", failureReason),
+                ("$sha", commit?.Sha),
+                ("$parentSha", commit?.ParentSha),
+                ("$message", commit?.Message),
+                ("$committedAt", Time(commit?.CommittedAt)),
+                ("$durationMs", durationMs),
+                ("$taskId", taskId));
 
-        Execute(transaction,
-            """
-            UPDATE task SET state = $state, ended_at = $endedAt, failure_reason = $failureReason
-             WHERE id = $taskId;
-            """,
-            ("$state", outcome is RunOutcomeKind.Completed ? "completed" : "failed"),
-            ("$endedAt", Time(endedAt)),
-            ("$failureReason", failureReason),
-            ("$taskId", taskId));
+            Execute(transaction,
+                """
+                UPDATE task SET state = $state, ended_at = $endedAt, failure_reason = $failureReason
+                 WHERE id = $taskId;
+                """,
+                ("$state", outcome is RunOutcomeKind.Completed ? "completed" : "failed"),
+                ("$endedAt", Time(endedAt)),
+                ("$failureReason", failureReason),
+                ("$taskId", taskId));
 
-        transaction.Commit();
+            transaction.Commit();
+        }
     }
 
     /// <summary>
@@ -202,27 +232,30 @@ public sealed class SqliteStore : IDisposable
     /// </summary>
     public void FailTask(string taskId, string failureReason, DateTimeOffset endedAt)
     {
-        using var transaction = _connection.BeginTransaction();
+        lock (_gate)
+        {
+            using var transaction = _connection.BeginTransaction();
 
-        Execute(transaction,
-            """
-            UPDATE agent_run
-               SET outcome = 'failed', failure_reason = $failureReason
-             WHERE task_id = $taskId AND outcome IS NULL;
-            """,
-            ("$failureReason", failureReason),
-            ("$taskId", taskId));
+            Execute(transaction,
+                """
+                UPDATE agent_run
+                   SET outcome = 'failed', failure_reason = $failureReason
+                 WHERE task_id = $taskId AND outcome IS NULL;
+                """,
+                ("$failureReason", failureReason),
+                ("$taskId", taskId));
 
-        Execute(transaction,
-            """
-            UPDATE task SET state = 'failed', ended_at = $endedAt, failure_reason = $failureReason
-             WHERE id = $taskId;
-            """,
-            ("$endedAt", Time(endedAt)),
-            ("$failureReason", failureReason),
-            ("$taskId", taskId));
+            Execute(transaction,
+                """
+                UPDATE task SET state = 'failed', ended_at = $endedAt, failure_reason = $failureReason
+                 WHERE id = $taskId;
+                """,
+                ("$endedAt", Time(endedAt)),
+                ("$failureReason", failureReason),
+                ("$taskId", taskId));
 
-        transaction.Commit();
+            transaction.Commit();
+        }
     }
 
     /// <summary>
@@ -231,29 +264,35 @@ public sealed class SqliteStore : IDisposable
     /// </summary>
     public void RecordRevert(string taskId, RevertRecord revert)
     {
-        using var transaction = _connection.BeginTransaction();
+        lock (_gate)
+        {
+            using var transaction = _connection.BeginTransaction();
 
-        Execute(transaction,
-            """
-            INSERT INTO revert_record (task_id, revert_commit_sha, reverted_at)
-            VALUES ($taskId, $sha, $at);
-            """,
-            ("$taskId", taskId),
-            ("$sha", revert.RevertCommitSha),
-            ("$at", Time(revert.RevertedAt)));
+            Execute(transaction,
+                """
+                INSERT INTO revert_record (task_id, revert_commit_sha, reverted_at)
+                VALUES ($taskId, $sha, $at);
+                """,
+                ("$taskId", taskId),
+                ("$sha", revert.RevertCommitSha),
+                ("$at", Time(revert.RevertedAt)));
 
-        Execute(transaction,
-            "UPDATE task SET state = 'reverted' WHERE id = $taskId;",
-            ("$taskId", taskId));
+            Execute(transaction,
+                "UPDATE task SET state = 'reverted' WHERE id = $taskId;",
+                ("$taskId", taskId));
 
-        transaction.Commit();
+            transaction.Commit();
+        }
     }
 
     /// <summary>Reads one task whole, in whatever state it is in (FR-020).</summary>
     public Task? GetTask(string taskId)
     {
-        var tasks = ReadTasks("WHERE t.id = $taskId", [("$taskId", taskId)]);
-        return tasks.Count is 0 ? null : tasks[0];
+        lock (_gate)
+        {
+            var tasks = ReadTasks("WHERE t.id = $taskId", [("$taskId", taskId)]);
+            return tasks.Count is 0 ? null : tasks[0];
+        }
     }
 
     /// <summary>
@@ -262,33 +301,47 @@ public sealed class SqliteStore : IDisposable
     /// </summary>
     public TaskPage ListTasks(int limit, string? cursor)
     {
-        var parameters = new List<(string, object?)>();
-        var where = string.Empty;
-
-        if (cursor is not null)
+        lock (_gate)
         {
-            var (submittedAt, id) = DecodeCursor(cursor);
-            where = "WHERE (t.submitted_at, t.id) < ($cursorAt, $cursorId)";
-            parameters.Add(("$cursorAt", submittedAt));
-            parameters.Add(("$cursorId", id));
-        }
+            var parameters = new List<(string, object?)>();
+            var where = string.Empty;
 
-        // One extra row tells us whether there is a next page without a second query.
-        var rows = ReadTasks(where, parameters, limit + 1);
-        var page = rows.Count > limit ? rows.Take(limit).ToList() : rows;
-        var next = rows.Count > limit ? EncodeCursor(page[^1]) : null;
-        return new TaskPage(page, next);
+            if (cursor is not null)
+            {
+                var (submittedAt, id) = DecodeCursor(cursor);
+                where = "WHERE (t.submitted_at, t.id) < ($cursorAt, $cursorId)";
+                parameters.Add(("$cursorAt", submittedAt));
+                parameters.Add(("$cursorId", id));
+            }
+
+            // One extra row tells us whether there is a next page without a second query.
+            var rows = ReadTasks(where, parameters, limit + 1);
+            var page = rows.Count > limit ? rows.Take(limit).ToList() : rows;
+            var next = rows.Count > limit ? EncodeCursor(page[^1]) : null;
+            return new TaskPage(page, next);
+        }
     }
 
     /// <summary>
     /// Tasks in one state, oldest first — the queue in <c>submittedAt</c> order (FR-019) and the
     /// tasks startup recovery must fail (FR-028).
     /// </summary>
-    public IReadOnlyList<Task> ListTasksInState(TaskState state) =>
-        ReadTasks("WHERE t.state = $state", [("$state", StateToDb(state))], ascending: true);
+    public IReadOnlyList<Task> ListTasksInState(TaskState state)
+    {
+        lock (_gate)
+        {
+            return ReadTasks("WHERE t.state = $state", [("$state", StateToDb(state))], ascending: true);
+        }
+    }
 
     /// <inheritdoc />
-    public void Dispose() => _connection.Dispose();
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _connection.Dispose();
+        }
+    }
 
     private IReadOnlyList<Task> ReadTasks(
         string where,

@@ -16,8 +16,19 @@ namespace Grimoire.Tests.Support;
 /// </remarks>
 public sealed class HubProcess : IDisposable
 {
+    // The suite and the hub come out of the same `dotnet build`, so the hub binary to run is the
+    // one built in this suite's configuration. Without saying so, `dotnet run --no-build` looks
+    // for a Debug build, and a Release-only CI has none: the hub exits 1 before it serves.
+    private const string Configuration =
+#if DEBUG
+        "Debug";
+#else
+        "Release";
+#endif
+
     private readonly Process _process;
     private readonly List<string> _stdout = [];
+    private readonly List<string> _stderr = [];
     private readonly object _lock = new();
 
     private HubProcess(Process process, string baseAddress)
@@ -72,6 +83,8 @@ public sealed class HubProcess : IDisposable
         info.ArgumentList.Add("--project");
         info.ArgumentList.Add(Path.Combine(root, "src", "hub"));
         info.ArgumentList.Add("--no-build");
+        info.ArgumentList.Add("--configuration");
+        info.ArgumentList.Add(Configuration);
 
         info.Environment["ASPNETCORE_URLS"] = $"http://127.0.0.1:{port}";
         info.Environment["GRIMOIRE_WIKI_REPO"] = wiki.Path;
@@ -97,6 +110,16 @@ public sealed class HubProcess : IDisposable
                 lock (hub._lock)
                 {
                     hub._stdout.Add(args.Data);
+                }
+            }
+        };
+        process.ErrorDataReceived += (_, args) =>
+        {
+            if (args.Data is not null)
+            {
+                lock (hub._lock)
+                {
+                    hub._stderr.Add(args.Data);
                 }
             }
         };
@@ -206,9 +229,19 @@ public sealed class HubProcess : IDisposable
         {
             if (_process.HasExited)
             {
+                // Both streams: a hub that fails inside the app logs JSON to stdout, while a
+                // hub that `dotnet run` could not even start explains itself on stderr.
+                string[] stdout, stderr;
+                lock (_lock)
+                {
+                    stdout = [.. _stdout];
+                    stderr = [.. _stderr];
+                }
+
                 throw new InvalidOperationException(
-                    $"The hub exited during startup with code {_process.ExitCode}:{Environment.NewLine}"
-                    + string.Join(Environment.NewLine, Stdout));
+                    $"The hub exited during startup with code {_process.ExitCode}.{Environment.NewLine}"
+                    + $"stdout:{Environment.NewLine}{string.Join(Environment.NewLine, stdout)}{Environment.NewLine}"
+                    + $"stderr:{Environment.NewLine}{string.Join(Environment.NewLine, stderr)}");
             }
 
             try

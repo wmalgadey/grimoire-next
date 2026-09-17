@@ -22,6 +22,7 @@ dotnet build
 npm --prefix src/agentrun ci && npm --prefix src/agentrun run build   # emits dist/main.js
 npm --prefix tests/scripted-model ci && npm --prefix tests/scripted-model run build
 npm --prefix frontend ci && npm --prefix frontend run build           # needs Node 20.19+
+npm --prefix tests/surfaces ci                                         # Playwright for the surfaces suite
 ```
 
 The runner build must be current before any C# suite that drives a run: the hub spawns `src/agentrun/dist/main.js`, not the TypeScript sources. Same for the scripted model — the C# fixtures spawn `tests/scripted-model/dist/server.js`.

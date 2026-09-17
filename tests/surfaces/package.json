@@ -1,0 +1,16 @@
+{
+  "name": "@grimoire/surfaces",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Playwright suites for the operator surfaces (TS-16), against the built frontend served by a real hub. Its own package so @playwright/test resolves from here; run it through frontend/, which builds the app first.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

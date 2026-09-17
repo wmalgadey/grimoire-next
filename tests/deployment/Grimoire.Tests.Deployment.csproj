@@ -4,6 +4,10 @@
     <RootNamespace>Grimoire.Tests.Deployment</RootNamespace>
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>
+    <!-- No tests yet: this suite's first ones arrive with the phase that builds its slice
+         (tasks.md Phases 5 and 6). Until then the platform's "zero tests ran" exit code 8
+         would fail `dotnet test` for the whole solution. Delete this line with the first test. -->
+    <TestingPlatformCommandLineArguments>--ignore-exit-code 8</TestingPlatformCommandLineArguments>
   </PropertyGroup>
 
   <ItemGroup>

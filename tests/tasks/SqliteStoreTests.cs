@@ -233,6 +233,90 @@ public sealed class SqliteStoreTests : IDisposable
         Assert.NotNull(reopened.GetTask("t-durable"));
     }
 
+    [Fact]
+    public async System.Threading.Tasks.Task ServesTheDispatcherAndTheSurfacesFromDifferentThreadsAtOnce()
+    {
+        // In the hub one store instance is shared by the request threads (task list, task view)
+        // and the dispatcher's background thread appending tool calls and ending the run. A
+        // single SQLite connection is not safe for that on its own, so the store serialises its
+        // callers; without that the readers and the writer corrupt each other's statements and
+        // a host shutdown mid-transaction throws from inside the connection's Dispose.
+        using var store = NewStore();
+        var at = new DateTimeOffset(2026, 9, 16, 18, 0, 0, TimeSpan.Zero);
+        store.AddTask(QueuedTask("t-shared", at));
+        store.StartRun("t-shared", NewRun(at), at);
+
+        const int calls = 200;
+        var writer = System.Threading.Tasks.Task.Run(() =>
+        {
+            for (var seq = 1; seq <= calls; seq++)
+            {
+                store.AppendToolCall("t-shared",
+                    new ToolCall(seq, "mcp__wiki__read_page", $"page-{seq}.md", ToolCallOutcome.Ok, null, at));
+            }
+        }, TestContext.Current.CancellationToken);
+        var readers = Enumerable.Range(0, 4).Select(_ => System.Threading.Tasks.Task.Run(() =>
+        {
+            while (!writer.IsCompleted)
+            {
+                Assert.NotNull(store.GetTask("t-shared"));
+                Assert.Single(store.ListTasks(10, null).Tasks);
+                Assert.Single(store.ListTasksInState(TaskState.Running));
+            }
+        }, TestContext.Current.CancellationToken)).ToList();
+
+        await System.Threading.Tasks.Task.WhenAll([writer, .. readers]);
+
+        var read = store.GetTask("t-shared");
+        Assert.NotNull(read?.Run);
+        Assert.Equal(calls, read.Run.ToolCallCount);
+        Assert.Equal(Enumerable.Range(1, calls), read.Run.ToolCalls.Select(c => c.Seq));
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task ClosesOnlyAfterTheWriteInFlightHasFinished()
+    {
+        // Host shutdown disposes the store while the dispatcher may still be settling a run.
+        // The in-flight transaction finishes and is durable; the call after it is refused, not
+        // torn apart.
+        var at = new DateTimeOffset(2026, 9, 16, 19, 0, 0, TimeSpan.Zero);
+        var store = NewStore();
+        for (var i = 0; i < 50; i++)
+        {
+            store.AddTask(QueuedTask($"t-{i}", at.AddSeconds(i)));
+        }
+
+        var failed = 0;
+        Exception? refused = null;
+        var writer = System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                for (var i = 0; i < 50; i++)
+                {
+                    store.FailTask($"t-{i}", "shutting down", at);
+                    Interlocked.Increment(ref failed);
+                }
+            }
+            catch (Exception exception)
+            {
+                refused = exception;
+            }
+        }, TestContext.Current.CancellationToken);
+
+        while (Volatile.Read(ref failed) is 0 && !writer.IsCompleted)
+        {
+            await System.Threading.Tasks.Task.Yield();
+        }
+
+        store.Dispose();
+        await writer;
+
+        Assert.IsNotType<NullReferenceException>(refused);
+        using var reopened = NewStore();
+        Assert.Equal(failed, reopened.ListTasksInState(TaskState.Failed).Count);
+    }
+
     private static AgentRun NewRun(DateTimeOffset at) => new(
         new InstructionVersion("src/instructions/ingest.md", new string('b', 64), 10),
         new ToolGrant(["mcp__wiki__read_page", "mcp__wiki__write_page"], at),
