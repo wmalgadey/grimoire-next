@@ -20,6 +20,8 @@ export interface Wiki {
   readonly path: string;
   head(): string;
   commitCount(): number;
+  /** Commits a page directly, as any later change to the wiki would (FR-027). */
+  commit(page: string, content: string, message: string): string;
   dispose(): void;
 }
 
@@ -50,6 +52,13 @@ function createWiki(seed: Record<string, string> = { "index.md": "# Index\n" }):
     path,
     head: () => git("rev-parse", "HEAD").trim(),
     commitCount: () => Number(git("rev-list", "--count", "HEAD").trim()),
+    commit: (page, content, message) => {
+      mkdirSync(dirname(join(path, page)), { recursive: true });
+      writeFileSync(join(path, page), content);
+      git("add", "-A");
+      git("commit", "-m", message);
+      return git("rev-parse", "HEAD").trim();
+    },
     dispose: () => rmSync(path, { recursive: true, force: true }),
   };
 }

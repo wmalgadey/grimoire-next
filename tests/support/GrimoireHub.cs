@@ -99,6 +99,13 @@ public sealed class GrimoireHub : IDisposable
         return task.GetProperty("id").GetString()!;
     }
 
+    /// <summary>
+    /// Reverts a task, returning the response whatever it is — the refusals are as much the
+    /// subject as the success (FR-026).
+    /// </summary>
+    public async Task<HttpResponseMessage> Revert(string taskId, CancellationToken cancellationToken) =>
+        await Client.PostAsync($"/api/tasks/{taskId}/revert", content: null, cancellationToken);
+
     /// <summary>Opens a task in whatever state it is in (FR-020).</summary>
     public async Task<JsonElement> GetTask(string taskId, CancellationToken cancellationToken) =>
         await Client.GetFromJsonAsync<JsonElement>($"/api/tasks/{taskId}", cancellationToken);

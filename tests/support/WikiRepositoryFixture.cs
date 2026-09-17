@@ -38,6 +38,30 @@ public sealed class WikiRepositoryFixture : IDisposable
     public int CommitCount() =>
         int.Parse(Git("rev-list", "--count", "HEAD").Trim(), System.Globalization.CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// Every commit in history, newest first. "The run's own commit is still there" is the
+    /// difference between restoring forward and rewriting history (FR-025).
+    /// </summary>
+    public IReadOnlyList<string> CommitShas() =>
+        [.. Git("rev-list", "HEAD").Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => line.Trim())];
+
+    /// <summary>
+    /// Commits whatever the working tree holds, as any later change to the wiki would — the thing
+    /// that supersedes an earlier ingest (FR-027).
+    /// </summary>
+    public string Commit(string message)
+    {
+        Git("add", "-A");
+        Git("commit", "-m", message);
+        return Head();
+    }
+
+    /// <summary>
+    /// Whether the working tree matches the tip. Residue left behind by one operation is committed
+    /// by the next run, which is how "exactly one commit per run" quietly stops being true.
+    /// </summary>
+    public bool IsClean() => Git("status", "--porcelain").Trim().Length is 0;
+
     /// <summary>Writes a page directly, for seeding and for planting content a run will read.</summary>
     public void Write(string relativePath, string content)
     {
