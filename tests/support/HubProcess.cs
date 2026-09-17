@@ -154,6 +154,58 @@ public sealed class HubProcess : IDisposable
         return hub.Stdout;
     }
 
+    /// <summary>Submits pasted text and returns the created task's identifier.</summary>
+    public async Task<string> SubmitText(string value, CancellationToken cancellationToken)
+    {
+        var response = await Client.PostAsJsonAsync(
+            "/api/tasks", new { kind = "text", value }, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var created = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
+        return created.GetProperty("id").GetString()!;
+    }
+
+    /// <summary>Opens a task in whatever state it is in (FR-020).</summary>
+    public async Task<JsonElement> GetTask(string taskId, CancellationToken cancellationToken) =>
+        await Client.GetFromJsonAsync<JsonElement>($"/api/tasks/{taskId}", cancellationToken);
+
+    /// <summary>
+    /// Waits until a task reaches one particular state. Recovery and shutdown are about what
+    /// happens to a run <i>in flight</i>, so a suite has to be able to catch one there.
+    /// </summary>
+    public async Task<JsonElement> WaitForState(
+        string taskId, string state, CancellationToken cancellationToken, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(90));
+        JsonElement task = default;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            task = await GetTask(taskId, cancellationToken);
+            if (task.GetProperty("state").GetString() == state)
+            {
+                return task;
+            }
+
+            await Task.Delay(100, cancellationToken);
+        }
+
+        throw new TimeoutException(
+            $"Task {taskId} was '{task.GetProperty("state").GetString()}', never '{state}'.");
+    }
+
+    /// <summary>
+    /// Kills the hub without a signal it can handle — an OOM kill, a node going away. The
+    /// ungraceful path startup recovery is the backstop for (contracts/deployment.md Lifecycle).
+    /// </summary>
+    public void KillUngracefully()
+    {
+        if (!_process.HasExited)
+        {
+            _process.Kill(entireProcessTree: true);
+            _process.WaitForExit(10_000);
+        }
+    }
+
     /// <summary>Waits until a task reaches a terminal state.</summary>
     public async Task<JsonElement> WaitForEnd(string taskId, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {

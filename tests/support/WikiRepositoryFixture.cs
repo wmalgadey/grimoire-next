@@ -57,6 +57,17 @@ public sealed class WikiRepositoryFixture : IDisposable
     }
 
     /// <summary>
+    /// Commits whatever the working tree already holds, without writing anything first — for
+    /// content a test placed by other means, such as a symlink.
+    /// </summary>
+    public string CommitTracked(string message)
+    {
+        Git("add", "-A");
+        Git("commit", "-m", message);
+        return Head();
+    }
+
+    /// <summary>
     /// Whether the working tree matches the tip. Residue left behind by one operation is committed
     /// by the next run, which is how "exactly one commit per run" quietly stops being true.
     /// </summary>
