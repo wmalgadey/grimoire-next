@@ -54,57 +54,93 @@ public static class DestinationPolicy
             }
         }
 
-        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-        try
+        // Every checked address in turn, not just the first: a dual-stack host whose first answer
+        // is unreachable from here still has a usable one behind it.
+        var failures = new List<Exception>();
+        foreach (var address in addresses)
         {
-            await socket.ConnectAsync(addresses[0], context.DnsEndPoint.Port, cancellationToken);
-            return new NetworkStream(socket, ownsSocket: true);
+            var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            try
+            {
+                await socket.ConnectAsync(address, context.DnsEndPoint.Port, cancellationToken);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch (SocketException exception)
+            {
+                socket.Dispose();
+                failures.Add(exception);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
         }
-        catch
-        {
-            socket.Dispose();
-            throw;
-        }
+
+        throw new HttpRequestException($"{host} could not be connected to.", new AggregateException(failures));
     }
 
-    /// <summary>Loopback, link-local, private, and reserved: everything that is not the internet.</summary>
+    /// <summary>
+    /// Everything that is not the public internet: loopback, link-local, private, shared, reserved,
+    /// documentation and benchmarking ranges, and IPv6 outside global unicast — including the forms
+    /// that carry an IPv4 address inside them (NAT64, 6to4, Teredo), which could carry a private one.
+    /// </summary>
     public static bool IsInward(IPAddress address)
     {
-        if (IPAddress.IsLoopback(address))
+        if (address.IsIPv4MappedToIPv6)
         {
-            return true;
+            return IsInward(address.MapToIPv4());
         }
 
-        if (address.AddressFamily is AddressFamily.InterNetworkV6)
+        var bytes = address.GetAddressBytes();
+        return address.AddressFamily is AddressFamily.InterNetworkV6
+            // Only global unicast is the internet — which also rules out loopback, unspecified,
+            // link-local, unique local, multicast and NAT64 — less the special-use blocks inside it.
+            ? !Within(bytes, GlobalUnicast) || InwardV6.Any(block => Within(bytes, block))
+            : InwardV4.Any(block => Within(bytes, block));
+    }
+
+    private static readonly (byte[] Network, int PrefixLength) GlobalUnicast = Block("2000::", 3);
+
+    private static readonly (byte[] Network, int PrefixLength)[] InwardV6 =
+    [
+        Block("2001::", 23),       // IETF protocol assignments, incl. Teredo
+        Block("2001:db8::", 32),   // documentation
+        Block("2002::", 16),       // 6to4, which carries an IPv4 address inside it
+    ];
+
+    private static readonly (byte[] Network, int PrefixLength)[] InwardV4 =
+    [
+        Block("0.0.0.0", 8),        // "this network"
+        Block("10.0.0.0", 8),       // private
+        Block("100.64.0.0", 10),    // carrier-grade NAT
+        Block("127.0.0.0", 8),      // loopback
+        Block("169.254.0.0", 16),   // link-local, incl. cloud metadata
+        Block("172.16.0.0", 12),    // private
+        Block("192.0.0.0", 24),     // IETF protocol assignments
+        Block("192.0.2.0", 24),     // TEST-NET-1
+        Block("192.88.99.0", 24),   // 6to4 relay anycast
+        Block("192.168.0.0", 16),   // private
+        Block("198.18.0.0", 15),    // benchmarking
+        Block("198.51.100.0", 24),  // TEST-NET-2
+        Block("203.0.113.0", 24),   // TEST-NET-3
+        Block("224.0.0.0", 3),      // multicast, reserved, broadcast
+    ];
+
+    private static (byte[] Network, int PrefixLength) Block(string network, int prefixLength) =>
+        (IPAddress.Parse(network).GetAddressBytes(), prefixLength);
+
+    private static bool Within(byte[] address, (byte[] Network, int PrefixLength) block)
+    {
+        if (address.Length != block.Network.Length)
         {
-            if (address.IsIPv4MappedToIPv6)
-            {
-                return IsInward(address.MapToIPv4());
-            }
-
-            if (address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Multicast
-                || address.Equals(IPAddress.IPv6None))
-            {
-                return true;
-            }
-
-            // Unique local addresses, fc00::/7.
-            return (address.GetAddressBytes()[0] & 0xFE) == 0xFC;
+            return false;
         }
 
-        var octets = address.GetAddressBytes();
-        return octets[0] switch
-        {
-            0 => true,                                        // "this network"
-            10 => true,                                       // 10.0.0.0/8
-            127 => true,                                      // loopback
-            169 when octets[1] is 254 => true,                // link-local, incl. cloud metadata
-            172 when octets[1] is >= 16 and <= 31 => true,     // 172.16.0.0/12
-            192 when octets[1] is 168 => true,                // 192.168.0.0/16
-            192 when octets[1] is 0 && octets[2] is 0 => true, // IETF protocol assignments
-            100 when octets[1] is >= 64 and <= 127 => true,    // carrier-grade NAT
-            >= 224 => true,                                   // multicast and reserved
-            _ => false,
-        };
+        var whole = block.PrefixLength / 8;
+        var rest = block.PrefixLength % 8;
+        var mask = (byte)(0xFF << (8 - rest));
+        return address.AsSpan(0, whole).SequenceEqual(block.Network.AsSpan(0, whole))
+            && (rest is 0 || (address[whole] & mask) == (block.Network[whole] & mask));
     }
 }

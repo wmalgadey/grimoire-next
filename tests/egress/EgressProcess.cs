@@ -88,8 +88,17 @@ public sealed class EgressProcess : IDisposable
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        await egress.WaitUntilListening(port, cancellationToken);
-        return egress;
+        try
+        {
+            await egress.WaitUntilListening(port, cancellationToken);
+            return egress;
+        }
+        catch
+        {
+            // Nobody owns a proxy that never became a fixture; left running it would outlive the suite.
+            egress.Dispose();
+            throw;
+        }
     }
 
     /// <summary>A client whose requests go to the proxy, with no redirects followed.</summary>

@@ -31,6 +31,7 @@ public sealed class ModelRouteTests
         Assert.Equal("/v1/messages?beta=true", received.PathAndQuery);
         Assert.Equal(EgressProcess.UpstreamCredential, received.Headers["x-api-key"]);
         Assert.Null(received.Headers["Authorization"]);
+        Assert.Null(received.Headers["X-Grimoire-Run"]);
 
         // Not under any header name: the internal token is meaningless outside the deployment and
         // has no business reaching the upstream at all.

@@ -123,5 +123,18 @@ public static class FetchRoute
             proxyRequest.Headers.Host = null;
             return ValueTask.CompletedTask;
         }
+
+        // The origin is user-chosen. The reason header is the proxy's to set, and one an origin
+        // sent would reach the task as if the proxy had refused — attacker-controlled text on an
+        // operator's surface.
+        public override async ValueTask<bool> TransformResponseAsync(
+            HttpContext httpContext,
+            HttpResponseMessage? proxyResponse,
+            CancellationToken cancellationToken)
+        {
+            var proceed = await base.TransformResponseAsync(httpContext, proxyResponse, cancellationToken);
+            httpContext.Response.Headers.Remove(ReasonHeader);
+            return proceed;
+        }
     }
 }

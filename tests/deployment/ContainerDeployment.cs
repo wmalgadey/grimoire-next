@@ -118,6 +118,7 @@ public sealed class ContainerDeployment : IAsyncDisposable
         ]);
         var published = (await Must(["port", model, "8787/tcp"])).Split('\n')[0].Trim();
         ModelControlUrl = $"http://127.0.0.1:{published[(published.LastIndexOf(':') + 1)..]}";
+        await WaitForTheModel(cancellationToken);
 
         // The egress proxy: the only thing on both networks that forwards outward.
         Track(_containers, EgressContainer);
@@ -166,6 +167,33 @@ public sealed class ContainerDeployment : IAsyncDisposable
 
         throw new TimeoutException("The hub container did not serve /healthz within two minutes:\n"
             + (await Run(["logs", HubContainer])).Stdout);
+    }
+
+    // A started container is not a listening server: an ingest submitted before the model binds
+    // would fail on a race rather than on anything under test.
+    private async Task WaitForTheModel(CancellationToken cancellationToken)
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var response = await client.GetAsync($"{ModelControlUrl}/__requests", cancellationToken);
+                if (response.IsSuccessStatusCode)
+                {
+                    return;
+                }
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+            {
+                // Not listening yet.
+            }
+
+            await Task.Delay(250, cancellationToken);
+        }
+
+        throw new TimeoutException("The scripted model container did not answer within 60 seconds.");
     }
 
     /// <summary>An HTTP request to the hub, made from inside its container with its own Node.</summary>

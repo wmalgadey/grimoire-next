@@ -43,6 +43,15 @@ public sealed class UrlFetchPolicyTests
     [InlineData("http://192.168.1.1/secret")]
     [InlineData("http://172.16.0.1/secret")]
     [InlineData("http://169.254.169.254/latest/meta-data/")]
+    // Special-use ranges that are not the internet either: benchmarking, documentation, and IPv6
+    // forms that carry an IPv4 address (NAT64, 6to4) — a private one here.
+    [InlineData("http://198.18.0.1/secret")]
+    [InlineData("http://192.0.2.1/secret")]
+    [InlineData("http://198.51.100.7/secret")]
+    [InlineData("http://203.0.113.5/secret")]
+    [InlineData("http://[2001:db8::1]/secret")]
+    [InlineData("http://[64:ff9b::a00:1]/secret")]
+    [InlineData("http://[2002:a00:1::1]/secret")]
     public async Task RefusesADestinationResolvingToLoopbackLinkLocalOrAPrivateRange(string url)
     {
         using var wiki = new WikiRepositoryFixture();

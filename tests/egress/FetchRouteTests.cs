@@ -47,6 +47,15 @@ public sealed class FetchRouteTests
     [InlineData("http://192.168.1.1/")]
     [InlineData("http://[::1]/")]
     [InlineData("http://[fd00::1]/")]
+    // Special-use ranges that are not the internet either: benchmarking, documentation, and IPv6
+    // forms that carry an IPv4 address (NAT64, 6to4) — a private one here.
+    [InlineData("http://198.18.0.1/")]
+    [InlineData("http://192.0.2.1/")]
+    [InlineData("http://198.51.100.7/")]
+    [InlineData("http://203.0.113.5/")]
+    [InlineData("http://[2001:db8::1]/")]
+    [InlineData("http://[64:ff9b::a00:1]/")]
+    [InlineData("http://[2002:a00:1::1]/")]
     public async Task RefusesLinkLocalAndPrivateDestinations(string url)
     {
         using var model = new UpstreamListener();
@@ -142,6 +151,20 @@ public sealed class FetchRouteTests
             task.GetProperty("failureReason").GetString(),
             StringComparison.Ordinal);
         Assert.Empty(origin.Received);
+    }
+
+    [Fact]
+    public async Task DropsAReasonHeaderAnOriginSendsSoOnlyTheProxyCanGiveOne()
+    {
+        // The origin is user-chosen. A reason it sent would be recorded on the task as if the
+        // proxy had refused — attacker-controlled text in an operator's surface.
+        var incoming = new DefaultHttpContext();
+        using var origin = new HttpResponseMessage(HttpStatusCode.Forbidden);
+        origin.Headers.TryAddWithoutValidation(FetchRoute.ReasonHeader, "spoofed by the origin");
+
+        await FetchRoute.Transformer(new Uri("https://example.com/")).TransformResponseAsync(incoming, origin, Cancel);
+
+        Assert.False(incoming.Response.Headers.ContainsKey(FetchRoute.ReasonHeader));
     }
 
     private static string Fetch(string url) => $"/fetch?url={Uri.EscapeDataString(url)}";
