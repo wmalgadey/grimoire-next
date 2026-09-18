@@ -54,6 +54,7 @@ export const DISALLOWED_BUILT_INS = [
   "SlashCommand",
   "Task",
   "TodoWrite",
+  "ToolSearch",
   "WebFetch",
   "WebSearch",
   "Workflow",
@@ -103,6 +104,10 @@ export async function runModel(request: ModelRunRequest): Promise<ModelRunResult
         // No settings file, no project configuration, no user configuration: the run's
         // instruction is the instruction file and nothing else (constitution I.2).
         settingSources: [],
+        // The runner's environment is the one the hub composed; tool search is switched off on top
+        // of it. It is on by default against the real API, where it defers the granted tools
+        // behind a search tool outside the grant, so the agent could call neither (FR-010).
+        env: { ...process.env, ENABLE_TOOL_SEARCH: "false" },
         mcpServers: { wiki: wikiTools },
         allowedTools: [...GRANTED_TOOLS],
         disallowedTools: [...DISALLOWED_BUILT_INS],

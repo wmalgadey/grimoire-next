@@ -87,6 +87,11 @@ export interface RunResult {
    * so a built-in the SDK grows later cannot widen the agent's reach unnoticed (FR-010).
    */
   readonly toolNamesOffered: readonly (readonly string[])[];
+  /**
+   * The tool names each request marked `defer_loading` — offered by name only, with no schema the
+   * model can call until it loads one through a tool search the grant does not include.
+   */
+  readonly toolNamesDeferred: readonly (readonly string[])[];
 }
 
 /** Options for driving one run. */
@@ -105,6 +110,12 @@ export interface RunOptions {
    * orphaned runner sees when the hub supervising it dies.
    */
   readonly closeStdinAfterFirstToolCallMs?: number;
+  /**
+   * Runs with the SDK's tool search asked for, as it is by default against the real API. The
+   * default environment disables experimental betas for the scripted model, which also hides tool
+   * search — so without this, no test would see the request production sends.
+   */
+  readonly toolSearch?: boolean;
 }
 
 /**
@@ -132,7 +143,9 @@ export async function runAgent(options: RunOptions): Promise<RunResult> {
         ANTHROPIC_AUTH_TOKEN: "an-opaque-internal-token",
         ANTHROPIC_CUSTOM_HEADERS: "X-Grimoire-Run: test-run",
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1",
+        ...(options.toolSearch
+          ? { ENABLE_TOOL_SEARCH: "true" }
+          : { CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1" }),
         GRIMOIRE_INSTRUCTION:
           options.instructionPath ?? join(repositoryRoot, "src", "instructions", "ingest.md"),
       },
@@ -209,12 +222,15 @@ export async function runAgent(options: RunOptions): Promise<RunResult> {
     clearTimeout(killTimer);
   }
 
-  const toolNamesOffered = model.requests
+  const offeredTools = model.requests
     .filter((request) => request.url.includes("/messages"))
     .map((request) => {
-      const body = request.body as { tools?: { name?: string }[] } | null;
-      return (body?.tools ?? []).map((tool) => tool.name ?? "").filter((name) => name.length > 0);
+      const body = request.body as { tools?: { name?: string; defer_loading?: boolean }[] } | null;
+      return (body?.tools ?? []).filter((tool) => (tool.name ?? "").length > 0);
     });
+  const toolNamesOffered = offeredTools.map((tools) => tools.map((tool) => tool.name ?? ""));
+  const toolNamesDeferred = offeredTools.map((tools) =>
+    tools.filter((tool) => tool.defer_loading === true).map((tool) => tool.name ?? ""));
 
   await model.close();
   rmSync(home, { recursive: true, force: true });
@@ -225,6 +241,7 @@ export async function runAgent(options: RunOptions): Promise<RunResult> {
     exitCode,
     stderr,
     toolNamesOffered,
+    toolNamesDeferred,
   };
 }
 

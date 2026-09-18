@@ -64,5 +64,8 @@ export function createWikiToolServer(repositoryRoot: string, guard: ToolGuard) {
     },
   );
 
-  return createSdkMcpServer({ name: "wiki", version: "1.0.0", tools: [read, write] });
+  // Always loaded: against the real API the SDK otherwise defers MCP tools behind its own tool
+  // search, which is outside the grant — the model would see neither tool's schema and every call
+  // it made would be a refused search.
+  return createSdkMcpServer({ name: "wiki", version: "1.0.0", tools: [read, write], alwaysLoad: true });
 }

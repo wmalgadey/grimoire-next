@@ -114,4 +114,24 @@ describe("what the model is offered", () => {
       expect([...offered].sort()).toEqual(["mcp__wiki__read_page", "mcp__wiki__write_page"]);
     }
   });
+
+  // Against the real API the SDK turns tool search on, defers every MCP tool behind it, and offers
+  // its own ToolSearch to load them. ToolSearch is outside the grant, so the agent could reach
+  // neither granted tool and every call it made was a refused search. The scripted model hides
+  // tool search unless it is switched on, which is why this case has to ask for it.
+  it("offers the two granted tools callable, not deferred, when tool search is on", async () => {
+    const result = await runAgent({ wiki, script: "read-then-write", toolSearch: true });
+
+    expect(result.toolNamesOffered.length).toBeGreaterThan(0);
+    for (const offered of result.toolNamesOffered) {
+      expect([...offered].sort()).toEqual(["mcp__wiki__read_page", "mcp__wiki__write_page"]);
+    }
+    for (const deferred of result.toolNamesDeferred) {
+      expect(deferred).toEqual([]);
+    }
+    expect(result.toolCalls.map((call) => [call.tool, call.outcome])).toEqual([
+      ["mcp__wiki__read_page", "ok"],
+      ["mcp__wiki__write_page", "ok"],
+    ]);
+  });
 });
