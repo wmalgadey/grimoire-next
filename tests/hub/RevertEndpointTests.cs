@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Runtime.Versioning;
 using System.Text.Json;
 using Grimoire.Tests.Support;
 
@@ -40,6 +41,50 @@ public sealed class RevertEndpointTests
         // answer without a second request.
         Assert.False(body.GetProperty("revertEligibility").GetProperty("eligible").GetBoolean());
         Assert.Equal("already-reverted", body.GetProperty("revertEligibility").GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    [UnsupportedOSPlatform("windows")] // file modes are how the ref is made unwritable
+    public async Task ResetsTheWikiAndAnswersWithAProblemWhenGitCannotCompleteTheRevert()
+    {
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("read-then-write");
+        using var hub = GrimoireHub.Start(wiki, model);
+
+        var id = await hub.SubmitText("notes worth keeping", TestContext.Current.CancellationToken);
+        await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+        var tip = wiki.Head();
+        var content = wiki.Snapshot();
+
+        // `revert --no-commit` rewrites the tree and index; the restoring commit then cannot move
+        // the branch, because its ref cannot be locked. The revert fails half-way through.
+        var heads = Path.Combine(wiki.Path, ".git", "refs", "heads");
+        File.SetUnixFileMode(heads, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        HttpResponseMessage response;
+        try
+        {
+            response = await hub.Revert(id, TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            File.SetUnixFileMode(heads, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        using (response)
+        {
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        }
+
+        // Nothing the half-done revert began is left for the next run to find.
+        Assert.Equal(tip, wiki.Head());
+        Assert.True(wiki.IsClean(), "The half-done revert was left in the working tree.");
+        Assert.Equal(content, wiki.Snapshot());
+
+        // And the task is exactly as it was: still completed, still eligible.
+        var task = await hub.GetTask(id, TestContext.Current.CancellationToken);
+        Assert.Equal("completed", task.GetProperty("state").GetString());
+        Assert.True(task.GetProperty("revertEligibility").GetProperty("eligible").GetBoolean());
     }
 
     [Fact]

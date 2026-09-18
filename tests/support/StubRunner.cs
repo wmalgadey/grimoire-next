@@ -87,6 +87,21 @@ public sealed class StubRunner : IDisposable
         })();
         """);
 
+    /// <summary>
+    /// Writes into the wiki, sends a line that is not a protocol event, and carries on writing —
+    /// a runner the hub has stopped listening to but that has not stopped.
+    /// </summary>
+    public static StubRunner EmitsAMalformedLineThenKeepsWriting() => Create("""
+        (async () => {
+          announce();
+          await next("proceed");
+          fs.writeFileSync("before-the-bad-line.md", "# Written before the bad line\n");
+          process.stdout.write("this is not a protocol event\n");
+          setTimeout(() => fs.writeFileSync("after-the-bad-line.md", "# Written after\n"), 4000);
+          setTimeout(() => process.exit(0), 30000);
+        })();
+        """);
+
     /// <inheritdoc />
     public void Dispose()
     {

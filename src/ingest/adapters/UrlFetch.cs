@@ -32,8 +32,11 @@ public sealed record RetrievalResult(string? Text, string? Failure)
 /// forward proxy: an https destination through a forward proxy is a <c>CONNECT</c> tunnel, which
 /// the proxy could neither inspect nor serve.
 /// </remarks>
-public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute)
+public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute, TimeSpan deadline)
 {
+    /// <summary>How long a retrieval may take in all when the caller names no deadline.</summary>
+    public static readonly TimeSpan DefaultDeadline = TimeSpan.FromMinutes(2);
+
     /// <summary>
     /// The response header in which the fetch route says why it refused or could not retrieve a
     /// destination. Its text becomes the task's failure reason.
@@ -55,8 +58,12 @@ public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute)
     /// Builds a client that goes through the egress proxy's fetch route when there is one, with
     /// redirects capped and each hop re-checked rather than trusted.
     /// </summary>
+    /// <param name="fetchRoute">The egress proxy's fetch route, or <c>null</c> to connect directly.</param>
+    /// <param name="deadline">
+    /// How long one retrieval may take in all — every redirect hop and the body read included.
+    /// </param>
     /// <exception cref="ArgumentException"><paramref name="fetchRoute"/> is not an absolute http(s) URL.</exception>
-    public static UrlFetch Create(string? fetchRoute)
+    public static UrlFetch Create(string? fetchRoute, TimeSpan? deadline = null)
     {
         Uri? route = null;
         if (!string.IsNullOrWhiteSpace(fetchRoute)
@@ -83,7 +90,11 @@ public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute)
             ConnectCallback = route is null ? ConnectToACheckedAddress : null,
         };
 
-        return new UrlFetch(new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) }, route);
+        // No per-request timeout: HttpClient.Timeout stops covering a response once its headers are
+        // in (ResponseHeadersRead), so it would leave the body read unbounded. The deadline in
+        // Retrieve covers the whole retrieval instead, as one clock.
+        return new UrlFetch(
+            new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan }, route, deadline ?? DefaultDeadline);
     }
 
     /// <summary>
@@ -160,6 +171,28 @@ public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute)
     /// </summary>
     public async Task<RetrievalResult> Retrieve(string submittedUrl, CancellationToken cancellationToken)
     {
+        // One clock over the whole retrieval: headers, every redirect hop, and the body. An origin
+        // that answers at once and then trickles its body would otherwise hold the run queue for as
+        // long as it liked (FR-003, FR-019).
+        using var clock = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        clock.CancelAfter(deadline);
+
+        try
+        {
+            return await RetrieveWithin(submittedUrl, clock.Token);
+        }
+        // The deadline, not the caller: a cancellation the caller asked for — the hub shutting
+        // down — still propagates, and the still-queued task is retrieved on the next start.
+        catch (Exception) when (clock.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            return Failed(
+                $"{submittedUrl} was not retrieved within {deadline.TotalSeconds:0.###} seconds. "
+                + "The origin was too slow to answer in full; nothing was handed to a run.");
+        }
+    }
+
+    private async Task<RetrievalResult> RetrieveWithin(string submittedUrl, CancellationToken cancellationToken)
+    {
         var current = submittedUrl;
 
         for (var hop = 0; hop <= MaxRedirects; hop++)
@@ -213,30 +246,7 @@ public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute)
                     return Failed(Unsuccessful(uri, response));
                 }
 
-                var mediaType = response.Content.Headers.ContentType?.MediaType;
-                if (!IsText(mediaType))
-                {
-                    return Failed(
-                        $"{uri} answered with content type '{mediaType ?? "unknown"}'. Only text can be ingested.");
-                }
-
-                // No size limit and no truncation (FR-029): the source is handed to the run
-                // whole. A hard cap here would not even buy memory safety — the body is already
-                // fully read by the time any cap could be checked — so it would only be a reason
-                // to refuse a source the spec says must be accepted.
-                byte[] bytes;
-                try
-                {
-                    bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-                }
-                catch (Exception exception) when (
-                    exception is HttpRequestException or IOException or TaskCanceledException
-                    && !cancellationToken.IsCancellationRequested)
-                {
-                    return Failed($"{uri} stopped answering part-way through: {exception.Message}");
-                }
-
-                return new RetrievalResult(Encoding.UTF8.GetString(bytes), null);
+                return await ReadText(uri, response, cancellationToken);
             }
         }
 
@@ -383,6 +393,63 @@ public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute)
             || mediaType.Equals("application/xhtml+xml", StringComparison.OrdinalIgnoreCase)
             || mediaType.EndsWith("+json", StringComparison.OrdinalIgnoreCase)
             || mediaType.EndsWith("+xml", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The body of a successful answer as text, or why it cannot be ingested.</summary>
+    private static async Task<RetrievalResult> ReadText(
+        Uri uri, HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        if (!IsText(mediaType))
+        {
+            return Failed(
+                $"{uri} answered with content type '{mediaType ?? "unknown"}'. Only text can be ingested.");
+        }
+
+        // No size limit and no truncation (FR-029): the source is handed to the run
+        // whole. A hard cap here would not even buy memory safety — the body is already
+        // fully read by the time any cap could be checked — so it would only be a reason
+        // to refuse a source the spec says must be accepted.
+        byte[] bytes;
+        try
+        {
+            bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException or IOException or TaskCanceledException
+            && !cancellationToken.IsCancellationRequested)
+        {
+            return Failed($"{uri} stopped answering part-way through: {exception.Message}");
+        }
+
+        return Decode(uri, bytes, response.Content.Headers.ContentType?.CharSet);
+    }
+
+    /// <summary>
+    /// The body as text, in the charset the origin declared — UTF-8 when it declared none. Decoded
+    /// otherwise, a Latin-1 page would reach the run as replacement characters rather than the
+    /// source (FR-029).
+    /// </summary>
+    private static RetrievalResult Decode(Uri uri, byte[] bytes, string? charset)
+    {
+        var name = charset?.Trim().Trim('"');
+        if (string.IsNullOrEmpty(name))
+        {
+            return new RetrievalResult(Encoding.UTF8.GetString(bytes), null);
+        }
+
+        try
+        {
+            return new RetrievalResult(Encoding.GetEncoding(name).GetString(bytes), null);
+        }
+        catch (ArgumentException)
+        {
+            return Failed($"{uri} declared the charset '{name}', which this system cannot decode.");
+        }
+    }
+
+    // The web's legacy charsets — windows-1252 above all — are not in .NET's built-in set, and a
+    // page declaring one is ordinary rather than exotic. Registered once, before any decode.
+    static UrlFetch() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
     private static RetrievalResult Failed(string reason) => new(null, reason);
 }

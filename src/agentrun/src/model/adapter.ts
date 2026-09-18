@@ -7,7 +7,12 @@
  * makes TS-06's "N tool calls across N iterations of one run" an assertion about the real loop.
  */
 
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type SDKAssistantMessage,
+  type SDKMessage,
+  type SDKResultMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { SystemPrompt } from "../instruction/systemPrompt.js";
 import { GRANTED_TOOLS, ToolGuard } from "../wiki-tools/guard.js";
 import { createWikiToolServer } from "../wiki-tools/server.js";
@@ -99,11 +104,7 @@ export interface ModelRunRequest {
  */
 export async function runModel(request: ModelRunRequest): Promise<ModelRunResult> {
   const wikiTools = createWikiToolServer(request.repositoryRoot, request.guard);
-  let finalMessage = "";
-  let failureReason: string | null = null;
-  let apiError: { status: string; detail: string } | null = null;
-  let lastRetryStatus: string | null = null;
-  let promptTooLong = false;
+  const run = new RunObservation(request.guard);
 
   // The guard refuses every call past the ceiling; stopping the conversation there is what keeps
   // the model from being asked for another turn the run is not allowed to act on (FR-009).
@@ -163,69 +164,115 @@ export async function runModel(request: ModelRunRequest): Promise<ModelRunResult
     });
 
     for await (const message of conversation) {
-      if (message.type === "system" && message.subtype === "api_retry") {
-        lastRetryStatus = message.error_status === null ? "no-response" : String(message.error_status);
-      }
-
-      // An API error arrives as a synthetic assistant message carrying the error's text. That text
-      // is the SDK's, not the agent's, so it is never the run's final message.
-      if (message.type === "assistant" && message.error !== undefined) {
-        continue;
-      }
-
-      if (message.type === "assistant") {
-        const text = message.message.content
-          .map((block) => (block.type === "text" ? block.text : ""))
-          .join("");
-
-        // Verbatim: the message reaches the hub exactly as the model wrote it (contracts/
-        // runner-protocol.md). Only the emptiness test trims — leading/trailing whitespace in an
-        // otherwise-real message is not this adapter's call to remove.
-        if (text.trim().length > 0) {
-          finalMessage = text;
-        }
-
-        // Every tool_use block is an attempt, whether or not the SDK will dispatch it. A tool
-        // whose definition was removed from the request is rejected as unknown before any
-        // permission step, so this is the only place such an attempt can be seen — and an
-        // operator needs to see what the agent reached for (FR-011, FR-021).
-        for (const block of message.message.content) {
-          if (block.type === "tool_use" && !ToolGuard.isGranted(block.name)) {
-            request.guard.recordRefusedAttempt(block.name, block.input, block.id);
-          }
-        }
-      }
-
-      if (message.type === "result") {
-        if (message.terminal_reason === "prompt_too_long") {
-          promptTooLong = true;
-        }
-
-        if (message.subtype !== "success") {
-          failureReason = `The run ended without completing: ${message.subtype}.`;
-        } else if (message.is_error) {
-          // A turn that ended on an API error reports `success` with `is_error` set; left there,
-          // it would read as an agent that judged nothing needed changing.
-          promptTooLong ||= /prompt is too long/i.test(message.result);
-          const status =
-            message.api_error_status === null || message.api_error_status === undefined
-              ? lastRetryStatus ?? "no-response"
-              : String(message.api_error_status);
-          apiError = { status, detail: message.result };
-          failureReason = message.result;
-        }
-      }
+      run.observe(message);
     }
   } catch (cause) {
-    failureReason = (cause as Error).message;
+    run.failWith((cause as Error).message);
   }
 
-  const modelEndpointStatus = apiError !== null && !promptTooLong ? apiError.status : null;
-  if (modelEndpointStatus !== null) {
-    failureReason =
-      `The model endpoint answered ${modelEndpointStatus === "no-response" ? "with no response" : `HTTP ${modelEndpointStatus}`}`
-      + ` (${apiError!.detail}). This is the egress path or the upstream behind it, not the agent.`;
+  return run.result();
+}
+
+/**
+ * What the conversation has said about the run so far, one message at a time. Each kind of message
+ * the run's outcome depends on has its own method, so no one of them has to know about the others.
+ */
+class RunObservation {
+  private finalMessage = "";
+  private finalTurnId: string | null = null;
+  private failureReason: string | null = null;
+  private apiError: { status: string; detail: string } | null = null;
+  private lastRetryStatus: string | null = null;
+  private promptTooLong = false;
+
+  constructor(private readonly guard: ToolGuard) {}
+
+  observe(message: SDKMessage): void {
+    if (message.type === "system" && message.subtype === "api_retry") {
+      this.lastRetryStatus = message.error_status === null ? "no-response" : String(message.error_status);
+    } else if (message.type === "user") {
+      // A tool result closes the turn that asked for it. Whatever that turn said was narration,
+      // and a final turn with no text — which the SDK may not yield as a message at all — must
+      // not inherit it.
+      this.finalTurnId = null;
+      this.finalMessage = "";
+    } else if (message.type === "assistant") {
+      this.observeAssistant(message);
+    } else if (message.type === "result") {
+      this.observeResult(message);
+    }
   }
 
-  return { finalMessage, failureReason, modelEndpointStatus, promptTooLong };
+  failWith(reason: string): void {
+    this.failureReason = reason;
+  }
+
+  result(): ModelRunResult {
+    const modelEndpointStatus =
+      this.apiError !== null && !this.promptTooLong ? this.apiError.status : null;
+    const failureReason =
+      modelEndpointStatus === null
+        ? this.failureReason
+        : `The model endpoint answered ${modelEndpointStatus === "no-response" ? "with no response" : `HTTP ${modelEndpointStatus}`}`
+          + ` (${this.apiError!.detail}). This is the egress path or the upstream behind it, not the agent.`;
+
+    return {
+      finalMessage: this.finalMessage,
+      failureReason,
+      modelEndpointStatus,
+      promptTooLong: this.promptTooLong,
+    };
+  }
+
+  private observeAssistant(message: SDKAssistantMessage): void {
+    // An API error arrives as a synthetic assistant message carrying the error's text. That text
+    // is the SDK's, not the agent's, so it is never the run's final message.
+    if (message.error !== undefined) {
+      return;
+    }
+
+    // The final message is the last turn's text and nothing earlier: narration that came with a
+    // tool call is not a commit message, so a final turn with no text leaves this empty and the
+    // hub falls back to its fixed one (research R9). One turn can arrive as several messages
+    // sharing an id, so a turn's text accumulates until the id changes. Verbatim otherwise: the
+    // message reaches the hub exactly as the model wrote it (contracts/runner-protocol.md).
+    if (message.message.id !== this.finalTurnId) {
+      this.finalTurnId = message.message.id;
+      this.finalMessage = "";
+    }
+
+    this.finalMessage += message.message.content
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("");
+
+    // Every tool_use block is an attempt, whether or not the SDK will dispatch it. A tool whose
+    // definition was removed from the request is rejected as unknown before any permission step,
+    // so this is the only place such an attempt can be seen — and an operator needs to see what
+    // the agent reached for (FR-011, FR-021).
+    for (const block of message.message.content) {
+      if (block.type === "tool_use" && !ToolGuard.isGranted(block.name)) {
+        this.guard.recordRefusedAttempt(block.name, block.input, block.id);
+      }
+    }
+  }
+
+  private observeResult(message: SDKResultMessage): void {
+    if (message.terminal_reason === "prompt_too_long") {
+      this.promptTooLong = true;
+    }
+
+    if (message.subtype !== "success") {
+      this.failureReason = `The run ended without completing: ${message.subtype}.`;
+    } else if (message.is_error) {
+      // A turn that ended on an API error reports `success` with `is_error` set; left there, it
+      // would read as an agent that judged nothing needed changing.
+      this.promptTooLong ||= /prompt is too long/i.test(message.result);
+      const status =
+        message.api_error_status === null || message.api_error_status === undefined
+          ? this.lastRetryStatus ?? "no-response"
+          : String(message.api_error_status);
+      this.apiError = { status, detail: message.result };
+      this.failureReason = message.result;
+    }
+  }
 }

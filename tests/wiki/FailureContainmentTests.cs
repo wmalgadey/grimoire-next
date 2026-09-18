@@ -167,6 +167,54 @@ public sealed class FailureContainmentTests
     }
 
     [Fact]
+    public async Task ARunnerThatBreaksTheProtocolIsStoppedAndItsLaterWritesNeverLand()
+    {
+        // The hub gives up on a runner the moment it sends something that is not an event. Giving
+        // up on it is not enough: a runner still alive after the reset keeps writing into the tree
+        // the next run starts from (FR-017, SC-003).
+        using var wiki = new WikiRepositoryFixture();
+        var tipBefore = wiki.Head();
+        var contentBefore = wiki.Snapshot();
+        using var model = ScriptedModelFixture.Start("read-then-write");
+        using var runner = StubRunner.EmitsAMalformedLineThenKeepsWriting();
+        using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: runner.Environment);
+
+        var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("failed", task.GetProperty("state").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(task.GetProperty("failureReason").GetString()));
+
+        // Past the moment the runner would have written again, had it still been alive.
+        await Task.Delay(TimeSpan.FromSeconds(6), TestContext.Current.CancellationToken);
+
+        Assert.False(wiki.Exists("after-the-bad-line.md"), "The runner kept writing after its run was settled.");
+        Assert.Equal(tipBefore, wiki.Head());
+        Assert.Equal(contentBefore, wiki.Snapshot());
+    }
+
+    [Fact]
+    public async Task ARunStartsFromTheTipWhateverTheWorkingTreeHeldBeforeIt()
+    {
+        // Anything in the tree when a run is dispatched is in no commit and was written by nothing
+        // this task accounts for. It must not reach the agent, nor ride along in its commit.
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("read-then-write");
+        using var hub = GrimoireHub.Start(wiki, model);
+        wiki.Write("left-over.md", "# Left over from something else\n");
+
+        var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("completed", task.GetProperty("state").GetString());
+        var paths = task.GetProperty("run").GetProperty("commit").GetProperty("fileDiffs").EnumerateArray()
+            .Select(file => file.GetProperty("path").GetString())
+            .ToList();
+        Assert.DoesNotContain("left-over.md", paths);
+        Assert.False(wiki.Exists("left-over.md"));
+    }
+
+    [Fact]
     public async Task AnElapsedCeilingIsReportedAsTheCeiling()
     {
         // The other half of telling the two apart: a run the hub stopped for taking too long says

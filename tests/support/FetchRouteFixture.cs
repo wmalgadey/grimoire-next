@@ -59,15 +59,27 @@ public sealed class FetchRouteFixture : IDisposable
                 return;
             }
 
-            try
+            // Concurrently, as the real proxy serves: one slow origin must not hold up the next
+            // request behind it.
+            _ = Task.Run(async () =>
             {
-                await Forward(context);
-            }
-            catch (Exception)
-            {
-                context.Response.StatusCode = (int)HttpStatusCode.BadGateway;
-                context.Response.Close();
-            }
+                try
+                {
+                    await Forward(context);
+                }
+                catch (Exception)
+                {
+                    try
+                    {
+                        context.Response.StatusCode = (int)HttpStatusCode.BadGateway;
+                        context.Response.Close();
+                    }
+                    catch (Exception)
+                    {
+                        // The response was already under way, or the caller went away.
+                    }
+                }
+            });
         }
     }
 
@@ -83,7 +95,9 @@ public sealed class FetchRouteFixture : IDisposable
             return;
         }
 
-        using var upstream = await _client.GetAsync(target, HttpCompletionOption.ResponseContentRead, _stopping.Token);
+        // Streamed, not buffered, as the real proxy does: the body reaches the hub as the origin
+        // sends it, so a slow body is slow at the hub and not hidden behind a slow header.
+        using var upstream = await _client.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, _stopping.Token);
 
         context.Response.StatusCode = (int)upstream.StatusCode;
 
@@ -99,8 +113,18 @@ public sealed class FetchRouteFixture : IDisposable
             context.Response.ContentType = contentType.ToString();
         }
 
-        var body = await upstream.Content.ReadAsByteArrayAsync(_stopping.Token);
-        await context.Response.OutputStream.WriteAsync(body, _stopping.Token);
+        context.Response.SendChunked = true;
+        await using (var body = await upstream.Content.ReadAsStreamAsync(_stopping.Token))
+        {
+            var buffer = new byte[16 * 1024];
+            int read;
+            while ((read = await body.ReadAsync(buffer, _stopping.Token)) > 0)
+            {
+                await context.Response.OutputStream.WriteAsync(buffer.AsMemory(0, read), _stopping.Token);
+                await context.Response.OutputStream.FlushAsync(_stopping.Token);
+            }
+        }
+
         context.Response.Close();
     }
 

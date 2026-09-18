@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -221,6 +222,67 @@ public sealed class UrlRetrievalTests
         Assert.Equal("An article worth keeping.", task.GetProperty("source").GetProperty("retrievedText").GetString());
     }
 
+    [Fact]
+    public async Task DecodesTheRetrievedBodyByTheCharsetTheOriginDeclares()
+    {
+        // Sent as ISO-8859-1, where "ü" and "ß" are single bytes that are not valid UTF-8. Decoded
+        // as UTF-8 regardless, the run would be handed replacement characters, not the source
+        // (FR-029: the text is passed whole and unaltered).
+        const string body = "Grüße aus Köln.";
+        using var origin = new TestOrigin(_ => (HttpStatusCode.OK, "text/plain; charset=iso-8859-1", body));
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("no-op");
+        using var proxy = new FetchRouteFixture();
+        using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: Through(proxy));
+
+        var id = await SubmitUrl(hub, origin.Url("/article"));
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("completed", task.GetProperty("state").GetString());
+        Assert.Equal(body, task.GetProperty("source").GetProperty("retrievedText").GetString());
+    }
+
+    [Fact]
+    public async Task FailsTheTaskWhenTheOriginDeclaresACharsetThatCannotBeDecoded()
+    {
+        using var origin = new TestOrigin(_ => (HttpStatusCode.OK, "text/plain; charset=no-such-charset", "text"));
+        using var wiki = new WikiRepositoryFixture();
+        using var proxy = new FetchRouteFixture();
+        using var hub = GrimoireHub.Start(wiki, extraEnvironment: Through(proxy));
+
+        var id = await SubmitUrl(hub, origin.Url("/article"));
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("failed", task.GetProperty("state").GetString());
+        Assert.Contains("no-such-charset", task.GetProperty("failureReason").GetString()!, StringComparison.Ordinal);
+        Assert.True(task.GetProperty("run").ValueKind is JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task FailsTheTaskWhenTheOriginTricklesItsBodyPastTheRetrievalDeadline()
+    {
+        // The headers arrive at once; the body never finishes. A timeout that covers only the
+        // wait for headers would leave this task retrieving for as long as the origin likes to
+        // take — and every task behind it waiting (FR-003, FR-019).
+        using var origin = new TestOrigin(
+            _ => (HttpStatusCode.OK, "text/plain", "An article that takes a minute to arrive."),
+            trickle: TimeSpan.FromSeconds(1));
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("no-op");
+        using var proxy = new FetchRouteFixture();
+        var environment = Through(proxy);
+        environment["GRIMOIRE_FETCH_DEADLINE_MS"] = "2000";
+        using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: environment);
+
+        var id = await SubmitUrl(hub, origin.Url("/article"));
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken, TimeSpan.FromSeconds(20));
+
+        Assert.Equal("failed", task.GetProperty("state").GetString());
+        Assert.Contains("2 seconds", task.GetProperty("failureReason").GetString()!, StringComparison.Ordinal);
+        Assert.True(task.GetProperty("run").ValueKind is JsonValueKind.Null, "A run was dispatched with a partial source.");
+        Assert.Empty(await model.Requests(TestContext.Current.CancellationToken));
+    }
+
     /// <summary>Routes the hub's retrieval through the proxy, as a container deployment does.</summary>
     private static Dictionary<string, string?> Through(FetchRouteFixture proxy) =>
         new() { ["GRIMOIRE_FETCH_PROXY"] = proxy.FetchRoute };
@@ -246,10 +308,15 @@ public sealed class TestOrigin : IDisposable
     /// <param name="respond">What the origin answers.</param>
     /// <param name="headers">Extra response headers — a <c>Location</c> for a redirect.</param>
     /// <param name="delay">How long the origin takes before it answers, for a slow origin.</param>
+    /// <param name="trickle">
+    /// When set, the headers go out at once and the body follows one byte per interval — an origin
+    /// that is answering, just never finishing.
+    /// </param>
     public TestOrigin(
         Func<HttpListenerRequest, (HttpStatusCode Status, string ContentType, string Body)> respond,
         IReadOnlyDictionary<string, string>? headers = null,
-        TimeSpan? delay = null)
+        TimeSpan? delay = null,
+        TimeSpan? trickle = null)
     {
         var port = FreePort();
         Prefix = $"http://127.0.0.1:{port}/";
@@ -294,8 +361,28 @@ public sealed class TestOrigin : IDisposable
                             }
                         }
 
-                        var bytes = Encoding.UTF8.GetBytes(body);
-                        await context.Response.OutputStream.WriteAsync(bytes, _stopping.Token);
+                        // Encoded as the content type says, so an origin can declare a charset
+                        // other than UTF-8 and mean it.
+                        var charset = MediaTypeHeaderValue.TryParse(contentType, out var parsed)
+                            ? parsed.CharSet?.Trim('"')
+                            : null;
+                        var bytes = EncodingFor(charset).GetBytes(body);
+
+                        if (trickle is { } interval)
+                        {
+                            context.Response.SendChunked = true;
+                            foreach (var single in bytes)
+                            {
+                                await context.Response.OutputStream.WriteAsync(new[] { single }, _stopping.Token);
+                                await context.Response.OutputStream.FlushAsync(_stopping.Token);
+                                await Task.Delay(interval, _stopping.Token);
+                            }
+                        }
+                        else
+                        {
+                            await context.Response.OutputStream.WriteAsync(bytes, _stopping.Token);
+                        }
+
                         context.Response.Close();
                     }
                     catch (Exception) when (_stopping.IsCancellationRequested)
@@ -323,6 +410,19 @@ public sealed class TestOrigin : IDisposable
         _stopping.Cancel();
         _listener.Close();
         _stopping.Dispose();
+    }
+
+    // A charset nobody knows is the origin misdeclaring, which is a case worth serving too.
+    private static Encoding EncodingFor(string? charset)
+    {
+        try
+        {
+            return charset is null ? Encoding.UTF8 : Encoding.GetEncoding(charset);
+        }
+        catch (ArgumentException)
+        {
+            return Encoding.UTF8;
+        }
     }
 
     private static int FreePort()

@@ -80,11 +80,25 @@ public sealed class GracefulShutdownTests
             id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
             await hub.WaitForState(id, "running", TestContext.Current.CancellationToken);
 
+            // The run has written and is now hanging on the model: the tree is dirty, so a clean
+            // tree afterwards is the shutdown's doing and not a run that never wrote anything.
+            await WaitUntil(() => wiki.Exists("half-written.md"), "the run never wrote its page");
+            Assert.False(wiki.IsClean(), "The run's write is not in the working tree.");
+            var runners = hub.RunnerProcessIds();
+            Assert.NotEmpty(runners);
+
             Assert.True(
                 await hub.Terminate(TimeSpan.FromSeconds(60), TestContext.Current.CancellationToken),
                 "The hub did not exit after SIGTERM.");
             // Exited, not killed: SIGTERM was handled rather than survived.
             Assert.True(hub.HasExited);
+
+            // And it took its runner with it. A runner outliving the hub would keep writing into a
+            // tree the next start has already reset (FR-017).
+            foreach (var pid in runners)
+            {
+                Assert.False(IsAlive(pid), $"The runner {pid} was still running after the hub exited.");
+            }
         }
 
         // Nothing was committed, and nothing the runner wrote survives (FR-017, SC-003).
@@ -101,6 +115,29 @@ public sealed class GracefulShutdownTests
             "shut down",
             task.GetProperty("failureReason").GetString()!,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task WaitUntil(Func<bool> condition, string failure)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, failure);
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
+    }
+
+    private static bool IsAlive(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     [Fact]

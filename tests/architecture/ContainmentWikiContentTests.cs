@@ -141,6 +141,40 @@ public sealed class ContainmentWikiContentTests : IDisposable
     }
 
     [Fact]
+    public async Task RefusesWritesIntoTheRepositorysOwnGitDirectory()
+    {
+        // `.git` is inside the repository root, so realpath containment alone would let these
+        // through — and a hook is code the hub's next commit would run, a config line is where git
+        // would look for it. Neither is wiki content.
+        using var wiki = new WikiRepositoryFixture();
+        var gitDirectory = Path.Combine(wiki.Path, ".git");
+        var hook = Path.Combine(gitDirectory, "hooks", "post-commit");
+        var config = Path.Combine(gitDirectory, "config");
+        var configBefore = File.ReadAllBytes(config);
+
+        using var model = ScriptedModelFixture.Start("writes-into-git-directory");
+        using var hub = GrimoireHub.Start(wiki, model);
+
+        var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        var writes = ToolCalls(task)
+            .Where(call => call.GetProperty("tool").GetString() == "mcp__wiki__write_page")
+            .ToDictionary(call => call.GetProperty("target").GetString()!);
+
+        foreach (var target in new[] { ".git/hooks/post-commit", ".git/config" })
+        {
+            Assert.True(writes.TryGetValue(target, out var call), $"The write to {target} was not recorded.");
+            Assert.Equal("refused", call.GetProperty("outcome").GetString());
+            Assert.Contains("outside the wiki repository",
+                call.GetProperty("detail").GetString() ?? string.Empty, StringComparison.Ordinal);
+        }
+
+        Assert.False(File.Exists(hook), "A hook was written into the repository's git directory.");
+        Assert.Equal(configBefore, File.ReadAllBytes(config));
+    }
+
+    [Fact]
     public async Task StillAllowsOrdinaryWritesInsideTheRepository()
     {
         // Containment that refuses everything is not containment, it is breakage.

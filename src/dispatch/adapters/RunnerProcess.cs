@@ -111,19 +111,11 @@ public sealed class RunnerProcess(string repositoryRoot, RunnerEnvironment envir
                 {
                     gateOpened = true;
 
-                    try
-                    {
-                        await gate();
-                    }
-                    catch
-                    {
-                        // The gate refused (e.g. a grant mismatch). The child is blocked on stdin
-                        // waiting for `proceed`, which must never be sent now — killing it here is
-                        // what makes "the model was never invoked" true rather than a race with
-                        // whatever this exception handler does next.
-                        Kill(process);
-                        throw;
-                    }
+                    // A refusal here (e.g. a grant mismatch) leaves the child blocked on stdin
+                    // waiting for `proceed`, which is then never sent: the catch below kills it
+                    // before anything else happens, which is what makes "the model was never
+                    // invoked" true rather than a race.
+                    await gate();
 
                     await process.StandardInput.WriteLineAsync(RunnerProtocol.Serialise(new ProceedMessage()));
                     await process.StandardInput.FlushAsync(cancellationToken);
@@ -148,6 +140,16 @@ public sealed class RunnerProcess(string repositoryRoot, RunnerEnvironment envir
                 ExitCodeOf(process),
                 diagnostics.ToString(),
                 StoppedAtElapsedCeiling: !cancellationToken.IsCancellationRequested);
+        }
+        catch
+        {
+            // Every other way out — a line that is not a protocol event, the gate refusing, the
+            // store failing while an event is recorded. The hub has stopped listening to this run,
+            // so the child must stop too: alive, it would keep writing into a working tree that is
+            // about to be reset and that the next run starts from (FR-017, SC-003).
+            Kill(process);
+            await process.WaitForExitAsync(CancellationToken.None);
+            throw;
         }
         finally
         {

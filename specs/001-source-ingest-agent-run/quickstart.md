@@ -43,6 +43,7 @@ Environment the hub reads:
 | `GRIMOIRE_MODEL_BASE_URL` | The egress proxy's model route; reaches the runner as `ANTHROPIC_BASE_URL` |
 | `GRIMOIRE_MODEL_TOKEN` | Opaque token for the proxy — **never an Anthropic credential** |
 | `GRIMOIRE_FETCH_PROXY` | The proxy's fetch route, used by URL retrieval |
+| `GRIMOIRE_FETCH_DEADLINE_MS` | How long URL retrieval may take in all, body included |
 
 No process in the deployment holds an upstream model credential: the proxy is the custodian
 ([ADR-0010](../../docs/adr/0010-model-egress-and-credential-custody.md)). Running directly against

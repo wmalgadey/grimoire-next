@@ -264,6 +264,31 @@ export const writesGitignoreAndIgnored: Script = {
   ],
 };
 
+/**
+ * Narrates while it writes, then ends on a turn with no text at all. The narration is not the
+ * run's final message, so the commit falls back to the fixed one (research R9).
+ */
+export const narratesThenEndsSilently: Script = {
+  name: "narrates-then-ends-silently",
+  turns: [
+    { text: "Writing the topic page now", toolUses: [write("topics/quiet.md", "# Quiet\n")] },
+    { text: "" },
+  ],
+};
+
+/**
+ * Writes into the repository's own `.git` directory — a hook git would run and the configuration
+ * git reads — through the granted write tool. Neither is wiki content (FR-011, TS-10).
+ */
+export const writesIntoGitDirectory: Script = {
+  name: "writes-into-git-directory",
+  turns: [
+    { toolUses: [write(".git/hooks/post-commit", "#!/bin/sh\ntouch /tmp/grimoire-hook-ran\n")] },
+    { toolUses: [write(".git/config", "[core]\n\thooksPath = /tmp\n")] },
+    { text: "Tried the git directory" },
+  ],
+};
+
 /** Every script the suites can ask for, by name. */
 export const scripts: ReadonlyMap<string, Script> = new Map<string, Script>([
   [readThenWrite.name, readThenWrite],
@@ -283,6 +308,8 @@ export const scripts: ReadonlyMap<string, Script> = new Map<string, Script>([
   [endpointRefuses.name, endpointRefuses],
   [writesIgnoredOnly.name, writesIgnoredOnly],
   [writesGitignoreAndIgnored.name, writesGitignoreAndIgnored],
+  [narratesThenEndsSilently.name, narratesThenEndsSilently],
+  [writesIntoGitDirectory.name, writesIntoGitDirectory],
   ...Array.from({ length: 8 }, (_, index) => {
     const script = escalation(index + 1);
     return [script.name, script] as const;

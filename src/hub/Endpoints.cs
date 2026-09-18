@@ -28,6 +28,9 @@ public static class Endpoints
             .WithName("submitSource")
             .WithTags("Tasks")
             .WithSummary("Submit a source and get back exactly one task")
+            // Kestrel refuses a body over ~30 MB by default. A source has no maximum size (FR-029),
+            // so this is the one endpoint whose body is not capped; nothing else here takes one.
+            .WithMetadata(new DisableRequestSizeLimitAttribute())
             .Produces<Contracts.TaskSummary>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
@@ -50,7 +53,8 @@ public static class Endpoints
             .WithSummary("Restore the wiki to its state before this task's run")
             .Produces<Contracts.TaskDetail>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         return app;
     }
@@ -165,7 +169,23 @@ public static class Endpoints
             return Problem("This ingest cannot be reverted.", Explain(verdict.Reason), StatusCodes.Status409Conflict);
         }
 
-        var revertCommitSha = await wiki.RevertIfStillTip(task.Run!.Commit!.Sha, tip, cancellationToken);
+        string? revertCommitSha;
+        try
+        {
+            revertCommitSha = await wiki.RevertIfStillTip(task.Run!.Commit!.Sha, tip, cancellationToken);
+        }
+        catch (WikiRevertFailedException exception)
+        {
+            // The wiki is back at the tip it had before the attempt; the task is unchanged and can
+            // be reverted again once whatever stopped git is fixed.
+            logger.LogError(exception, "The revert of task {TaskId} could not be completed.", taskId);
+            return Problem(
+                "The revert could not be completed.",
+                $"The wiki is unchanged at {tip}, and the task can be reverted again. "
+                + "The reason is in the hub's log.",
+                StatusCodes.Status500InternalServerError);
+        }
+
         if (revertCommitSha is null)
         {
             // The tip moved between the check and the lock. Same fact as `superseded`, reached a

@@ -53,6 +53,10 @@ public enum LogFormat
 /// e.g. <c>http://egress:8080/fetch</c>; the hub addresses it as <c>?url=…</c>. Required in
 /// containers, absent when the hub runs as a plain process on a developer machine.
 /// </param>
+/// <param name="FetchDeadlineMs">
+/// <c>GRIMOIRE_FETCH_DEADLINE_MS</c> — how long URL retrieval may take in all, redirects and the
+/// body read included, before the task fails (FR-003).
+/// </param>
 /// <param name="LogFormat">
 /// <c>GRIMOIRE_LOG_FORMAT</c> — <c>json</c> (the default) or <c>text</c>, for reading the log by
 /// eye when the hub runs without a container or log toolchain.
@@ -66,6 +70,7 @@ public sealed record HubConfiguration(
     int RunMaxToolCalls,
     int RunMaxElapsedMs,
     string? FetchProxy,
+    int FetchDeadlineMs,
     LogFormat LogFormat)
 {
     /// <summary>The instruction file the hub ships with, when the environment names no other.</summary>
@@ -96,6 +101,7 @@ public sealed record HubConfiguration(
             problems.Add($"GRIMOIRE_FETCH_PROXY must be the absolute http(s) URL of the proxy's fetch route; it is '{fetchProxy}'.");
         }
 
+        var fetchDeadlineMs = PositiveInteger(lookup, "GRIMOIRE_FETCH_DEADLINE_MS", DefaultFetchDeadlineMs, problems);
         var logFormat = ReadLogFormat(lookup, problems);
 
         if (problems.Count > 0)
@@ -107,7 +113,7 @@ public sealed record HubConfiguration(
         }
 
         return new HubConfiguration(
-            wikiRepo!, stateDb!, modelBaseUrl!, modelToken!, instruction, maxToolCalls, maxElapsedMs, fetchProxy, logFormat);
+            wikiRepo!, stateDb!, modelBaseUrl!, modelToken!, instruction, maxToolCalls, maxElapsedMs, fetchProxy, fetchDeadlineMs, logFormat);
     }
 
     /// <summary>Reads the configuration from this process's environment.</summary>
@@ -118,6 +124,10 @@ public sealed record HubConfiguration(
     // run ends. Both halves are configuration, not specification (FR-009).
     private const int DefaultRunMaxToolCalls = 40;
     private const int DefaultRunMaxElapsedMs = 600_000;
+
+    // Long enough for a large source over a slow link, short enough that an origin trickling its
+    // body cannot hold the queue behind it indefinitely (FR-003, FR-019).
+    private const int DefaultFetchDeadlineMs = 120_000;
 
     private static string? Required(Func<string, string?> lookup, string name, List<string> problems)
     {

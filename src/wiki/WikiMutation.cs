@@ -1,4 +1,5 @@
 using Grimoire.Wiki.Adapters;
+using Microsoft.Extensions.Logging;
 
 namespace Grimoire.Wiki;
 
@@ -12,7 +13,7 @@ namespace Grimoire.Wiki;
 /// tip under the same lock, so a double-click or a second browser tab loses the race and is
 /// refused rather than reverting twice (FR-024).
 /// </remarks>
-public sealed class WikiMutation(GitCli git)
+public sealed class WikiMutation(GitCli git, ILogger<WikiMutation> logger)
 {
     private readonly SemaphoreSlim _singleWriter = new(1, 1);
 
@@ -41,10 +42,28 @@ public sealed class WikiMutation(GitCli git)
                 : commitMessage;
 
             var commit = git.CommitAll(message);
+            if (commit is null)
+            {
+                return null;
+            }
 
             // What is left is what the commit did not take: files the wiki ignores. They are in no
             // commit and cannot be reverted, so the next run must not find them (FR-017).
-            git.ResetWorkingTree();
+            try
+            {
+                git.ResetWorkingTree();
+            }
+            catch (GitCommandFailedException exception)
+            {
+                // The commit is history now; failing here would record the run as failed with no
+                // commit and leave one no task accounts for (FR-015, SC-003). The residue is not
+                // lost track of either: every dispatch resets the tree before its run starts.
+                logger.LogWarning(exception,
+                    "The commit {CommitSha} for task {TaskId} stands, but the working tree could not be "
+                    + "cleaned after it. The next run's reset will try again.",
+                    commit.Sha, taskId);
+            }
+
             return commit;
         }
         finally
@@ -101,7 +120,33 @@ public sealed class WikiMutation(GitCli git)
         await _singleWriter.WaitAsync(cancellationToken);
         try
         {
-            return git.RevParseHead() != expectedTip ? null : git.Revert(sha);
+            if (git.RevParseHead() != expectedTip)
+            {
+                return null;
+            }
+
+            try
+            {
+                return git.Revert(sha);
+            }
+            catch (GitCommandFailedException exception)
+            {
+                // `revert --no-commit` has already rewritten the tree and the index when the
+                // restoring commit fails, and that half-done revert is exactly what the next run
+                // would otherwise start from and sweep into its own commit (constitution II.1).
+                git.ResetWorkingTree();
+
+                // Under the lock only this revert moves the tip, so a moved tip means the restoring
+                // commit landed and only reading it back failed. It is history now; say so.
+                var tip = git.RevParseHead();
+                if (tip != expectedTip)
+                {
+                    return tip;
+                }
+
+                throw new WikiRevertFailedException(
+                    $"Reverting {sha} failed and the working tree was reset to {expectedTip}.", exception);
+            }
         }
         finally
         {
@@ -115,3 +160,10 @@ public sealed class WikiMutation(GitCli git)
     /// </summary>
     public IReadOnlyList<FileDiff> DiffOf(string sha) => git.DiffOf(sha);
 }
+
+/// <summary>
+/// A revert that git could not complete. The working tree has been reset and the wiki is still at
+/// the tip it had before the attempt, so nothing the revert began is left behind (FR-025).
+/// </summary>
+public sealed class WikiRevertFailedException(string message, Exception innerException)
+    : Exception(message, innerException);

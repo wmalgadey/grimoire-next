@@ -82,4 +82,15 @@ describe("how a run ends", () => {
     expect(runEnd?.type === "run_end" && runEnd.outcome).toBe("completed");
     expect(runEnd?.type === "run_end" && runEnd.modelEndpointStatus).toBeNull();
   });
+
+  it("takes the commit message from the final turn only, never from earlier narration", async () => {
+    // The last turn has no text. An earlier turn's narration is not the agent's final message,
+    // so run_end carries none and the hub falls back to `ingest <taskId>` (research R9).
+    const result = await runAgent({ wiki, script: "narrates-then-ends-silently" });
+
+    const runEnd = result.events.find((event) => event.type === "run_end");
+    expect(runEnd?.type === "run_end" && runEnd.outcome).toBe("completed");
+    expect(runEnd?.type === "run_end" && runEnd.commitMessage).not.toContain("Writing the topic page");
+    expect(runEnd?.type === "run_end" && (runEnd.commitMessage ?? "").trim()).toBe("");
+  });
 });

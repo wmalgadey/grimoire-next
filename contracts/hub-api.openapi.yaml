@@ -122,6 +122,15 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+        '500':
+          description: |
+            The revert could not be completed, or it landed in the wiki but could not be recorded
+            on the task. `detail` says which: in the first case the working tree was reset and the
+            wiki is unchanged; in the second the revert commit exists and an operator has to
+            reconcile the task with wiki history.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /healthz:
     get:

@@ -226,6 +226,49 @@ public sealed class HubProcess : IDisposable
         throw new TimeoutException($"Task {taskId} did not reach a terminal state in time.");
     }
 
+    /// <summary>
+    /// The agent runners this hub has running right now — found among its own descendants, so a
+    /// runner belonging to any other hub on the machine is never counted.
+    /// </summary>
+    public IReadOnlyList<int> RunnerProcessIds()
+    {
+        using var ps = Process.Start(new ProcessStartInfo("ps")
+        {
+            ArgumentList = { "-A", "-o", "pid=,ppid=,command=" },
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        })!;
+        var listing = ps.StandardOutput.ReadToEnd();
+        ps.WaitForExit();
+
+        var processes = listing
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim().Split(' ', 3, StringSplitOptions.RemoveEmptyEntries))
+            .Where(fields => fields.Length is 3)
+            .Select(fields => (Pid: int.Parse(fields[0], System.Globalization.CultureInfo.InvariantCulture),
+                Parent: int.Parse(fields[1], System.Globalization.CultureInfo.InvariantCulture),
+                Command: fields[2]))
+            .ToList();
+
+        var descendants = new HashSet<int> { _process.Id };
+        for (var grew = true; grew;)
+        {
+            grew = false;
+            foreach (var process in processes)
+            {
+                if (descendants.Contains(process.Parent) && descendants.Add(process.Pid))
+                {
+                    grew = true;
+                }
+            }
+        }
+
+        return [.. processes
+            .Where(process => descendants.Contains(process.Pid)
+                && process.Command.Contains("agentrun/dist/main.js", StringComparison.Ordinal))
+            .Select(process => process.Pid)];
+    }
+
     /// <summary>Sends a real <c>SIGTERM</c> and waits for the process to exit.</summary>
     public async Task<bool> Terminate(TimeSpan timeout, CancellationToken cancellationToken)
     {

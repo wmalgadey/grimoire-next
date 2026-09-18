@@ -74,6 +74,11 @@ public sealed class Dispatcher(
             return;
         }
 
+        // The run starts from the tip, whatever the tree held before it. Every path that ends a
+        // run resets it already, but a reset that itself failed, or a write nothing accounts for,
+        // would otherwise reach this agent and ride along in its commit (FR-015, FR-017).
+        await wiki.ResetWorkingTree(cancellationToken);
+
         var startedAt = DateTimeOffset.UtcNow;
         var home = Path.Combine(Path.GetTempPath(), $"grimoire-run-{Guid.NewGuid():N}");
         Directory.CreateDirectory(home);

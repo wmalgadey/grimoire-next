@@ -52,6 +52,7 @@ no setting is read from a path an operator cannot set.
 | `GRIMOIRE_MODEL_BASE_URL` | yes | Proxy model route; passed to the runner as `ANTHROPIC_BASE_URL` |
 | `GRIMOIRE_MODEL_TOKEN` | yes | **Opaque internal token** for the proxy; never an Anthropic credential |
 | `GRIMOIRE_FETCH_PROXY` | in containers | URL of the proxy's fetch route used by URL retrieval (FR-003), e.g. `http://egress:8080/fetch`; the hub requests `?url=<destination>` from it |
+| `GRIMOIRE_FETCH_DEADLINE_MS` | no | How long URL retrieval may take in all — redirects and the body read included — before the task fails with a reason (FR-003). Default 120000 |
 | `GRIMOIRE_LOG_FORMAT` | no | `json` (default) or `text`; `text` is for reading the log by eye outside a container |
 
 ### Egress proxy

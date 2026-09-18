@@ -54,10 +54,12 @@ builder.Services.AddSingleton(_ => new GitCli(configuration.WikiRepositoryPath))
 // One client for the process lifetime: FetchProxy never changes after startup, and a fresh
 // HttpClient (and its handler and sockets) per submission is a resource leak under sustained URL
 // ingestion (UrlFetch is not disposable, and nothing was disposing it either).
-builder.Services.AddSingleton(_ => UrlFetch.Create(configuration.FetchProxy));
+builder.Services.AddSingleton(_ => UrlFetch.Create(
+    configuration.FetchProxy, TimeSpan.FromMilliseconds(configuration.FetchDeadlineMs)));
 
 // The single wiki mutation path, and the single-writer lock inside it (constitution II.1).
-builder.Services.AddSingleton(services => new WikiMutation(services.GetRequiredService<GitCli>()));
+builder.Services.AddSingleton(services => new WikiMutation(
+    services.GetRequiredService<GitCli>(), services.GetRequiredService<ILogger<WikiMutation>>()));
 builder.Services.AddSingleton(services => new RunOutcomeHandler(services.GetRequiredService<WikiMutation>()));
 
 builder.Services.AddSingleton(new DispatchSettings(

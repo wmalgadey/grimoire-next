@@ -39,6 +39,16 @@ test.describe("a task opens in every state", () => {
       await expect(page.getByTestId("no-commit")).toHaveCount(0);
       await expect(page.getByTestId("run-in-flight")).toBeVisible();
 
+      // What it has done so far is on the page while it is still doing it: the write it made
+      // before the model stopped answering is recorded, target and outcome (FR-021).
+      await expect(async () => {
+        await page.getByTestId("refresh").click();
+        await expect(page.getByTestId("tool-call")).toHaveCount(1);
+      }).toPass({ timeout: 60_000 });
+      await expect(page.getByTestId("tool-call").first()).toContainText("half-written.md");
+      await expect(page.getByTestId("tool-call").first()).toContainText("ok");
+      await expect(page.getByTestId("state")).toHaveText("running");
+
       // The first submission occupies the runner, so the second is genuinely queued (FR-019).
       await page.goto(hub.baseUrl);
       await page.getByTestId("source-value").fill("Second source.");
@@ -48,6 +58,12 @@ test.describe("a task opens in every state", () => {
       // Queued: openable, and honest that nothing has happened yet.
       await expect(page.getByTestId("state")).toHaveText("queued");
       await expect(page.getByTestId("no-run")).toContainText("has not started");
+
+      // And the task list says the same without opening either one (US3/AC2).
+      await page.goto(`${hub.baseUrl}/tasks`);
+      const rows = page.getByTestId("task-row");
+      await expect(rows.filter({ hasText: "Second source." }).getByTestId("state")).toHaveText("queued");
+      await expect(rows.filter({ hasText: "First source." }).getByTestId("state")).toHaveText("running");
     });
   });
 
