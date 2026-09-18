@@ -49,18 +49,22 @@ if (update) {
 
 const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, "utf8")) : { methods: {} };
 const regressions = [];
-for (const [method, complexity] of measured) {
-  const before = baseline.methods[method];
-  if (before === undefined) {
-    regressions.push(`new:      ${method} has complexity ${complexity} (threshold ${threshold})`);
-  } else if (complexity > before) {
-    regressions.push(`worsened: ${method} went from ${before} to ${complexity} (threshold ${threshold})`);
-  }
+for (const [method, complexities] of measured) {
+  const before = baseline.methods[method] ?? [];
+  complexities.forEach((complexity, index) => {
+    if (index >= before.length) {
+      regressions.push(`new:      ${method} has complexity ${complexity} (threshold ${threshold})`);
+    } else if (complexity > before[index]) {
+      regressions.push(`worsened: ${method} went from ${before[index]} to ${complexity} (threshold ${threshold})`);
+    }
+  });
 }
 
-const improved = Object.keys(baseline.methods).filter(
-  (method) => !measured.has(method) || measured.get(method) < baseline.methods[method],
-);
+const improved = Object.keys(baseline.methods).filter((method) => {
+  const now = measured.get(method) ?? [];
+  const before = baseline.methods[method];
+  return now.length < before.length || now.some((complexity, index) => complexity < before[index]);
+});
 
 console.log(`${measured.size} method(s) over complexity ${threshold}; ${Object.keys(baseline.methods).length} in the baseline.`);
 if (improved.length > 0) {
@@ -90,13 +94,19 @@ function csharp(max) {
     ], { DOTNET_CLI_UI_LANGUAGE: "en" });
 
     const found = new Map();
-    const pattern = /^(.+?)\(\d+,\d+\): warning CA1502: '(.+?)' has a cyclomatic complexity of '(\d+)'/;
+    const reported = new Set();
+    const pattern = /^(.+?)\((\d+,\d+)\): warning CA1502: '(.+?)' has a cyclomatic complexity of '(\d+)'/;
     for (const line of output.split("\n")) {
       const match = pattern.exec(line.trim());
       if (!match) continue;
       const file = relative(root, match[1]);
       if (!file.startsWith("src/")) continue;
-      found.set(`${file}::${match[2]}`, Number(match[3]));
+      // MSBuild repeats a warning for every project that compiles the file's project; one method is
+      // one position, counted once.
+      const position = `${file}(${match[2]})`;
+      if (reported.has(position)) continue;
+      reported.add(position);
+      record(found, `${file}::${match[3]}`, Number(match[4]));
     }
     return found;
   } finally {
@@ -114,21 +124,33 @@ function typescript(max) {
       ...workspace.sources,
     ], {}, cwd);
 
-    const seen = new Map();
     for (const file of JSON.parse(output)) {
+      // A file ESLint could not parse is a file it did not measure; passing on it would let any
+      // complexity in it through unseen.
+      const fatal = file.messages.find((message) => message.fatal);
+      if (fatal) {
+        fail(`ESLint could not measure ${relative(root, file.filePath)}: ${fatal.message}`);
+      }
       for (const message of file.messages) {
         if (message.ruleId !== "complexity") continue;
         const match = /^(.+?) has a complexity of (\d+)\./.exec(message.message);
         if (!match) continue;
-        // Named by what the rule calls it; anonymous functions in one file are told apart by order.
-        const name = `${relative(root, file.filePath)}::${match[1]}`;
-        const ordinal = (seen.get(name) ?? 0) + 1;
-        seen.set(name, ordinal);
-        found.set(ordinal === 1 ? name : `${name} #${ordinal}`, Number(match[2]));
+        record(found, `${relative(root, file.filePath)}::${match[1]}`, Number(match[2]));
       }
     }
   }
   return found;
+}
+
+// Methods are identified by file and name, which survives edits elsewhere in the file; a line
+// number or an ordinal would not. Several methods can share a name — overloads, anonymous
+// functions — so each name holds the complexities of all of them, largest first, and they are
+// compared position by position.
+function record(found, name, complexity) {
+  const values = found.get(name) ?? [];
+  values.push(complexity);
+  values.sort((a, b) => b - a);
+  found.set(name, values);
 }
 
 function run(command, commandArgs, extraEnvironment = {}, cwd = root) {
