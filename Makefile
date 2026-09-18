@@ -130,9 +130,8 @@ require-node-20:
 .PHONY: test test-cs test-runner test-e2e
 test: test-cs test-runner test-e2e
 
-# The C# suites run serially by constitutional rule: configuration is process environment and a run
-# holds the wiki working tree, so two hubs cannot coexist. A failing suite does not stop the rest —
-# one pass, one report.
+# One suite after another, so each report reads on its own; the tests inside a suite run in
+# parallel. A failing suite does not stop the rest — one pass, one report.
 test-cs: build-hub build-runner build-model
 	@failed=""; \
 	for bin in $(CS_BINS); do \

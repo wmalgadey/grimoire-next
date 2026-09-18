@@ -396,7 +396,7 @@ Task: "Task list surface in frontend/src/routes/tasks/+page.svelte"
 
 ## Phase 8: Convergence
 
-- [ ] T140 CRITICAL: make the C# suites safe in parallel — give each in-process hub its configuration through its own host rather than process-wide environment variables (`tests/support/GrimoireHub.cs`), then remove the serial `xunit.runner.json` settings, as a separate PR from any gate change, per Constitution III.3 and quality gate 7 (contradicts)
+- [X] T140 CRITICAL: make the C# suites safe in parallel — give each in-process hub its configuration through its own host rather than process-wide environment variables (`tests/support/GrimoireHub.cs`), then remove the serial `xunit.runner.json` settings, as a separate PR from any gate change, per Constitution III.3 and quality gate 7 (contradicts)
 - [X] T141 Lift Kestrel's default request-body limit on `POST /api/tasks` so pasted text over ~30 MB becomes a task instead of a 413, with an ingest test above the limit expecting 201, per FR-029 (contradicts)
 - [X] T142 Put an overall deadline on URL retrieval, the body read included (`HttpClient.Timeout` does not cover it after `ResponseHeadersRead`), failing the task with a reason, with a TS-03 case whose origin trickles its body, per FR-003 (partial)
 - [X] T143 Kill the runner process on every non-success exit from `RunnerProcess.Run` (a protocol error or a store failure mid-run leaves it writing into the tree), and reset the working tree before each dispatch, with a test that emits a malformed line mid-run, per FR-017, SC-003 (partial)

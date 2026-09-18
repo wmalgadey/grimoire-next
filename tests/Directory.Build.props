@@ -22,6 +22,15 @@
     <Using Include="System.Threading.Tasks.Task" Alias="Task" />
   </ItemGroup>
 
+  <!-- Tests run in parallel: each hub gets its configuration per host (tests/support/GrimoireHub.cs),
+       and each has its own wiki, store and scripted model. The cap is load, not isolation: every
+       test that boots a hub also starts a runner and a model double, `dotnet test` runs all the
+       suites at once, and with a thread per core a two-call run was taking most of a minute. -->
+  <ItemGroup>
+    <Content Include="$(MSBuildThisFileDirectory)xunit.runner.json" Link="xunit.runner.json"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Shared fixtures, compiled into every slice suite rather than published as a project:
        tests/ mirrors the slices (plan "Project Structure"), and a support *project* would read
        as a slice that has no counterpart in src/. -->

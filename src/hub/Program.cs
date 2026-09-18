@@ -12,9 +12,10 @@ using Grimoire.Wiki.Adapters;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuration is environment variables only. A missing required variable fails fast and loudly,
-// before the replica serves anything (contracts/deployment.md "Startup", step 1).
-var configuration = HubConfiguration.FromEnvironment();
+// Configuration is environment variables only, read through the host's configuration — the hub
+// ships no settings file, so the environment is its one source. A missing required variable fails
+// fast and loudly, before the replica serves anything (contracts/deployment.md "Startup", step 1).
+var configuration = HubConfiguration.From(builder.Configuration);
 builder.Services.AddSingleton(configuration);
 
 // Structured JSON on stdout, one event per line. No files, no rotation, no sink configuration:
@@ -63,7 +64,7 @@ builder.Services.AddSingleton(services => new WikiMutation(
 builder.Services.AddSingleton(services => new RunOutcomeHandler(services.GetRequiredService<WikiMutation>()));
 
 builder.Services.AddSingleton(new DispatchSettings(
-    RepositoryRoot: RepositoryRoot(),
+    RepositoryRoot: RepositoryRoot(builder.Configuration["GRIMOIRE_ROOT"]),
     WikiRepositoryPath: configuration.WikiRepositoryPath,
     ModelBaseUrl: configuration.ModelBaseUrl,
     ModelToken: configuration.ModelToken,
@@ -126,9 +127,8 @@ app.Run();
 // Where src/agentrun/dist/main.js is resolved from. The hub runs from its own output directory in
 // development and from the image's install root in a container; both sit under the repository or
 // image root the runner build was published into.
-static string RepositoryRoot()
+static string RepositoryRoot(string? fromEnvironment)
 {
-    var fromEnvironment = Environment.GetEnvironmentVariable("GRIMOIRE_ROOT");
     if (!string.IsNullOrWhiteSpace(fromEnvironment))
     {
         return fromEnvironment;

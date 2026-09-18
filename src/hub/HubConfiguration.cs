@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.Configuration;
 
 namespace Grimoire.Hub;
 
@@ -116,9 +117,14 @@ public sealed record HubConfiguration(
             wikiRepo!, stateDb!, modelBaseUrl!, modelToken!, instruction, maxToolCalls, maxElapsedMs, fetchProxy, fetchDeadlineMs, logFormat);
     }
 
-    /// <summary>Reads the configuration from this process's environment.</summary>
-    public static HubConfiguration FromEnvironment() =>
-        Read(Environment.GetEnvironmentVariable);
+    /// <summary>
+    /// Reads the configuration from the host's configuration — whose source in a deployment is the
+    /// process environment, and nothing else: the hub ships no settings file. Reading it there
+    /// rather than from the process directly is what lets two hubs in one test process each have
+    /// their own, which a process-wide environment cannot give them.
+    /// </summary>
+    public static HubConfiguration From(IConfiguration configuration) =>
+        Read(name => configuration[name]);
 
     // Ceilings generous enough that a real ingest finishes, tight enough that a never-stopping
     // run ends. Both halves are configuration, not specification (FR-009).

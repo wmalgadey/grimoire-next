@@ -15,17 +15,14 @@ namespace Grimoire.Tests.Support;
 public sealed class GrimoireHub : IDisposable
 {
     private readonly WebApplicationFactory<HubEntryPoint> _factory;
-    private readonly Dictionary<string, string?> _restore = [];
 
     private GrimoireHub(
         WebApplicationFactory<HubEntryPoint> factory,
         WikiRepositoryFixture wiki,
         ScriptedModelFixture? model,
-        string stateDatabasePath,
-        Dictionary<string, string?> restore)
+        string stateDatabasePath)
     {
         _factory = factory;
-        _restore = restore;
         Wiki = wiki;
         Model = model;
         StateDatabasePath = stateDatabasePath;
@@ -46,7 +43,7 @@ public sealed class GrimoireHub : IDisposable
 
     /// <summary>
     /// Boots a hub. Every configuration value is what production reads from the environment
-    /// (contracts/deployment.md "Environment contract").
+    /// (contracts/deployment.md "Environment contract"), given to this host alone.
     /// </summary>
     public static GrimoireHub Start(
         WikiRepositoryFixture wiki,
@@ -73,17 +70,20 @@ public sealed class GrimoireHub : IDisposable
             environment[name] = value;
         }
 
-        var restore = new Dictionary<string, string?>();
-        foreach (var (name, value) in environment)
-        {
-            restore[name] = Environment.GetEnvironmentVariable(name);
-            Environment.SetEnvironmentVariable(name, value);
-        }
-
+        // Given to this host alone, under the names production reads from its environment. Setting
+        // them on the process instead would hand every hub in the test process the last one's
+        // wiki, which is why the suites once had to run one test at a time.
         var factory = new WebApplicationFactory<HubEntryPoint>()
-            .WithWebHostBuilder(builder => builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Production"));
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Production");
+                foreach (var (name, value) in environment)
+                {
+                    builder.UseSetting(name, value);
+                }
+            });
 
-        return new GrimoireHub(factory, wiki, model, statePath, restore);
+        return new GrimoireHub(factory, wiki, model, statePath);
     }
 
     /// <summary>Submits a source and returns the created task, or the problem document.</summary>
@@ -143,11 +143,6 @@ public sealed class GrimoireHub : IDisposable
     {
         Client.Dispose();
         _factory.Dispose();
-
-        foreach (var (name, value) in _restore)
-        {
-            Environment.SetEnvironmentVariable(name, value);
-        }
 
         foreach (var suffix in new[] { "", "-wal", "-shm" })
         {

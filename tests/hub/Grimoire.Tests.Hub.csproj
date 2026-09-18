@@ -16,10 +16,4 @@
     <ProjectReference Include="../../src/hub/Grimoire.Hub.csproj" />
   </ItemGroup>
 
-  <!-- Configuration is process environment (constitution VII.1) and a run holds the wiki
-       working tree, so suites that boot a hub cannot run beside each other. -->
-  <ItemGroup>
-    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>

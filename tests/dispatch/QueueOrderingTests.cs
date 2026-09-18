@@ -25,9 +25,9 @@ public sealed class QueueOrderingTests
         var second = await hub.SubmitText("second source", TestContext.Current.CancellationToken);
         var third = await hub.SubmitText("third source", TestContext.Current.CancellationToken);
 
-        var firstTask = await hub.WaitForEnd(first, TestContext.Current.CancellationToken, TimeSpan.FromSeconds(30));
-        var secondTask = await hub.WaitForEnd(second, TestContext.Current.CancellationToken, TimeSpan.FromSeconds(30));
-        var thirdTask = await hub.WaitForEnd(third, TestContext.Current.CancellationToken, TimeSpan.FromSeconds(30));
+        var firstTask = await hub.WaitForEnd(first, TestContext.Current.CancellationToken);
+        var secondTask = await hub.WaitForEnd(second, TestContext.Current.CancellationToken);
+        var thirdTask = await hub.WaitForEnd(third, TestContext.Current.CancellationToken);
 
         var firstStarted = StartedAt(firstTask);
         var secondStarted = StartedAt(secondTask);
