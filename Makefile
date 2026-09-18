@@ -21,13 +21,17 @@
 
 CONFIG ?= Debug
 
+# The environment contract, in full. contracts/ at the repository root holds the HTTP contract; the
+# deployment one lives with its feature.
+DEPLOYMENT_CONTRACT := specs/001-source-ingest-agent-run/contracts/deployment.md
+
 # Extra arguments passed to a single suite, e.g.
 #   make test-tasks ARGS='--filter-class "*SqliteStoreTests*"'
 #   make test-runner ARGS='tests/agentrun/loop.test.ts'
 ARGS ?=
 
-# The hub's environment (contracts/deployment.md). Read from .env if present, so no token ever
-# reaches shell history; `make dev-setup` writes a starter one. A line here loses to one passed on
+# The hub's environment (see DEPLOYMENT_CONTRACT). Read from .env if present, so no token reaches
+# shell history, and the recipe that uses it is not echoed, so none reaches the terminal either; `make dev-setup` writes a starter one. A line here loses to one passed on
 # the command line (make run GRIMOIRE_MODEL_TOKEN=...) and wins over one already in the shell.
 -include .env
 
@@ -175,6 +179,12 @@ lint: deps require-node-20
 # `npm run build` as well. A credential in a compiler's environment is a credential in whatever
 # that compiler shells out to. An empty value is left out rather than exported empty, so an unset
 # optional setting stays unset rather than becoming the empty string.
+# The settings the hub cannot start without. Checked as make variables, not shell ones: nothing is
+# exported any more (see below), so a recipe that looked for them in its own environment would
+# report every one of them missing however complete the .env is.
+HUB_REQUIRED := GRIMOIRE_WIKI_REPO GRIMOIRE_STATE_DB GRIMOIRE_MODEL_BASE_URL GRIMOIRE_MODEL_TOKEN
+HUB_MISSING = $(foreach v,$(HUB_REQUIRED),$(if $($(v)),,$(v)))
+
 HUB_ENVIRONMENT = $(foreach v,\
   GRIMOIRE_WIKI_REPO GRIMOIRE_STATE_DB GRIMOIRE_INSTRUCTION \
   GRIMOIRE_RUN_MAX_TOOL_CALLS GRIMOIRE_RUN_MAX_ELAPSED_MS \
@@ -187,13 +197,9 @@ HUB_ENVIRONMENT = $(foreach v,\
 # so check the four required ones here and name them, rather than let the hub exit on the first.
 .PHONY: run
 run: build-hub build-runner
-	@missing=""; \
-	for v in GRIMOIRE_WIKI_REPO GRIMOIRE_STATE_DB GRIMOIRE_MODEL_BASE_URL GRIMOIRE_MODEL_TOKEN; do \
-	  eval "val=\$$$$v"; [ -n "$$val" ] || missing="$$missing $$v"; \
-	done; \
-	if [ -n "$$missing" ]; then \
-	  echo "Not set:$$missing" >&2; \
-	  echo "Put them in .env (see contracts/deployment.md), or run: make dev-setup" >&2; \
+	@if [ -n "$(strip $(HUB_MISSING))" ]; then \
+	  echo "Not set: $(HUB_MISSING)" >&2; \
+	  echo "Put them in .env (see $(DEPLOYMENT_CONTRACT)), or run: make dev-setup" >&2; \
 	  exit 1; \
 	fi; \
 	if ! git -C "$(GRIMOIRE_WIKI_REPO)" rev-parse HEAD >/dev/null 2>&1; then \
@@ -203,7 +209,8 @@ run: build-hub build-runner
 	fi; \
 	[ -f "$(ASPNETCORE_WEBROOT)/index.html" ] || \
 	  echo "note: no built frontend at $(ASPNETCORE_WEBROOT) — /api answers, the surfaces 404. 'make build-frontend' needs Node 20.19+." >&2
-	env $(HUB_ENVIRONMENT) dotnet run --project src/hub --configuration $(CONFIG) --no-build
+	@echo "env <hub settings from .env> dotnet run --project src/hub --configuration $(CONFIG) --no-build"
+	@env $(HUB_ENVIRONMENT) dotnet run --project src/hub --configuration $(CONFIG) --no-build
 
 # A wiki repository and a state database under .local/, plus a starter .env. Idempotent, and it
 # never overwrites an existing .env.
