@@ -52,7 +52,10 @@ interface RequestBody {
  *
  * @param scriptName Which named script to replay. See `scripts.ts`.
  */
-export async function startScriptedModel(scriptName: string): Promise<ScriptedModel> {
+export async function startScriptedModel(
+  scriptName: string,
+  listen: { host: string; port: number } = { host: "127.0.0.1", port: 0 },
+): Promise<ScriptedModel> {
   let script: Script = scriptByName(scriptName);
   const requests: RecordedRequest[] = [];
 
@@ -155,11 +158,11 @@ export async function startScriptedModel(scriptName: string): Promise<ScriptedMo
     response.end(JSON.stringify(message));
   }
 
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(listen.port, listen.host, resolve));
   const { port } = server.address() as AddressInfo;
 
   return {
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl: `http://${listen.host}:${port}`,
     requests,
     useScript(name: string) {
       script = scriptByName(name);
@@ -286,10 +289,16 @@ function readBody(request: IncomingMessage): Promise<Buffer> {
   });
 }
 
-// Runnable standalone so the deployment suite can point a container at it.
+// Runnable standalone so the deployment suite can point a container at it. Loopback on an
+// ephemeral port unless told otherwise; in a container it has to listen where the egress proxy
+// can reach it (GRIMOIRE_SCRIPTED_MODEL_HOST=0.0.0.0, GRIMOIRE_SCRIPTED_MODEL_PORT=8787).
 if (process.argv[1] && process.argv[1].endsWith("server.js")) {
   const name = process.env["GRIMOIRE_SCRIPT"] ?? "read-then-write";
-  void startScriptedModel(name).then((model) => {
+  const listen = {
+    host: process.env["GRIMOIRE_SCRIPTED_MODEL_HOST"] ?? "127.0.0.1",
+    port: Number(process.env["GRIMOIRE_SCRIPTED_MODEL_PORT"] ?? "0"),
+  };
+  void startScriptedModel(name, listen).then((model) => {
     process.stdout.write(`${JSON.stringify({ baseUrl: model.baseUrl, script: name })}\n`);
   });
 }

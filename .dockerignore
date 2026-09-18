@@ -16,3 +16,14 @@ docs/
 *.db
 *.db-wal
 *.db-shm
+
+# Local state and secrets never enter a build context.
+.local/
+.env
+**/.env
+
+# Not part of any image.
+tests/
+.specify/
+.claude/
+deploy/
