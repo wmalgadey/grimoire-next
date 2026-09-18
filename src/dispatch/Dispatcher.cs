@@ -80,12 +80,9 @@ public sealed class Dispatcher(
         await wiki.ResetWorkingTree(cancellationToken);
 
         var startedAt = DateTimeOffset.UtcNow;
-        var home = Path.Combine(Path.GetTempPath(), $"grimoire-run-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(home);
-
         var runner = new RunnerProcess(
             settings.WikiRepositoryPath,
-            RunnerEnvironment.ForRun(
+            home => RunnerEnvironment.ForRun(
                 task.Id,
                 settings.ModelBaseUrl,
                 settings.ModelToken,
@@ -201,17 +198,6 @@ public sealed class Dispatcher(
                 new RunOutcome.Failed($"The run could not be completed: {exception.Message}", toolCallCount),
                 startedAt,
                 cancellationToken);
-        }
-        finally
-        {
-            try
-            {
-                Directory.Delete(home, recursive: true);
-            }
-            catch (IOException)
-            {
-                // A leftover per-run directory is discarded with the container.
-            }
         }
     }
 

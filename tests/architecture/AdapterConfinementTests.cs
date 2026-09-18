@@ -40,17 +40,21 @@ public sealed class AdapterConfinementTests
         ("src/egress", Egress),
     ];
 
-    [Fact]
-    public void SqliteIsReferencedOnlyUnderSrcTasks()
-        => AssertConfinedTo("Microsoft.Data.Sqlite", "src/tasks");
+    // The three below are confined to adapter namespaces, not to slices: a slice-level rule would let
+    // the library sit in the slice's domain code, beside the adapter it is meant to be behind.
 
     [Fact]
-    public void ProcessIsReferencedOnlyUnderSrcDispatchAndSrcWiki()
-        => AssertConfinedTo("System.Diagnostics.Process", "src/dispatch", "src/wiki");
+    public void SqliteIsReferencedOnlyInsideTheTasksAdapters()
+        => AssertConfinedToNamespaces("Microsoft.Data.Sqlite", "Grimoire.Tasks.Adapters");
 
     [Fact]
-    public void HttpClientIsReferencedOnlyUnderSrcIngest()
-        => AssertConfinedTo("System.Net.Http.HttpClient", "src/ingest");
+    public void ProcessIsReferencedOnlyInsideTheDispatchAndWikiAdapters()
+        => AssertConfinedToNamespaces(
+            "System.Diagnostics.Process", "Grimoire.Dispatch.Adapters", "Grimoire.Wiki.Adapters");
+
+    [Fact]
+    public void HttpClientIsReferencedOnlyInsideTheIngestAdapters()
+        => AssertConfinedToNamespaces("System.Net.Http.HttpClient", "Grimoire.Ingest.Adapters");
 
     [Fact]
     public void YarpIsReferencedOnlyUnderSrcEgress()

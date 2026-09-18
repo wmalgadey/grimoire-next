@@ -33,7 +33,12 @@ public sealed record RunnerExit(RunEndEvent? RunEnd, int ExitCode, string Diagno
 /// is a property of the spawn rather than a habit of the caller (ADR-0007, ADR-0010).</item>
 /// </list>
 /// </remarks>
-public sealed class RunnerProcess(string repositoryRoot, RunnerEnvironment environment)
+/// <param name="repositoryRoot">The wiki working tree, pinned as the child's <c>cwd</c>.</param>
+/// <param name="environmentFor">
+/// The run's environment, given the per-run home directory this adapter creates for it and
+/// discards with it.
+/// </param>
+public sealed class RunnerProcess(string repositoryRoot, Func<string, RunnerEnvironment> environmentFor)
 {
     /// <summary>The compiled runner the hub spawns.</summary>
     public const string EntryPoint = "src/agentrun/dist/main.js";
@@ -55,6 +60,36 @@ public sealed class RunnerProcess(string repositoryRoot, RunnerEnvironment envir
     /// handshake that makes "recorded before the first model call" a property (FR-013, FR-014).
     /// </param>
     public async Task<RunnerExit> Run(
+        DispatchMessage dispatch,
+        RunLimit limit,
+        Func<RunnerEvent, Task> onEvent,
+        Func<Task> gate,
+        CancellationToken cancellationToken)
+    {
+        // A home directory of the run's own, so nothing the SDK keeps there outlives the run or
+        // reaches the next one.
+        var home = Path.Combine(Path.GetTempPath(), $"grimoire-run-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(home);
+
+        try
+        {
+            return await Run(environmentFor(home), dispatch, limit, onEvent, gate, cancellationToken);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(home, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A leftover per-run directory is discarded with the container.
+            }
+        }
+    }
+
+    private async Task<RunnerExit> Run(
+        RunnerEnvironment environment,
         DispatchMessage dispatch,
         RunLimit limit,
         Func<RunnerEvent, Task> onEvent,
