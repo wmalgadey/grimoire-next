@@ -102,6 +102,31 @@ public sealed class StubRunner : IDisposable
         })();
         """);
 
+    /// <summary>
+    /// Leaves state in the per-run home directory it was given, as the SDK does, says where that
+    /// directory is, and then either completes or crashes.
+    /// </summary>
+    /// <param name="crashes">Exits 3 with no <c>run_end</c> instead of completing.</param>
+    public static StubRunner LeavesStateInItsHome(bool crashes) => Create($$"""
+        (async () => {
+          const path = require("node:path");
+          fs.writeFileSync(path.join(process.env.HOME, "sdk-state.json"), "{}");
+          fs.writeFileSync(path.resolve(__dirname, "../../..", "home-path.txt"), process.env.HOME);
+          announce();
+          await next("proceed");
+          if ({{(crashes ? "true" : "false")}}) process.exit(3);
+          emit({ type: "run_end", outcome: "completed", failureReason: null,
+                 commitMessage: "stub", toolCallCount: 0, modelEndpointStatus: null });
+          exitAfterFlush(0);
+        })();
+        """);
+
+    /// <summary>The home directory the stub reported, once it has run.</summary>
+    public string? ReportedHome =>
+        File.Exists(System.IO.Path.Combine(Root, "home-path.txt"))
+            ? File.ReadAllText(System.IO.Path.Combine(Root, "home-path.txt"))
+            : null;
+
     /// <inheritdoc />
     public void Dispose()
     {
