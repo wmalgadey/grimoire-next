@@ -1,8 +1,23 @@
 name: CI
 
-# The nine constitution quality gates are wired into this file as their tests land;
-# T110 completes the wiring. Quality gates must not be disabled to land a change
-# (constitution "Quality gates"); fixing a wrong gate is a separate PR.
+# The nine constitution quality gates, on every PR. Quality gates must not be disabled to land a
+# change (constitution "Quality gates"); fixing a wrong gate is a separate PR.
+#
+#   1  SystemPrompt constructed only in the instruction loader  tests/architecture/system-prompt-construction.test.ts
+#   2  external libraries confined to their adapters            tests/architecture/AdapterConfinementTests.cs
+#                                                               + dependency-cruiser (depcruise step)
+#   3  first-level directories are domain slices                tests/architecture/SliceStructureTests.cs
+#   4  trust boundary: tools, content, container, egress        tests/architecture/Containment*Tests.cs,
+#                                                               tests/deployment/ContainerBoundaryTests.cs (TS-18),
+#                                                               tests/egress/ (TS-21)
+#   5  revertibility                                            tests/wiki/, tests/hub/RevertEndpointTests.cs
+#   6  observability through the production composition root    tests/hub/Observability*Tests.cs, tests/surfaces
+#   7  the full hermetic suite                                  every step of build-and-test
+#   8  per-method complexity, regressions only                  the complexity job
+#   9  ADR lint                                                 the adr-lint job — pending, see there
+#
+# TS-18 and TS-19 need a container runtime and a real process signal. They skip locally with a
+# named reason when there is none; here CI is set, so a missing runtime fails instead of skipping.
 
 on:
   pull_request:
@@ -16,6 +31,7 @@ env:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -45,12 +61,21 @@ jobs:
           npm --prefix frontend ci
           npm --prefix frontend run build
 
-      # Every automated test runs without an Anthropic key: the LLM is reached
-      # through ANTHROPIC_BASE_URL pointed at tests/scripted-model/.
-      - name: Hub slices, architecture gates, observability, contract drift
+      # Gate 2's TypeScript half: dependency-cruiser over the runner and the frontend. ESLint is not
+      # one of the nine gates and is not run here.
+      - name: Dependency rules (quality gate 2, TypeScript)
+        run: |
+          npm --prefix src/agentrun run depcruise
+          npm --prefix frontend run depcruise
+
+      # Gates 1-7. Every automated test runs without an Anthropic key: the LLM is reached through
+      # ANTHROPIC_BASE_URL pointed at tests/scripted-model/. This includes tests/deployment/, which
+      # builds deploy/hub.Dockerfile and deploy/egress.Dockerfile and runs them on the runner's
+      # Docker (TS-18), and sends the hub a real SIGTERM (TS-19).
+      - name: Hub slices, egress proxy, architecture gates, observability, contract drift, container boundary
         run: dotnet test --configuration Release --no-build
 
-      - name: Runner — the real SDK loop against the scripted model
+      - name: Runner — the real SDK loop against the scripted model, and gate 1
         run: npm --prefix src/agentrun test
 
       - name: Surfaces
@@ -61,3 +86,58 @@ jobs:
           npm --prefix tests/surfaces ci
           npm --prefix tests/surfaces exec -- playwright install --with-deps chromium
           npm --prefix frontend run test:e2e
+
+  complexity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The threshold is CI configuration, deliberately not a constant in the constitution
+      # (VII.4). Only regressions against .github/complexity/baseline.json fail (VII.5).
+      COMPLEXITY_THRESHOLD: "15"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install the TypeScript workspaces' linters
+        run: |
+          npm --prefix src/agentrun ci
+          npm --prefix frontend ci
+
+      - name: Per-method complexity regression gate (quality gate 8)
+        run: node .github/complexity/gate.mjs --threshold "$COMPLEXITY_THRESHOLD"
+
+  images:
+    # The container contract names two platforms; building both here keeps that a fact.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: grimoire-hub, linux/amd64 and linux/arm64
+        run: docker buildx build --platform linux/amd64,linux/arm64 -f deploy/hub.Dockerfile .
+
+      - name: grimoire-egress, linux/amd64 and linux/arm64
+        run: docker buildx build --platform linux/amd64,linux/arm64 -f deploy/egress.Dockerfile .
+
+      - name: The compose deployment parses
+        env:
+          GRIMOIRE_INTERNAL_TOKEN: ci-placeholder
+          ANTHROPIC_API_KEY: ci-placeholder
+        run: docker compose -f deploy/compose.yaml config --quiet
+
+  adr-lint:
+    # Gate 9 is pending until the ADR lint exists (constitution "Quality gates", item 9). This slot
+    # is where it runs; it checks nothing yet and says so, rather than passing as if it had.
+    runs-on: ubuntu-latest
+    steps:
+      - name: ADR lint (quality gate 9) — pending
+        run: echo "::notice title=Quality gate 9::The ADR lint does not exist yet; nothing was checked."

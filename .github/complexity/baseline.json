@@ -1,0 +1,6 @@
+{
+  "threshold": 15,
+  "methods": {
+    "src/tasks/adapters/SqliteStore.cs::ReadTask": 16
+  }
+}

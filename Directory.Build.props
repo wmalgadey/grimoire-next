@@ -10,4 +10,13 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
+  <!-- Quality gate 8, the per-method complexity regression gate, and nothing else: when
+       .github/complexity/gate.mjs builds with GrimoireComplexityDir set, CA1502 reports every
+       method over the threshold that gate wrote there. The threshold lives in CI configuration
+       (constitution VII.4), so nothing here names one, and an ordinary build is unaffected. -->
+  <ItemGroup Condition="'$(GrimoireComplexityDir)' != ''">
+    <EditorConfigFiles Include="$(GrimoireComplexityDir)/complexity.globalconfig" />
+    <AdditionalFiles Include="$(GrimoireComplexityDir)/CodeMetricsConfig.txt" />
+  </ItemGroup>
+
 </Project>
