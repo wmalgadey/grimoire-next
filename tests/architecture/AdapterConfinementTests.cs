@@ -56,6 +56,20 @@ public sealed class AdapterConfinementTests
     public void YarpIsReferencedOnlyUnderSrcEgress()
         => AssertConfinedTo("Yarp.ReverseProxy", "src/egress");
 
+    /// <summary>
+    /// The network below HTTP. Confined to adapter namespaces rather than to slices: the egress
+    /// reachability probe is a network call like any other, and a slice-level rule would let it sit
+    /// in a slice's domain code — which is where it was, twice, before this rule named it.
+    /// </summary>
+    [Fact]
+    public void SocketsAreReferencedOnlyInsideAdapters()
+        => AssertConfinedToNamespaces(
+            "System.Net.Sockets",
+            "Grimoire.Ingest.Adapters",
+            "Grimoire.Dispatch.Adapters",
+            // The proxy is the network boundary itself; the whole slice is its adapter.
+            "Grimoire.Egress");
+
     [Fact]
     public void TheModelPortIsTheOnlyPortAndItDoesNotLiveInCSharp()
     {
@@ -79,6 +93,25 @@ public sealed class AdapterConfinementTests
                 + "Ports are only for external systems that are doubled or have multiple adapters "
                 + "(constitution V.2).");
         }
+    }
+
+    private static void AssertConfinedToNamespaces(string dependency, params string[] permittedNamespaces)
+    {
+        var offenders = AllSlices
+            .SelectMany(slice => Types.InAssembly(slice.Assembly)
+                .That().HaveDependencyOn(dependency)
+                .GetTypes()
+                .Where(type => !permittedNamespaces.Any(permitted =>
+                    type.Namespace == permitted
+                    || (type.Namespace ?? "").StartsWith(permitted + ".", StringComparison.Ordinal)))
+                .Select(type => $"{slice.Slice}: {type.FullName}"))
+            .Order()
+            .ToList();
+
+        Assert.True(offenders.Count is 0,
+            $"'{dependency}' is confined to {string.Join(", ", permittedNamespaces)} "
+            + $"(constitution V.3), but it is also referenced by:{Environment.NewLine}  "
+            + string.Join($"{Environment.NewLine}  ", offenders));
     }
 
     private static void AssertConfinedTo(string dependency, params string[] permittedSlices)

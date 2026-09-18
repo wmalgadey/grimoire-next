@@ -185,7 +185,11 @@ public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute)
             {
                 response = await httpClient.GetAsync(Through(uri), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
-            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or SocketException)
+            // A cancellation the caller asked for — the hub shutting down — is not the origin's
+            // failure; it propagates, and the still-queued task is retrieved on the next start.
+            catch (Exception exception) when (
+                exception is HttpRequestException or TaskCanceledException or SocketException
+                && !cancellationToken.IsCancellationRequested)
             {
                 return Failed($"{uri} could not be reached: {exception.Message}");
             }
@@ -220,7 +224,18 @@ public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute)
                 // whole. A hard cap here would not even buy memory safety — the body is already
                 // fully read by the time any cap could be checked — so it would only be a reason
                 // to refuse a source the spec says must be accepted.
-                var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                byte[] bytes;
+                try
+                {
+                    bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                }
+                catch (Exception exception) when (
+                    exception is HttpRequestException or IOException or TaskCanceledException
+                    && !cancellationToken.IsCancellationRequested)
+                {
+                    return Failed($"{uri} stopped answering part-way through: {exception.Message}");
+                }
+
                 return new RetrievalResult(Encoding.UTF8.GetString(bytes), null);
             }
         }

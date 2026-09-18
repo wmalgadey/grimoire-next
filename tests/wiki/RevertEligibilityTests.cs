@@ -132,4 +132,34 @@ public sealed class RevertEligibilityTests
         Assert.False(eligibility.GetProperty("eligible").GetBoolean());
         Assert.Equal("already-reverted", eligibility.GetProperty("reason").GetString());
     }
+
+    [Fact]
+    public async Task UndoReachesOneIngestBackEvenAfterARevert()
+    {
+        // Ingest A, then ingest B, then revert B. The revert is itself a commit, so A's commit is not
+        // the tip and A offers no revert — undo never chains back past the ingest it undid
+        // (edge case "revert immediately after a revert", FR-024, FR-027).
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("read-then-write");
+        using var hub = GrimoireHub.Start(wiki, model);
+
+        var first = await hub.SubmitText("first source", TestContext.Current.CancellationToken);
+        await hub.WaitForEnd(first, TestContext.Current.CancellationToken);
+
+        await model.UseScript("write-only", TestContext.Current.CancellationToken);
+        var second = await hub.SubmitText("second source", TestContext.Current.CancellationToken);
+        await hub.WaitForEnd(second, TestContext.Current.CancellationToken);
+
+        using var reverted = await hub.Revert(second, TestContext.Current.CancellationToken);
+        reverted.EnsureSuccessStatusCode();
+
+        var earlier = await hub.GetTask(first, TestContext.Current.CancellationToken);
+        Assert.Equal("completed", earlier.GetProperty("state").GetString());
+        var eligibility = earlier.GetProperty("revertEligibility");
+        Assert.False(eligibility.GetProperty("eligible").GetBoolean());
+        Assert.Equal("superseded", eligibility.GetProperty("reason").GetString());
+
+        using var refused = await hub.Revert(first, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, refused.StatusCode);
+    }
 }

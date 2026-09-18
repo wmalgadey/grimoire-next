@@ -122,4 +122,67 @@ public sealed class FailureContainmentTests
         Assert.Equal(tipBefore, wiki.Head());
         Assert.Equal(1, wiki.CommitCount());
     }
+
+    [Fact]
+    public async Task ARunnerThatCrashesOnItsOwnFailsWithAReasonThatSaysSo()
+    {
+        // A crash is not the elapsed ceiling. Recording it as one would send the operator to raise
+        // a limit that was never reached (FR-018, FR-009).
+        using var wiki = new WikiRepositoryFixture();
+        var tipBefore = wiki.Head();
+        using var model = ScriptedModelFixture.Start("read-then-write");
+        using var runner = StubRunner.CrashesAfterProceed(exitCode: 3);
+        using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: runner.Environment);
+
+        var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("failed", task.GetProperty("state").GetString());
+        var reason = task.GetProperty("failureReason").GetString()!;
+        Assert.Contains("code 3", reason, StringComparison.Ordinal);
+        Assert.DoesNotContain("GRIMOIRE_RUN_MAX_ELAPSED_MS", reason, StringComparison.Ordinal);
+        Assert.Equal(tipBefore, wiki.Head());
+    }
+
+    [Fact]
+    public async Task ARunnerThatReportsSuccessAndThenCrashesCommitsNothing()
+    {
+        // run_end said completed, and then the process ended abnormally. The working tree is not
+        // one the process finished with, so nothing it wrote is committed (FR-017).
+        using var wiki = new WikiRepositoryFixture();
+        var tipBefore = wiki.Head();
+        var contentBefore = wiki.Snapshot();
+        using var model = ScriptedModelFixture.Start("read-then-write");
+        using var runner = StubRunner.ReportsCompletedThenExits(exitCode: 2);
+        using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: runner.Environment);
+
+        var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("failed", task.GetProperty("state").GetString());
+        Assert.Contains("code 2", task.GetProperty("failureReason").GetString()!, StringComparison.Ordinal);
+        Assert.Equal(tipBefore, wiki.Head());
+        Assert.Equal(contentBefore, wiki.Snapshot());
+        Assert.False(wiki.Exists("stub-written.md"));
+    }
+
+    [Fact]
+    public async Task AnElapsedCeilingIsReportedAsTheCeiling()
+    {
+        // The other half of telling the two apart: a run the hub stopped for taking too long says
+        // so, and names the setting that controls it.
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("write-then-hang");
+        using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: new Dictionary<string, string?>
+        {
+            ["GRIMOIRE_RUN_MAX_ELAPSED_MS"] = "4000",
+        });
+
+        var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken, TimeSpan.FromSeconds(90));
+
+        Assert.Equal("failed", task.GetProperty("state").GetString());
+        Assert.Contains("GRIMOIRE_RUN_MAX_ELAPSED_MS", task.GetProperty("failureReason").GetString()!,
+            StringComparison.Ordinal);
+    }
 }

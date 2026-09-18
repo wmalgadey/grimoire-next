@@ -86,6 +86,14 @@ public sealed class FetchRouteFixture : IDisposable
         using var upstream = await _client.GetAsync(target, HttpCompletionOption.ResponseContentRead, _stopping.Token);
 
         context.Response.StatusCode = (int)upstream.StatusCode;
+
+        // Redirects are returned, not followed — with their destination, so the hub can check the
+        // next hop itself (contracts/deployment.md, fetch route).
+        if (upstream.Headers.Location is { } location)
+        {
+            context.Response.RedirectLocation = location.OriginalString;
+        }
+
         if (upstream.Content.Headers.ContentType is { } contentType)
         {
             context.Response.ContentType = contentType.ToString();

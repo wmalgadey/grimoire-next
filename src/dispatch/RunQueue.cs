@@ -118,7 +118,7 @@ public sealed class RunQueue : IDisposable
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "grimoire.run.ended {TaskId} {Outcome}", taskId, "failed");
+            logger.LogError(exception, "The run for task {TaskId} could not be started.", taskId);
 
             // Dispatcher.Dispatch settles every outcome it reaches internally; this catches
             // whatever happens before it gets that far (constructing the runner, resolving
@@ -127,17 +127,14 @@ public sealed class RunQueue : IDisposable
             // revisits it.
             try
             {
-                if (store.GetTask(taskId) is { State: Grimoire.Tasks.TaskState.Queued })
-                {
-                    store.FailTask(
-                        taskId,
-                        $"The run could not be started: {exception.Message}",
-                        DateTimeOffset.UtcNow);
-                }
+                store.FailTask(
+                    taskId,
+                    $"The run could not be started: {exception.Message}",
+                    DateTimeOffset.UtcNow);
             }
             catch (Exception storeException)
             {
-                logger.LogError(storeException, "grimoire.run.ended {TaskId} {Outcome}", taskId, "failed");
+                logger.LogError(storeException, "Task {TaskId} could not be marked failed.", taskId);
             }
         }
         finally

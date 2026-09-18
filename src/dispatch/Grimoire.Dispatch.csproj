@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../ingest/Grimoire.Ingest.csproj" />
     <ProjectReference Include="../tasks/Grimoire.Tasks.csproj" />
     <ProjectReference Include="../wiki/Grimoire.Wiki.csproj" />
   </ItemGroup>

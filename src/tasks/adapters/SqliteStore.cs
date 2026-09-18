@@ -156,14 +156,16 @@ public sealed class SqliteStore : IDisposable
     /// Appends one tool call to the run's record, refusals included (FR-011, FR-021). The record
     /// is only ever inserted into: it is append-only during the run and frozen after (FR-023).
     /// </summary>
-    public void AppendToolCall(string taskId, ToolCall call)
+    /// <returns><c>false</c> when the run has already ended, and nothing was written.</returns>
+    public bool AppendToolCall(string taskId, ToolCall call)
     {
         lock (_gate)
         {
-            Execute(null,
+            return 1 == Execute(null,
                 """
                 INSERT INTO tool_call (run_id, seq, tool, target, outcome, detail, at)
-                VALUES ((SELECT id FROM agent_run WHERE task_id = $taskId), $seq, $tool, $target, $outcome, $detail, $at);
+                SELECT id, $seq, $tool, $target, $outcome, $detail, $at
+                  FROM agent_run WHERE task_id = $taskId AND outcome IS NULL;
                 """,
                 ("$taskId", taskId),
                 ("$seq", call.Seq),
@@ -179,7 +181,11 @@ public sealed class SqliteStore : IDisposable
     /// Closes the run and the task together. A failed run carries a reason and no commit
     /// (FR-017, FR-018); a completed run carries at most one commit (FR-015, FR-016).
     /// </summary>
-    public void EndRun(
+    /// <returns>
+    /// <c>false</c> when the run had already been settled — by the shutdown path, say — and nothing
+    /// was written: a finished run's record is never rewritten (FR-023).
+    /// </returns>
+    public bool EndRun(
         string taskId,
         RunOutcomeKind outcome,
         string? failureReason,
@@ -191,7 +197,7 @@ public sealed class SqliteStore : IDisposable
         {
             using var transaction = _connection.BeginTransaction();
 
-            Execute(transaction,
+            var ended = Execute(transaction,
                 """
                 UPDATE agent_run
                    SET outcome = $outcome,
@@ -201,7 +207,7 @@ public sealed class SqliteStore : IDisposable
                        commit_message = $message,
                        commit_committed_at = $committedAt,
                        duration_ms = $durationMs
-                 WHERE task_id = $taskId;
+                 WHERE task_id = $taskId AND outcome IS NULL;
                 """,
                 ("$outcome", outcome is RunOutcomeKind.Completed ? "completed" : "failed"),
                 ("$failureReason", failureReason),
@@ -212,10 +218,16 @@ public sealed class SqliteStore : IDisposable
                 ("$durationMs", durationMs),
                 ("$taskId", taskId));
 
+            if (ended is 0)
+            {
+                transaction.Rollback();
+                return false;
+            }
+
             Execute(transaction,
                 """
                 UPDATE task SET state = $state, ended_at = $endedAt, failure_reason = $failureReason
-                 WHERE id = $taskId;
+                 WHERE id = $taskId AND state = 'running';
                 """,
                 ("$state", outcome is RunOutcomeKind.Completed ? "completed" : "failed"),
                 ("$endedAt", Time(endedAt)),
@@ -223,6 +235,7 @@ public sealed class SqliteStore : IDisposable
                 ("$taskId", taskId));
 
             transaction.Commit();
+            return true;
         }
     }
 
@@ -230,7 +243,11 @@ public sealed class SqliteStore : IDisposable
     /// Fails a task before any run was dispatched — URL retrieval refused or failed (FR-003) —
     /// or a task startup recovery found stranded in <see cref="TaskState.Running"/> (FR-028).
     /// </summary>
-    public void FailTask(string taskId, string failureReason, DateTimeOffset endedAt)
+    /// <returns>
+    /// <c>false</c> when the task had already settled, and nothing was written: a late failure
+    /// never overwrites an outcome that was recorded first (FR-023).
+    /// </returns>
+    public bool FailTask(string taskId, string failureReason, DateTimeOffset endedAt)
     {
         lock (_gate)
         {
@@ -245,16 +262,23 @@ public sealed class SqliteStore : IDisposable
                 ("$failureReason", failureReason),
                 ("$taskId", taskId));
 
-            Execute(transaction,
+            var failed = Execute(transaction,
                 """
                 UPDATE task SET state = 'failed', ended_at = $endedAt, failure_reason = $failureReason
-                 WHERE id = $taskId;
+                 WHERE id = $taskId AND state IN ('queued', 'running');
                 """,
                 ("$endedAt", Time(endedAt)),
                 ("$failureReason", failureReason),
                 ("$taskId", taskId));
 
+            if (failed is 0)
+            {
+                transaction.Rollback();
+                return false;
+            }
+
             transaction.Commit();
+            return true;
         }
     }
 
@@ -262,11 +286,25 @@ public sealed class SqliteStore : IDisposable
     /// Writes the revert record and sets the state to <see cref="TaskState.Reverted"/>. Once a run
     /// has ended these are the only permitted writes to the task (FR-023).
     /// </summary>
-    public void RecordRevert(string taskId, RevertRecord revert)
+    /// <returns>
+    /// <c>false</c> when the task is not a completed one — already reverted, or never committed —
+    /// and nothing was written. A task is reverted at most once (FR-026).
+    /// </returns>
+    public bool RecordRevert(string taskId, RevertRecord revert)
     {
         lock (_gate)
         {
             using var transaction = _connection.BeginTransaction();
+
+            var reverted = Execute(transaction,
+                "UPDATE task SET state = 'reverted' WHERE id = $taskId AND state = 'completed';",
+                ("$taskId", taskId));
+
+            if (reverted is 0)
+            {
+                transaction.Rollback();
+                return false;
+            }
 
             Execute(transaction,
                 """
@@ -277,11 +315,8 @@ public sealed class SqliteStore : IDisposable
                 ("$sha", revert.RevertCommitSha),
                 ("$at", Time(revert.RevertedAt)));
 
-            Execute(transaction,
-                "UPDATE task SET state = 'reverted' WHERE id = $taskId;",
-                ("$taskId", taskId));
-
             transaction.Commit();
+            return true;
         }
     }
 
@@ -482,7 +517,7 @@ public sealed class SqliteStore : IDisposable
         return calls;
     }
 
-    private void Execute(SqliteTransaction? transaction, string sql, params (string Name, object? Value)[] parameters)
+    private int Execute(SqliteTransaction? transaction, string sql, params (string Name, object? Value)[] parameters)
     {
         using var command = _connection.CreateCommand();
         command.Transaction = transaction;
@@ -492,7 +527,7 @@ public sealed class SqliteStore : IDisposable
             command.Parameters.AddWithValue(name, value ?? DBNull.Value);
         }
 
-        command.ExecuteNonQuery();
+        return command.ExecuteNonQuery();
     }
 
     private long ExecuteScalar(SqliteTransaction? transaction, string sql, params (string Name, object? Value)[] parameters)

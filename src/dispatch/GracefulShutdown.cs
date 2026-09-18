@@ -62,8 +62,18 @@ public sealed class GracefulShutdown(
         // on its own, and then there is nothing here to do.
         foreach (var task in store.ListTasksInState(TaskState.Running))
         {
-            store.FailTask(task.Id, InterruptedReason, DateTimeOffset.UtcNow);
+            // Guarded in the store: if the dispatcher settled the run between the read above and
+            // this write, its outcome stands and nothing is logged here (FR-023).
+            if (!store.FailTask(task.Id, InterruptedReason, DateTimeOffset.UtcNow))
+            {
+                continue;
+            }
+
             logger.LogInformation("grimoire.dispatch.interrupted_on_shutdown {TaskId}", task.Id);
+            logger.LogInformation(
+                "grimoire.run.ended {TaskId} {Outcome} {FailureReason} {ToolCallCount} {DurationMs}",
+                task.Id, "failed", InterruptedReason, task.Run?.ToolCalls.Count ?? 0,
+                task.StartedAt is { } startedAt ? (int)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds : null);
             logger.LogInformation(
                 "grimoire.task.state_changed {TaskId} {State} {FailureReason}",
                 task.Id, "failed", InterruptedReason);

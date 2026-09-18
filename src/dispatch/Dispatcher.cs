@@ -1,4 +1,7 @@
+using System.Text;
 using Grimoire.Dispatch.Adapters;
+using Grimoire.Ingest;
+using Grimoire.Ingest.Adapters;
 using Grimoire.Tasks;
 using Grimoire.Tasks.Adapters;
 using Grimoire.Wiki;
@@ -33,6 +36,7 @@ public sealed class Dispatcher(
     SqliteStore store,
     WikiMutation wiki,
     RunOutcomeHandler outcomes,
+    UrlFetch urlFetch,
     DispatchSettings settings,
     ILogger<Dispatcher> logger)
 {
@@ -47,10 +51,10 @@ public sealed class Dispatcher(
     /// <summary>Runs one task's one run, from spawn to settled artifact.</summary>
     public async Task Dispatch(Grimoire.Tasks.Task task, CancellationToken cancellationToken)
     {
-        var sourceText = task.Source.TextForRun;
+        var sourceText = task.Source.TextForRun ?? await Retrieve(task, cancellationToken);
         if (sourceText is null)
         {
-            // Nothing to hand the agent. The task already failed at retrieval (FR-003).
+            // Retrieval failed and the task says why. No run is dispatched (FR-003).
             return;
         }
 
@@ -59,8 +63,9 @@ public sealed class Dispatcher(
         // sat there until its elapsed ceiling. The SDK retries a connection failure with backoff,
         // so without this probe an unreachable endpoint is a hang rather than a reason (plan IV,
         // grimoire.run.model_endpoint_unreachable; TS-18).
-        if (Unreachable(settings.ModelBaseUrl) is { } unreachable)
+        if (ModelEndpointProbe.Unreachable(settings.ModelBaseUrl, TimeSpan.FromSeconds(5)) is { } probe)
         {
+            var unreachable = $"{probe} No run was dispatched: this is the egress path, not the agent.";
             logger.LogWarning(
                 "grimoire.run.model_endpoint_unreachable {TaskId} {Endpoint} {Status}",
                 task.Id, settings.ModelBaseUrl, "unreachable");
@@ -162,12 +167,30 @@ public sealed class Dispatcher(
                 },
                 cancellationToken);
 
-            var outcome = Interpret(exit, grantMismatch, toolCallCount);
+            if (exit.RunEnd?.ModelEndpointStatus is { } status)
+            {
+                // The path exists and answered with an error — the case a TCP probe cannot see
+                // (plan IV).
+                logger.LogWarning(
+                    "grimoire.run.model_endpoint_unreachable {TaskId} {Endpoint} {Status}",
+                    task.Id, settings.ModelBaseUrl, status);
+            }
+
+            if (exit.RunEnd is null && exit.ExitCode is not 0)
+            {
+                // Diagnostics, not task state: the reason on the task says where to look.
+                logger.LogWarning(
+                    "The runner for task {TaskId} exited with code {ExitCode}. Its stderr: {Diagnostics}",
+                    task.Id, exit.ExitCode, exit.Diagnostics);
+            }
+
+            var treeChanged = await wiki.HasUncommittedChanges(cancellationToken);
+            var outcome = Interpret(exit, grantMismatch, toolCallCount, treeChanged, cancellationToken);
             await Settle(task.Id, outcome, startedAt, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogError(exception, "grimoire.run.ended {TaskId} {Outcome}", task.Id, "failed");
+            logger.LogError(exception, "The run for task {TaskId} could not be completed.", task.Id);
             await Settle(
                 task.Id,
                 new RunOutcome.Failed($"The run could not be completed: {exception.Message}", toolCallCount),
@@ -187,8 +210,52 @@ public sealed class Dispatcher(
         }
     }
 
+    /// <summary>
+    /// Retrieves a URL task's source, as the first step of its dispatch — so the submission is
+    /// answered at once (SC-001) and the task keeps its place in submission order (FR-019). A task
+    /// whose retrieval a stopped hub interrupted is still queued with no text, and is retrieved on
+    /// the next start rather than stranded.
+    /// </summary>
+    /// <returns>The retrieved text, or <c>null</c> when retrieval failed and the task was failed.</returns>
+    private async Task<string?> Retrieve(Grimoire.Tasks.Task task, CancellationToken cancellationToken)
+    {
+        string failure;
+        try
+        {
+            var result = await urlFetch.Retrieve(task.Source.SubmittedValue, cancellationToken);
+            if (result.Succeeded)
+            {
+                store.AttachRetrievedText(
+                    task.Id, result.Text!, DateTimeOffset.UtcNow, Encoding.UTF8.GetByteCount(result.Text!));
+                return result.Text;
+            }
+
+            failure = result.Failure!;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Every way retrieval can go wrong ends the task with a reason; none leaves it queued
+            // with nothing to run (FR-003, SC-006).
+            failure = $"{task.Source.SubmittedValue} could not be retrieved: {exception.Message}";
+        }
+
+        if (store.FailTask(task.Id, failure, DateTimeOffset.UtcNow))
+        {
+            logger.LogInformation(
+                "grimoire.task.state_changed {TaskId} {State} {FailureReason}", task.Id, "failed", failure);
+        }
+
+        return null;
+    }
+
     /// <summary>What a runner exit means for the artifact.</summary>
-    private RunOutcome Interpret(RunnerExit exit, string? grantMismatch, int toolCallCount)
+    /// <param name="treeChanged">Whether the working tree differs from the tip, ignored files aside.</param>
+    private RunOutcome Interpret(
+        RunnerExit exit,
+        string? grantMismatch,
+        int toolCallCount,
+        bool treeChanged,
+        CancellationToken cancellationToken)
     {
         if (grantMismatch is not null)
         {
@@ -202,13 +269,27 @@ public sealed class Dispatcher(
 
         if (exit.RunEnd is null)
         {
-            // No run_end at all: the process crashed, was killed at the elapsed ceiling, or was
-            // aborted. All three are the same thing here — no commit (FR-017).
-            return new RunOutcome.Failed(
-                exit.ExitCode is 0
+            // No run_end at all: the process was stopped at the elapsed ceiling, stopped by the hub
+            // shutting down, or crashed. All three mean no commit (FR-017) — and each gets its own
+            // reason, because each has a different fix (FR-018).
+            string reason;
+            if (exit.StoppedAtElapsedCeiling)
+            {
+                reason = settings.Limit.ElapsedReason();
+            }
+            else if (cancellationToken.IsCancellationRequested)
+            {
+                reason = GracefulShutdown.InterruptedReason;
+            }
+            else
+            {
+                reason = exit.ExitCode is 0
                     ? "The run ended without reporting an outcome."
-                    : settings.Limit.ElapsedReason(),
-                toolCallCount);
+                    : $"The runner process exited with code {exit.ExitCode} before reporting an outcome. "
+                      + "Nothing was committed. Its diagnostics are in the hub's log.";
+            }
+
+            return new RunOutcome.Failed(reason, toolCallCount);
         }
 
         if (exit.RunEnd.ToOutcome() is RunOutcomeKind.Failed)
@@ -229,7 +310,9 @@ public sealed class Dispatcher(
                 toolCallCount);
         }
 
-        return new RunOutcome.Changed(exit.RunEnd.CommitMessage, toolCallCount);
+        return treeChanged
+            ? new RunOutcome.Changed(exit.RunEnd.CommitMessage, toolCallCount)
+            : new RunOutcome.ChangedNothing(toolCallCount);
     }
 
     private async Task Settle(
@@ -279,21 +362,36 @@ public sealed class Dispatcher(
             attempt++;
             try
             {
-                store.EndRun(
+                var recorded = store.EndRun(
                     taskId,
                     settlement.Succeeded ? RunOutcomeKind.Completed : RunOutcomeKind.Failed,
                     settlement.FailureReason,
                     settlement.Commit,
                     durationMs,
                     endedAt);
+
+                // Nothing to end: either no run was ever started — the gate refused before
+                // `proceed` — or the run was already settled elsewhere, by the shutdown path. The
+                // first still has to leave `queued`; the second must not be rewritten (FR-023).
+                if (!recorded
+                    && !(settlement.FailureReason is { } reason && store.FailTask(taskId, reason, endedAt))
+                    && settlement.Commit is { } orphan)
+                {
+                    logger.LogCritical(
+                        "The commit {CommitSha} for task {TaskId} exists in the wiki, but the task had "
+                        + "already been settled without it. An operator needs to reconcile the task "
+                        + "artifact with wiki history by hand.",
+                        orphan.Sha, taskId);
+                }
+
                 return;
             }
             catch (Exception exception) when (settlement.Commit is not null && attempt < 3)
             {
                 logger.LogWarning(exception,
-                    "grimoire.run.ended {TaskId} retrying: the commit {CommitSha} exists in the wiki "
-                    + "but recording it against the task failed on attempt {Attempt}.",
-                    taskId, settlement.Commit.Sha, attempt);
+                    "Retrying: the commit {CommitSha} for task {TaskId} exists in the wiki but recording "
+                    + "it against the task failed on attempt {Attempt}.",
+                    settlement.Commit.Sha, taskId, attempt);
                 Thread.Sleep(TimeSpan.FromMilliseconds(200 * attempt));
             }
             catch (Exception exception) when (settlement.Commit is not null)
@@ -301,56 +399,12 @@ public sealed class Dispatcher(
                 // Out of retries. The commit stands regardless — this loudly says so rather than
                 // letting the generic failure path silently no-op a reset over it.
                 logger.LogCritical(exception,
-                    "grimoire.run.ended {TaskId} unrecorded: the commit {CommitSha} exists in the "
-                    + "wiki, but the task could not be updated to reflect it after {Attempts} attempts. "
-                    + "This needs an operator to reconcile the task artifact with wiki history by hand.",
-                    taskId, settlement.Commit.Sha, attempt);
+                    "The commit {CommitSha} for task {TaskId} exists in the wiki, but the task could "
+                    + "not be updated to reflect it after {Attempts} attempts. An operator needs to "
+                    + "reconcile the task artifact with wiki history by hand.",
+                    settlement.Commit.Sha, taskId, attempt);
                 throw;
             }
-        }
-    }
-
-    /// <summary>
-    /// Why the model endpoint cannot be reached, or <c>null</c> when it can. A TCP connect, not a
-    /// model call: this asks whether the one permitted destination is there, which is the same
-    /// question <c>/readyz</c> asks and a different one from whether the agent did its job.
-    /// </summary>
-    private static string? Unreachable(string modelBaseUrl)
-    {
-        if (!Uri.TryCreate(modelBaseUrl, UriKind.Absolute, out var uri))
-        {
-            return $"The model endpoint '{modelBaseUrl}' is not an absolute URL. "
-                + "Check GRIMOIRE_MODEL_BASE_URL.";
-        }
-
-        // A URI can parse as absolute and still have no usable host or TCP port — `file:///tmp/x`
-        // does, with an empty host and Port == -1. Without this check that reaches TcpClient's own
-        // range validation, which throws ArgumentOutOfRangeException synchronously, before the
-        // catch below (or the call's own try) ever sees it: this method is called before Dispatch
-        // enters its try block, so the exception would propagate out of RunQueue's dispatch loop
-        // entirely and leave the task queued forever instead of recording a failed run.
-        if (string.IsNullOrEmpty(uri.Host) || uri.Port is < 0 or > 65535)
-        {
-            return $"The model endpoint '{modelBaseUrl}' is not a usable address: it has no host "
-                + "and port to connect to. Check GRIMOIRE_MODEL_BASE_URL.";
-        }
-
-        try
-        {
-            using var socket = new System.Net.Sockets.TcpClient();
-            if (!socket.ConnectAsync(uri.Host, uri.Port).Wait(TimeSpan.FromSeconds(5)))
-            {
-                return $"The model endpoint {uri.Host}:{uri.Port} did not answer within five seconds, "
-                    + "so no run was dispatched. This is the egress path, not the agent.";
-            }
-
-            return null;
-        }
-        catch (Exception exception)
-            when (exception is System.Net.Sockets.SocketException or AggregateException or IOException)
-        {
-            return $"The model endpoint {uri.Host}:{uri.Port} is unreachable, so no run was dispatched. "
-                + "This is the egress path, not the agent.";
         }
     }
 

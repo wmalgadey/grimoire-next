@@ -136,6 +136,91 @@ public sealed class UrlRetrievalTests
         Assert.Equal(Encoding.UTF8.GetByteCount(body), source.GetProperty("byteLength").GetInt32());
     }
 
+    [Fact]
+    public async Task ReChecksEveryRedirectHopRatherThanFollowingItBlindly()
+    {
+        // The origin answers with a redirect to a destination the policy refuses. The hub follows
+        // redirects by hand precisely so each hop passes the same check as the first (TS-20):
+        // here the scheme, which the hub checks itself on every hop. A redirect to a private
+        // address is refused on the same hop by the proxy's connect step — tests/egress covers that.
+        using var origin = new TestOrigin(
+            _ => (HttpStatusCode.Found, "text/plain", ""),
+            headers: new Dictionary<string, string> { ["Location"] = "file:///etc/passwd" });
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("no-op");
+        using var proxy = new FetchRouteFixture();
+        using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: Through(proxy));
+
+        var id = await SubmitUrl(hub, origin.Url("/article"));
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("failed", task.GetProperty("state").GetString());
+        Assert.Contains("file", task.GetProperty("failureReason").GetString()!, StringComparison.Ordinal);
+        Assert.True(task.GetProperty("run").ValueKind is JsonValueKind.Null, "A run was dispatched after a refused hop.");
+        Assert.Empty(await model.Requests(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AUrlSubmissionIsVisibleAtOnceHoweverSlowTheOrigin()
+    {
+        // SC-001 holds for URLs as well as text: retrieval is the first step of dispatch, not part
+        // of answering the submission.
+        using var origin = new TestOrigin(
+            _ => (HttpStatusCode.OK, "text/plain", "A slow article."), delay: TimeSpan.FromSeconds(6));
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("no-op");
+        using var proxy = new FetchRouteFixture();
+        using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: Through(proxy));
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var response = await hub.Submit("url", origin.Url("/article"), TestContext.Current.CancellationToken);
+        clock.Stop();
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(2), $"The task took {clock.Elapsed} to appear.");
+        var created = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal("queued", created.GetProperty("state").GetString());
+
+        var task = await hub.WaitForEnd(created.GetProperty("id").GetString()!, TestContext.Current.CancellationToken);
+        Assert.Equal("completed", task.GetProperty("state").GetString());
+        Assert.Equal("A slow article.", task.GetProperty("source").GetProperty("retrievedText").GetString());
+    }
+
+    [Fact]
+    public async Task AUrlTaskWhoseRetrievalAStoppedHubInterruptedIsNotStranded()
+    {
+        // The hub dies while fetching. The task is still queued with nothing retrieved; the next
+        // start retrieves it and the task reaches an end, rather than sitting queued forever with no
+        // source to run (FR-003, SC-006).
+        using var origin = new TestOrigin(
+            _ => (HttpStatusCode.OK, "text/plain", "An article worth keeping."), delay: TimeSpan.FromSeconds(4));
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("no-op");
+        using var proxy = new FetchRouteFixture();
+        var state = Path.Combine(Path.GetTempPath(), $"grimoire-state-{Guid.NewGuid():N}.db");
+
+        string id;
+        using (var first = await HubProcess.Start(
+                   wiki, model, state, Through(proxy), TestContext.Current.CancellationToken))
+        {
+            var response = await first.Client.PostAsJsonAsync(
+                "/api/tasks", new { kind = "url", value = origin.Url("/article") }, TestContext.Current.CancellationToken);
+            response.EnsureSuccessStatusCode();
+            id = (await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+                .GetProperty("id").GetString()!;
+
+            await Task.Delay(1_000, TestContext.Current.CancellationToken);
+            first.KillUngracefully();
+        }
+
+        using var second = await HubProcess.Start(
+            wiki, model, state, Through(proxy), TestContext.Current.CancellationToken);
+        var task = await second.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("completed", task.GetProperty("state").GetString());
+        Assert.Equal("An article worth keeping.", task.GetProperty("source").GetProperty("retrievedText").GetString());
+    }
+
     /// <summary>Routes the hub's retrieval through the proxy, as a container deployment does.</summary>
     private static Dictionary<string, string?> Through(FetchRouteFixture proxy) =>
         new() { ["GRIMOIRE_FETCH_PROXY"] = proxy.FetchRoute };
@@ -158,7 +243,13 @@ public sealed class TestOrigin : IDisposable
     private readonly HttpListener _listener = new();
     private readonly CancellationTokenSource _stopping = new();
 
-    public TestOrigin(Func<HttpListenerRequest, (HttpStatusCode Status, string ContentType, string Body)> respond)
+    /// <param name="respond">What the origin answers.</param>
+    /// <param name="headers">Extra response headers — a <c>Location</c> for a redirect.</param>
+    /// <param name="delay">How long the origin takes before it answers, for a slow origin.</param>
+    public TestOrigin(
+        Func<HttpListenerRequest, (HttpStatusCode Status, string ContentType, string Body)> respond,
+        IReadOnlyDictionary<string, string>? headers = null,
+        TimeSpan? delay = null)
     {
         var port = FreePort();
         Prefix = $"http://127.0.0.1:{port}/";
@@ -179,12 +270,43 @@ public sealed class TestOrigin : IDisposable
                     return;
                 }
 
-                var (status, contentType, body) = respond(context.Request);
-                context.Response.StatusCode = (int)status;
-                context.Response.ContentType = contentType;
-                var bytes = Encoding.UTF8.GetBytes(body);
-                await context.Response.OutputStream.WriteAsync(bytes, _stopping.Token);
-                context.Response.Close();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        if (delay is { } wait)
+                        {
+                            await Task.Delay(wait, _stopping.Token);
+                        }
+
+                        var (status, contentType, body) = respond(context.Request);
+                        context.Response.StatusCode = (int)status;
+                        context.Response.ContentType = contentType;
+                        foreach (var (name, value) in headers ?? new Dictionary<string, string>())
+                        {
+                            if (name is "Location")
+                            {
+                                context.Response.RedirectLocation = value;
+                            }
+                            else
+                            {
+                                context.Response.Headers[name] = value;
+                            }
+                        }
+
+                        var bytes = Encoding.UTF8.GetBytes(body);
+                        await context.Response.OutputStream.WriteAsync(bytes, _stopping.Token);
+                        context.Response.Close();
+                    }
+                    catch (Exception) when (_stopping.IsCancellationRequested)
+                    {
+                        // Stopped while answering.
+                    }
+                    catch (HttpListenerException)
+                    {
+                        // The caller went away while this origin was still answering.
+                    }
+                });
             }
         });
     }

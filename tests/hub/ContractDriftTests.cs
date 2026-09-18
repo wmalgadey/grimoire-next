@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc.Testing;
 using YamlDotNet.Serialization;
 
@@ -86,6 +87,65 @@ public sealed class ContractDriftTests : IClassFixture<HubFixture>
         }
     }
 
+    /// <summary>
+    /// The bodies, not just the operations: every request and response schema the contract describes
+    /// is compared field by field against the served one — property names, base types and
+    /// nullability, recursively, and every field the contract requires is required when served.
+    /// </summary>
+    /// <remarks>
+    /// Two things are compared more loosely, and deliberately. Enums: the hub's DTOs carry states as
+    /// strings, so the served document declares none to compare; the values are held to the contract
+    /// by the endpoint tests. Problem bodies: those are the framework's own <c>ProblemDetails</c>, in
+    /// which every field is optional, and making it match the contract's stricter schema would mean
+    /// wrapping the framework (constitution VII.1) — so there the contract's fields must all be
+    /// served, and nothing more is asserted.
+    /// </remarks>
+    [Fact]
+    public async System.Threading.Tasks.Task ServesEveryBodyWithTheShapeTheContractGivesIt()
+    {
+        using var client = _hub.CreateClient();
+        var served = JsonNode.Parse(
+            await client.GetStringAsync("/openapi/v1.json", TestContext.Current.CancellationToken))!;
+        var committed = ToJson(new DeserializerBuilder().Build().Deserialize<object>(File.ReadAllText(ContractPath)))!;
+
+        var drift = new List<string>();
+        foreach (var (path, operations) in committed["paths"]!.AsObject())
+        {
+            foreach (var (method, operation) in operations!.AsObject())
+            {
+                var servedOperation = served["paths"]?[path]?[method];
+                if (servedOperation is null)
+                {
+                    continue; // Reported by ServesExactlyTheOperationsTheContractDescribes.
+                }
+
+                var key = $"{method.ToUpperInvariant()} {path}";
+                if (Body(operation!["requestBody"], committed) is { } request)
+                {
+                    Compare(Shape(request, committed), Shape(Body(servedOperation["requestBody"], served), served),
+                        $"{key} request", drift, loose: false);
+                }
+
+                foreach (var (status, response) in operation["responses"]!.AsObject())
+                {
+                    if (Body(response, committed) is not { } expected)
+                    {
+                        continue;
+                    }
+
+                    var problem = Resolve(response, committed)?["content"]?["application/problem+json"] is not null;
+                    Compare(Shape(expected, committed),
+                        Shape(Body(servedOperation["responses"]?[status], served), served),
+                        $"{key} {status}", drift, loose: problem);
+                }
+            }
+        }
+
+        Assert.True(drift.Count is 0,
+            $"The served bodies have drifted from contracts/hub-api.openapi.yaml:{Environment.NewLine}  "
+            + string.Join($"{Environment.NewLine}  ", drift));
+    }
+
     [Fact]
     public void CoversBothTheTasksAndTheOperationsTags()
     {
@@ -165,6 +225,147 @@ public sealed class ContractDriftTests : IClassFixture<HubFixture>
 
         return operations;
     }
+
+    /// <summary>A schema reduced to what the comparison holds: type, nullability, fields, items.</summary>
+    private sealed record Schema(
+        string? Type,
+        bool Nullable,
+        IReadOnlyDictionary<string, Schema>? Properties,
+        IReadOnlyList<string> Required,
+        Schema? Items);
+
+    private static JsonNode? Resolve(JsonNode? node, JsonNode root)
+    {
+        while (node?["$ref"]?.GetValue<string>() is { } reference)
+        {
+            var parts = reference.TrimStart('#', '/').Split('/');
+            node = parts.Aggregate<string, JsonNode?>(root, (current, part) => current?[part]);
+        }
+
+        return node;
+    }
+
+    /// <summary>The JSON body schema of a request body or a response, if it has one.</summary>
+    private static JsonNode? Body(JsonNode? requestOrResponse, JsonNode root)
+    {
+        var content = Resolve(requestOrResponse, root)?["content"];
+        return content?["application/json"]?["schema"] ?? content?["application/problem+json"]?["schema"];
+    }
+
+    private static Schema? Shape(JsonNode? node, JsonNode root)
+    {
+        node = Resolve(node, root);
+        if (node is null)
+        {
+            return null;
+        }
+
+        // `oneOf: [X, {type: null}]` is how the contract spells a nullable reference.
+        if ((node["oneOf"] ?? node["anyOf"]) is JsonArray options)
+        {
+            var rest = options.Where(option => option?["type"]?.ToString() is not "null").ToList();
+            var shape = Shape(rest[0], root)!;
+            return shape with { Nullable = shape.Nullable || rest.Count < options.Count };
+        }
+
+        // `allOf` composes; the served document flattens. Merge properties, union what is required.
+        if (node["allOf"] is JsonArray parts)
+        {
+            var merged = new JsonObject { ["type"] = "object", ["properties"] = new JsonObject(), ["required"] = new JsonArray() };
+            foreach (var part in parts.Select(part => Resolve(part, root)!))
+            {
+                foreach (var (name, property) in part["properties"]?.AsObject() ?? [])
+                {
+                    merged["properties"]![name] = property?.DeepClone();
+                }
+
+                foreach (var required in part["required"]?.AsArray() ?? [])
+                {
+                    merged["required"]!.AsArray().Add(required?.DeepClone());
+                }
+            }
+
+            node = merged;
+        }
+
+        var types = node["type"] switch
+        {
+            JsonArray many => many.Select(type => type!.ToString()).ToList(),
+            JsonNode one => [one.ToString()],
+            null => node["properties"] is not null ? ["object"] : [],
+        };
+
+        // Integers are served as ["integer", "string"] with a pattern — the runtime's number
+        // handling — and are integers all the same.
+        var baseType = types.Contains("integer") ? "integer" : types.FirstOrDefault(type => type is not "null");
+
+        return new Schema(
+            baseType,
+            types.Contains("null"),
+            node["properties"]?.AsObject().ToDictionary(pair => pair.Key, pair => Shape(pair.Value, root)!),
+            node["required"]?.AsArray().Select(name => name!.ToString()).ToList() ?? [],
+            baseType is "array" ? Shape(node["items"], root) : null);
+    }
+
+    private static void Compare(Schema? contract, Schema? served, string at, List<string> drift, bool loose)
+    {
+        if (contract is null)
+        {
+            return;
+        }
+
+        if (served is null)
+        {
+            drift.Add($"{at}: described by the contract, served with no body");
+            return;
+        }
+
+        if (!loose && contract.Type != served.Type)
+        {
+            drift.Add($"{at}: contract type '{contract.Type}', served '{served.Type}'");
+        }
+
+        if (!loose && contract.Nullable != served.Nullable)
+        {
+            drift.Add($"{at}: contract nullable={contract.Nullable}, served nullable={served.Nullable}");
+        }
+
+        var contractProperties = contract.Properties ?? new Dictionary<string, Schema>();
+        var servedProperties = served.Properties ?? new Dictionary<string, Schema>();
+        foreach (var (name, property) in contractProperties)
+        {
+            if (!servedProperties.TryGetValue(name, out var servedProperty))
+            {
+                drift.Add($"{at}.{name}: in the contract, not served");
+                continue;
+            }
+
+            Compare(property, servedProperty, $"{at}.{name}", drift, loose);
+        }
+
+        if (!loose)
+        {
+            drift.AddRange(servedProperties.Keys.Except(contractProperties.Keys)
+                .Select(name => $"{at}.{name}: served, not in the contract"));
+            drift.AddRange(contract.Required.Except(served.Required)
+                .Select(name => $"{at}.{name}: required by the contract, optional as served"));
+        }
+
+        if (contract.Items is not null)
+        {
+            Compare(contract.Items, served.Items, $"{at}[]", drift, loose);
+        }
+    }
+
+    /// <summary>YamlDotNet's object graph as JSON, so both documents are read by one comparison.</summary>
+    private static JsonNode? ToJson(object? yaml) => yaml switch
+    {
+        Dictionary<object, object> map => new JsonObject(
+            map.Select(pair => KeyValuePair.Create(pair.Key.ToString()!, ToJson(pair.Value)))),
+        List<object> list => new JsonArray(list.Select(ToJson).ToArray()),
+        null => null,
+        var scalar => JsonValue.Create(scalar.ToString()),
+    };
 
     private static string Describe(IReadOnlyList<string> keys) =>
         keys.Count is 0 ? "(none)" : string.Join(", ", keys);

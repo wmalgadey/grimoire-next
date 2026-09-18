@@ -48,6 +48,29 @@ public sealed class NoChangeTests
     }
 
     [Fact]
+    public async Task LeavesNothingBehindWhenTheRunWroteOnlyFilesTheWikiIgnores()
+    {
+        // The tree matches the tip, so nothing is committed — and the ignored file is in no commit,
+        // so it must not survive the run for the next one to read (FR-016, FR-017).
+        using var wiki = new WikiRepositoryFixture(new Dictionary<string, string>
+        {
+            ["index.md"] = "# Index\n",
+            [".gitignore"] = "scratch/\n",
+        });
+        var tip = wiki.Head();
+        using var model = ScriptedModelFixture.Start("writes-ignored-only");
+        using var hub = GrimoireHub.Start(wiki, model);
+
+        var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("completed", task.GetProperty("state").GetString());
+        Assert.True(task.GetProperty("run").GetProperty("changedNothing").GetBoolean());
+        Assert.Equal(tip, wiki.Head());
+        Assert.False(wiki.Exists("scratch/notes.md"), "An ignored file the run wrote survived it.");
+    }
+
+    [Fact]
     public async Task StatesChangedNothingExplicitlySoANoOpDoesNotReadAsBroken()
     {
         using var wiki = new WikiRepositoryFixture();

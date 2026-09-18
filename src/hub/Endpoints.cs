@@ -55,13 +55,11 @@ public static class Endpoints
         return app;
     }
 
-    private static async Task<IResult> SubmitSource(
+    private static IResult SubmitSource(
         Contracts.Submission submission,
         SqliteStore store,
         RunQueue queue,
-        UrlFetch urlFetch,
-        ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
+        ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("Grimoire.Hub.Endpoints");
 
@@ -83,19 +81,9 @@ public static class Endpoints
         store.AddTask(task);
         logger.LogInformation("grimoire.task.created {TaskId} {Kind}", task.Id, submission.Kind);
 
-        if (kind is SourceKind.Url)
-        {
-            // Retrieved before dispatch, so a run is never given a source that does not exist.
-            // Deliberately awaited: the task is already created and openable, and the caller is
-            // told about a refusal in the same breath as the task (FR-003).
-            await RetrieveBeforeDispatch(task, store, urlFetch, logger, cancellationToken);
-            var retrieved = store.GetTask(task.Id)!;
-            if (retrieved.State is TaskState.Failed)
-            {
-                return Results.Created($"/api/tasks/{task.Id}", TaskProjection.ToSummary(retrieved));
-            }
-        }
-
+        // A URL is retrieved as the first step of its task's dispatch, not here: the task is visible
+        // at once whatever the origin's speed (SC-001), and keeps its place in submission order
+        // (FR-019). A run is still never given a source that does not exist (FR-003).
         queue.Enqueue(task.Id);
         return Results.Created($"/api/tasks/{task.Id}", TaskProjection.ToSummary(store.GetTask(task.Id)!));
     }
@@ -188,11 +176,63 @@ public static class Endpoints
                 StatusCodes.Status409Conflict);
         }
 
-        store.RecordRevert(taskId, new RevertRecord(revertCommitSha, DateTimeOffset.UtcNow));
+        if (!RecordRevert(store, taskId, revertCommitSha, logger))
+        {
+            return Problem(
+                "The revert landed in the wiki but could not be recorded on the task.",
+                $"The wiki now has the revert commit {revertCommitSha}, but this task does not show it. "
+                + "An operator needs to reconcile the task with wiki history.",
+                StatusCodes.Status500InternalServerError);
+        }
+
         logger.LogInformation("grimoire.wiki.reverted {TaskId} {RevertCommitSha}", taskId, revertCommitSha);
         logger.LogInformation("grimoire.task.state_changed {TaskId} {State}", taskId, "reverted");
 
         return Results.Ok(Detail(store.GetTask(taskId)!, wiki, logger));
+    }
+
+    /// <summary>
+    /// Records a revert commit on its task. The commit is already a fact of wiki history that
+    /// nothing here can undo, so a failure to record it is retried and then said loudly, rather
+    /// than leaving a commit no task accounts for in silence (FR-025) — the same containment the
+    /// dispatcher applies to a run's commit.
+    /// </summary>
+    private static bool RecordRevert(SqliteStore store, string taskId, string revertCommitSha, ILogger logger)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                if (store.RecordRevert(taskId, new RevertRecord(revertCommitSha, DateTimeOffset.UtcNow)))
+                {
+                    return true;
+                }
+
+                logger.LogCritical(
+                    "The revert commit {RevertCommitSha} exists in the wiki, but task {TaskId} was no longer "
+                    + "a completed task when it was recorded. An operator needs to reconcile the task with "
+                    + "wiki history by hand.",
+                    revertCommitSha, taskId);
+                return false;
+            }
+            catch (Exception exception) when (attempt < 3)
+            {
+                logger.LogWarning(exception,
+                    "Retrying: the revert commit {RevertCommitSha} for task {TaskId} exists in the wiki but "
+                    + "recording it failed on attempt {Attempt}.",
+                    revertCommitSha, taskId, attempt);
+                Thread.Sleep(TimeSpan.FromMilliseconds(200 * attempt));
+            }
+            catch (Exception exception)
+            {
+                logger.LogCritical(exception,
+                    "The revert commit {RevertCommitSha} exists in the wiki, but task {TaskId} could not be "
+                    + "updated to reflect it after {Attempts} attempts. An operator needs to reconcile the "
+                    + "task with wiki history by hand.",
+                    revertCommitSha, taskId, attempt);
+                return false;
+            }
+        }
     }
 
     /// <summary>
@@ -239,29 +279,6 @@ public static class Endpoints
             "This ingest has already been reverted.",
         _ => "Revert is not available for this task.",
     };
-
-    private static async Task RetrieveBeforeDispatch(
-        Grimoire.Tasks.Task task,
-        SqliteStore store,
-        UrlFetch urlFetch,
-        ILogger logger,
-        CancellationToken cancellationToken)
-    {
-        var result = await urlFetch.Retrieve(task.Source.SubmittedValue, cancellationToken);
-
-        if (!result.Succeeded)
-        {
-            // The task fails with the reason and no run is dispatched. `retrievedText` stays
-            // permanently null (FR-003).
-            store.FailTask(task.Id, result.Failure!, DateTimeOffset.UtcNow);
-            logger.LogInformation(
-                "grimoire.task.state_changed {TaskId} {State} {FailureReason}", task.Id, "failed", result.Failure);
-            return;
-        }
-
-        store.AttachRetrievedText(
-            task.Id, result.Text!, DateTimeOffset.UtcNow, Encoding.UTF8.GetByteCount(result.Text!));
-    }
 
     private static IResult Problem(string title, string detail, int status) =>
         Results.Problem(detail: detail, title: title, statusCode: status);

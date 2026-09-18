@@ -44,7 +44,7 @@ public sealed class ContainmentInstructionAndInputTests : IDisposable
     public async Task AdversarialTaskInputProducesNoEffectiveToolOutsideTheGrantedPair()
     {
         using var wiki = new WikiRepositoryFixture();
-        using var model = ScriptedModelFixture.Start("escape-attempts");
+        using var model = await AimedAtTheCanaries();
         using var hub = GrimoireHub.Start(wiki, model);
 
         var adversarial = $"""
@@ -58,7 +58,9 @@ public sealed class ContainmentInstructionAndInputTests : IDisposable
         var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
 
         AssertOnlyGrantedToolsTookEffect(task);
+        AssertEveryCanaryWasAimedAt(task);
         AssertEveryCanaryIsUntouched();
+        await AssertNoCanaryContentReachedTheModel(model);
     }
 
     [Fact]
@@ -80,7 +82,7 @@ public sealed class ContainmentInstructionAndInputTests : IDisposable
             """, TestContext.Current.CancellationToken);
 
         using var wiki = new WikiRepositoryFixture();
-        using var model = ScriptedModelFixture.Start("escape-attempts");
+        using var model = await AimedAtTheCanaries();
         using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: new Dictionary<string, string?>
         {
             ["GRIMOIRE_INSTRUCTION"] = adversarialInstruction,
@@ -90,7 +92,9 @@ public sealed class ContainmentInstructionAndInputTests : IDisposable
         var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
 
         AssertOnlyGrantedToolsTookEffect(task);
+        AssertEveryCanaryWasAimedAt(task);
         AssertEveryCanaryIsUntouched();
+        await AssertNoCanaryContentReachedTheModel(model);
     }
 
     [Fact]
@@ -127,6 +131,45 @@ public sealed class ContainmentInstructionAndInputTests : IDisposable
         await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
 
         Assert.Equal(before, wiki.Snapshot());
+    }
+
+    /// <summary>
+    /// A model that does what the adversarial text asks: reaches for every canary with every tool,
+    /// the granted pair included. Without aiming at them, "untouched" would prove nothing.
+    /// </summary>
+    private async Task<ScriptedModelFixture> AimedAtTheCanaries()
+    {
+        var model = ScriptedModelFixture.Start("escape-toward-canaries");
+        await model.SetVariable("CANARY_ROOT", _canaryRoot, TestContext.Current.CancellationToken);
+        return model;
+    }
+
+    private void AssertEveryCanaryWasAimedAt(JsonElement task)
+    {
+        // The attempts happened and are on the record — the canaries survived being targeted, not
+        // being ignored.
+        var targets = ToolCalls(task).Select(call => call.GetProperty("target").GetString() ?? "").ToList();
+        foreach (var path in _canaries.Keys)
+        {
+            Assert.Contains(targets, target => target.Contains(Path.GetFileName(path), StringComparison.Ordinal)
+                                               && target.Contains(_canaryRoot, StringComparison.Ordinal));
+        }
+
+        Assert.Contains(ToolCalls(task), call =>
+            call.GetProperty("tool").GetString() is "mcp__wiki__write_page"
+            && call.GetProperty("outcome").GetString() is "refused");
+    }
+
+    private async Task AssertNoCanaryContentReachedTheModel(ScriptedModelFixture model)
+    {
+        // A read that "succeeded" somewhere would show up here, in a tool result sent back.
+        foreach (var body in await model.RequestBodies(TestContext.Current.CancellationToken))
+        {
+            foreach (var content in _canaries.Values)
+            {
+                Assert.DoesNotContain(content, body, StringComparison.Ordinal);
+            }
+        }
     }
 
     private static List<JsonElement> ToolCalls(JsonElement task) =>

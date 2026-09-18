@@ -86,6 +86,18 @@ public sealed class ScriptedModelFixture : IDisposable
     }
 
     /// <summary>
+    /// Sets a variable the double substitutes for <c>{{name}}</c> in the tool inputs it scripts, so a
+    /// script can aim at something only the suite knows — a canary path created for this test.
+    /// </summary>
+    public async Task SetVariable(string name, string value, CancellationToken cancellationToken)
+    {
+        using var client = new HttpClient();
+        var response = await client.PostAsync(
+            $"{BaseUrl}/__var/{Uri.EscapeDataString(name)}", new StringContent(value), cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
     /// What the double received, in arrival order — the record TS-04 asserts the source's bytes
     /// against and TS-07 compares timestamps against.
     /// </summary>

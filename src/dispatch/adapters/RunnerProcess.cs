@@ -11,7 +11,11 @@ namespace Grimoire.Dispatch.Adapters;
 /// </param>
 /// <param name="ExitCode">Non-zero means the process did not end normally.</param>
 /// <param name="Diagnostics">The runner's stderr. Diagnostics only, never a source of task state.</param>
-public sealed record RunnerExit(RunEndEvent? RunEnd, int ExitCode, string Diagnostics);
+/// <param name="StoppedAtElapsedCeiling">
+/// Whether the hub killed the process because the run reached its elapsed ceiling (FR-009) — as
+/// opposed to the process crashing on its own, or the hub shutting down.
+/// </param>
+public sealed record RunnerExit(RunEndEvent? RunEnd, int ExitCode, string Diagnostics, bool StoppedAtElapsedCeiling = false);
 
 /// <summary>
 /// Spawns the agent runner, one process per run and never reused
@@ -139,7 +143,11 @@ public sealed class RunnerProcess(string repositoryRoot, RunnerEnvironment envir
             // nothing it wrote will be committed (FR-009, FR-017).
             Kill(process);
             await process.WaitForExitAsync(CancellationToken.None);
-            return new RunnerExit(null, ExitCodeOf(process), diagnostics.ToString());
+            return new RunnerExit(
+                null,
+                ExitCodeOf(process),
+                diagnostics.ToString(),
+                StoppedAtElapsedCeiling: !cancellationToken.IsCancellationRequested);
         }
         finally
         {
@@ -179,7 +187,8 @@ public sealed class RunnerProcess(string repositoryRoot, RunnerEnvironment envir
 
 /// <summary>
 /// The runner's environment, exactly as contracts/deployment.md fixes it. Nothing else: no
-/// inherited process environment, no Anthropic credential, no git configuration, no hub paths.
+/// inherited process environment, no Anthropic credential, no git configuration, and no hub path
+/// but the instruction file the runner loads.
 /// </summary>
 /// <param name="EntryPointPath">Absolute path to <c>src/agentrun/dist/main.js</c>.</param>
 /// <param name="Variables">The complete environment the child gets.</param>
@@ -207,7 +216,7 @@ public sealed record RunnerEnvironment(string EntryPointPath, IReadOnlyDictionar
     {
         var variables = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? "/usr/local/bin:/usr/bin:/bin",
+            ["PATH"] = MinimalPath(Environment.GetEnvironmentVariable("PATH")),
             ["HOME"] = homeDirectory,
             ["ANTHROPIC_BASE_URL"] = modelBaseUrl,
             ["ANTHROPIC_AUTH_TOKEN"] = modelToken,
@@ -226,5 +235,20 @@ public sealed record RunnerEnvironment(string EntryPointPath, IReadOnlyDictionar
         };
 
         return new RunnerEnvironment(Path.Combine(repositoryRoot, RunnerProcess.EntryPoint), variables);
+    }
+
+    /// <summary>
+    /// Enough to find <c>node</c> and the base system directories, and nothing of the hub's own
+    /// <c>PATH</c> beyond that (contracts/deployment.md "Runner").
+    /// </summary>
+    public static string MinimalPath(string? hubPath)
+    {
+        var nodeDirectory = (hubPath ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault(directory => File.Exists(Path.Combine(directory, "node")));
+
+        return string.Join(
+            Path.PathSeparator,
+            new[] { nodeDirectory, "/usr/bin", "/bin" }.OfType<string>().Distinct(StringComparer.Ordinal));
     }
 }

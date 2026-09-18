@@ -40,7 +40,29 @@ public sealed class WikiMutation(GitCli git)
                 ? FallbackMessage(taskId)
                 : commitMessage;
 
-            return git.CommitAll(message);
+            var commit = git.CommitAll(message);
+
+            // What is left is what the commit did not take: files the wiki ignores. They are in no
+            // commit and cannot be reverted, so the next run must not find them (FR-017).
+            git.ResetWorkingTree();
+            return commit;
+        }
+        finally
+        {
+            _singleWriter.Release();
+        }
+    }
+
+    /// <summary>
+    /// Whether the working tree differs from the tip — ignored files aside, since no commit would
+    /// take them. Decides whether a successful run changed the wiki at all (FR-015, FR-016).
+    /// </summary>
+    public async Task<bool> HasUncommittedChanges(CancellationToken cancellationToken)
+    {
+        await _singleWriter.WaitAsync(cancellationToken);
+        try
+        {
+            return git.HasChanges();
         }
         finally
         {

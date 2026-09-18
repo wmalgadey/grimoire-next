@@ -102,18 +102,21 @@ public sealed class DispatchOrderingTests
     public async Task FailsTheRunWhenTheReportedGrantIsNotTheConfiguredOne()
     {
         // The hub records what it is told and asserts it equals the grant it configured; a
-        // mismatch fails the run rather than being logged and ignored
-        // (contracts/runner-protocol.md, "tool_grant"). With the real runner the two always
-        // agree, so this asserts the check exists by way of the recorded grant being the
-        // configured pair on every completed run.
+        // mismatch fails the run before `proceed` is ever sent, so the model is never invoked with
+        // a grant nobody decided on (contracts/runner-protocol.md, "tool_grant"; constitution II).
         using var wiki = new WikiRepositoryFixture();
+        var tipBefore = wiki.Head();
         using var model = ScriptedModelFixture.Start("read-then-write");
-        using var hub = GrimoireHub.Start(wiki, model);
+        using var runner = StubRunner.ReportsAWiderGrant();
+        using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: runner.Environment);
 
         var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
         var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, task.GetProperty("run").GetProperty("toolGrant").GetProperty("tools")
-            .EnumerateArray().Count());
+        Assert.Equal("failed", task.GetProperty("state").GetString());
+        Assert.Contains("did not configure", task.GetProperty("failureReason").GetString()!,
+            StringComparison.Ordinal);
+        Assert.Empty(await model.Requests(TestContext.Current.CancellationToken));
+        Assert.Equal(tipBefore, wiki.Head());
     }
 }

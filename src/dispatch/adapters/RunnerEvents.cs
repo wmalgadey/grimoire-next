@@ -82,7 +82,8 @@ public sealed record RunEndEvent(
     [property: JsonPropertyName("outcome")] string Outcome,
     [property: JsonPropertyName("failureReason")] string? FailureReason,
     [property: JsonPropertyName("commitMessage")] string? CommitMessage,
-    [property: JsonPropertyName("toolCallCount")] int ToolCallCount) : RunnerEvent
+    [property: JsonPropertyName("toolCallCount")] int ToolCallCount,
+    [property: JsonPropertyName("modelEndpointStatus")] string? ModelEndpointStatus = null) : RunnerEvent
 {
     /// <summary>Whether the agent stopped on its own or reported a failure.</summary>
     public RunOutcomeKind ToOutcome() => Outcome switch

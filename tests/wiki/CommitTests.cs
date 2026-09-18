@@ -28,6 +28,26 @@ public sealed class CommitTests
     }
 
     [Fact]
+    public async Task LeavesTheWorkingTreeEqualToTheTipAfterACommit()
+    {
+        // The run writes a .gitignore and a file it excludes. The commit takes the .gitignore; the
+        // excluded file is in no commit and cannot be reverted, so it must not stay behind for the
+        // next run to read (FR-015, FR-017).
+        using var wiki = new WikiRepositoryFixture();
+        var before = wiki.CommitCount();
+        using var model = ScriptedModelFixture.Start("writes-gitignore-and-ignored");
+        using var hub = GrimoireHub.Start(wiki, model);
+
+        var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("completed", task.GetProperty("state").GetString());
+        Assert.Equal(before + 1, wiki.CommitCount());
+        Assert.True(wiki.Exists(".gitignore"));
+        Assert.False(wiki.Exists("secret.md"), "A file in no commit survived the run.");
+    }
+
+    [Fact]
     public async Task RecordsTheCommitIdentityAndItsParentOnTheTask()
     {
         using var wiki = new WikiRepositoryFixture();

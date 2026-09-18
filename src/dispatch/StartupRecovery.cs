@@ -45,6 +45,10 @@ public sealed class StartupRecovery(
         foreach (var task in interrupted)
         {
             store.FailTask(task.Id, InterruptedReason, DateTimeOffset.UtcNow);
+            // The run ended when the previous process did; this is the first process able to say so.
+            logger.LogInformation(
+                "grimoire.run.ended {TaskId} {Outcome} {FailureReason} {ToolCallCount} {DurationMs}",
+                task.Id, "failed", InterruptedReason, task.Run?.ToolCalls.Count ?? 0, null);
             logger.LogInformation(
                 "grimoire.task.state_changed {TaskId} {State} {FailureReason}",
                 task.Id, "failed", InterruptedReason);

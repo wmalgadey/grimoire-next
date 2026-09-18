@@ -1,4 +1,4 @@
-using System.Net.Sockets;
+using Grimoire.Dispatch.Adapters;
 using Grimoire.Tasks.Adapters;
 using Grimoire.Wiki.Adapters;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -70,18 +70,32 @@ public static class Operations
             .WithSummary("Is the process up and serving?")
             .Produces<HealthBody>(StatusCodes.Status200OK);
 
-        app.MapGet("/readyz", async (HealthCheckService health, DrainState drain, HttpContext context) =>
+        app.MapGet("/readyz", async (
+                HealthCheckService health, DrainState drain, ILoggerFactory loggers, HttpContext context) =>
             {
                 var report = await health.CheckHealthAsync(context.RequestAborted);
                 var draining = drain.IsDraining;
                 var ready = !draining && report.Status is HealthStatus.Healthy;
 
+                string Check(string name) =>
+                    report.Entries.TryGetValue(name, out var entry) && entry.Status is HealthStatus.Healthy
+                        ? "ok"
+                        : "failed";
+
                 var body = new ReadinessBody(
                     ready ? "ready" : "not-ready",
                     draining,
-                    report.Entries.ToDictionary(
-                        entry => entry.Key,
-                        entry => entry.Value.Status is HealthStatus.Healthy ? "ok" : "failed"));
+                    new ReadinessChecks(Check(WikiRepositoryCheck), Check(StateDatabaseCheck), Check(EgressCheck)));
+
+                // The signal and its surface are one answer: logged from the same report the body
+                // is built from, so the two cannot disagree (plan IV, grimoire.hub.readiness).
+                loggers.CreateLogger("Grimoire.Hub.Operations").LogInformation(
+                    "grimoire.hub.readiness {Status} {Draining} {WikiRepo} {StateDb} {Egress}",
+                    body.Status,
+                    draining,
+                    body.Checks.WikiRepo,
+                    body.Checks.StateDb,
+                    body.Checks.Egress);
 
                 return ready
                     ? Results.Ok(body)
@@ -125,31 +139,12 @@ public static class Operations
         }
     }
 
-    private static HealthCheckResult CheckEgress(string modelBaseUrl)
-    {
-        // A TCP connect, not a model call: readiness asks whether the one permitted destination is
-        // reachable, so "the egress path is broken" stays distinguishable from "the agent failed"
-        // (plan IV, grimoire.run.model_endpoint_unreachable).
-        if (!Uri.TryCreate(modelBaseUrl, UriKind.Absolute, out var uri))
-        {
-            return HealthCheckResult.Unhealthy($"GRIMOIRE_MODEL_BASE_URL is not an absolute URL: '{modelBaseUrl}'.");
-        }
-
-        try
-        {
-            using var socket = new TcpClient();
-            if (!socket.ConnectAsync(uri.Host, uri.Port).Wait(TimeSpan.FromSeconds(2)))
-            {
-                return HealthCheckResult.Unhealthy($"{uri.Host}:{uri.Port} did not answer within two seconds.");
-            }
-
-            return HealthCheckResult.Healthy();
-        }
-        catch (Exception exception) when (exception is SocketException or AggregateException or IOException)
-        {
-            return HealthCheckResult.Unhealthy($"{uri.Host}:{uri.Port} is unreachable: {exception.Message}");
-        }
-    }
+    private static HealthCheckResult CheckEgress(string modelBaseUrl) =>
+        // Readiness asks whether the one permitted destination is reachable, so "the egress path
+        // is broken" stays distinguishable from "the agent failed" (plan IV).
+        ModelEndpointProbe.Unreachable(modelBaseUrl, TimeSpan.FromSeconds(2)) is { } reason
+            ? HealthCheckResult.Unhealthy(reason)
+            : HealthCheckResult.Healthy();
 
     /// <summary>The <c>/healthz</c> body, as the contract describes it.</summary>
     public sealed record HealthBody(string Status);
@@ -158,5 +153,12 @@ public static class Operations
     /// The <c>/readyz</c> body, as the contract describes it: the surface for
     /// <c>grimoire.hub.readiness</c>.
     /// </summary>
-    public sealed record ReadinessBody(string Status, bool Draining, IReadOnlyDictionary<string, string> Checks);
+    public sealed record ReadinessBody(string Status, bool Draining, ReadinessChecks Checks);
+
+    /// <summary>
+    /// One field per dependency, named as the contract names them — a fixed shape rather than a
+    /// dictionary, so the served document says which checks exist and the drift test can hold it to
+    /// the contract.
+    /// </summary>
+    public sealed record ReadinessChecks(string WikiRepo, string StateDb, string Egress);
 }

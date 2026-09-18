@@ -171,6 +171,75 @@ public sealed class SqliteStoreTests : IDisposable
     }
 
     [Fact]
+    public void AFinishedRunCannotBeRewrittenByALateFailure()
+    {
+        // The shutdown path and the dispatcher can both try to settle one run. Whichever writes
+        // first stands: the recorded outcome, reason, commit and tool calls of a finished run are
+        // never altered afterwards (FR-023).
+        using var store = NewStore();
+        var at = new DateTimeOffset(2026, 9, 16, 14, 0, 0, TimeSpan.Zero);
+        store.AddTask(QueuedTask("t-5", at));
+        store.StartRun("t-5", NewRun(at), at);
+        store.AppendToolCall("t-5", new ToolCall(1, "mcp__wiki__write_page", "a.md", ToolCallOutcome.Ok, null, at));
+        Assert.True(store.EndRun("t-5", RunOutcomeKind.Completed, null, new WikiCommit("sha-a", "sha-p", "m", at), 10, at));
+
+        Assert.False(store.FailTask("t-5", "shutting down", at));
+        Assert.False(store.EndRun("t-5", RunOutcomeKind.Failed, "late", null, 20, at));
+        Assert.False(store.AppendToolCall(
+            "t-5", new ToolCall(2, "mcp__wiki__write_page", "b.md", ToolCallOutcome.Ok, null, at)));
+
+        var read = store.GetTask("t-5")!;
+        Assert.Equal(TaskState.Completed, read.State);
+        Assert.Null(read.FailureReason);
+        Assert.Equal(RunOutcomeKind.Completed, read.Run!.Outcome);
+        Assert.Equal("sha-a", read.Run.Commit!.Sha);
+        Assert.Single(read.Run.ToolCalls);
+    }
+
+    [Fact]
+    public void OnlyACompletedTaskCanBeReverted()
+    {
+        using var store = NewStore();
+        var at = new DateTimeOffset(2026, 9, 16, 15, 0, 0, TimeSpan.Zero);
+        store.AddTask(QueuedTask("t-6", at));
+        store.StartRun("t-6", NewRun(at), at);
+        Assert.True(store.EndRun("t-6", RunOutcomeKind.Failed, "it failed", null, 10, at));
+
+        Assert.False(store.RecordRevert("t-6", new RevertRecord("sha-revert", at)));
+
+        var read = store.GetTask("t-6")!;
+        Assert.Equal(TaskState.Failed, read.State);
+        Assert.Null(read.Revert);
+    }
+
+    [Fact]
+    public void ARevertIsRecordedOnce()
+    {
+        using var store = NewStore();
+        var at = new DateTimeOffset(2026, 9, 16, 16, 0, 0, TimeSpan.Zero);
+        store.AddTask(QueuedTask("t-7", at));
+        store.StartRun("t-7", NewRun(at), at);
+        store.EndRun("t-7", RunOutcomeKind.Completed, null, new WikiCommit("sha-a", "sha-p", "m", at), 10, at);
+
+        Assert.True(store.RecordRevert("t-7", new RevertRecord("sha-first", at)));
+        Assert.False(store.RecordRevert("t-7", new RevertRecord("sha-second", at)));
+
+        Assert.Equal("sha-first", store.GetTask("t-7")!.Revert!.RevertCommitSha);
+    }
+
+    [Fact]
+    public void FailingAQueuedTaskStillWorks()
+    {
+        // Retrieval failures and the unreachable-endpoint probe fail a task before any run exists.
+        using var store = NewStore();
+        var at = new DateTimeOffset(2026, 9, 16, 17, 0, 0, TimeSpan.Zero);
+        store.AddTask(QueuedTask("t-8", at));
+
+        Assert.True(store.FailTask("t-8", "could not be retrieved", at));
+        Assert.Equal(TaskState.Failed, store.GetTask("t-8")!.State);
+    }
+
+    [Fact]
     public void ListsTasksNewestFirstAndPagesWithACursor()
     {
         using var store = NewStore();

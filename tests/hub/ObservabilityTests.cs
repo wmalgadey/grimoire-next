@@ -176,6 +176,32 @@ public sealed class ObservabilityTests
     }
 
     [Fact]
+    public async Task ReadinessIsEmittedWithEachCheckAndReachesTheReadyzBody()
+    {
+        // grimoire.hub.readiness: "should this replica be taking traffic?" Emitted from the
+        // readiness path itself, so the log line and the /readyz body are the same answer. No model
+        // is started, so the egress check fails and the other two pass — every field has to carry
+        // its own value, not a shared one.
+        using var wiki = new WikiRepositoryFixture();
+        using var hub = await HubProcess.Start(wiki, cancellationToken: TestContext.Current.CancellationToken);
+
+        using var readyz = await hub.Client.GetAsync("/readyz", TestContext.Current.CancellationToken);
+        var body = await readyz.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        var checks = body.GetProperty("checks");
+        Assert.Equal("ok", checks.GetProperty("wikiRepo").GetString());
+        Assert.Equal("ok", checks.GetProperty("stateDb").GetString());
+        Assert.Equal("failed", checks.GetProperty("egress").GetString());
+
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+        var line = Assert.Single(hub.Stdout, line => line.Contains("grimoire.hub.readiness", StringComparison.Ordinal));
+        var state = JsonDocument.Parse(line).RootElement.GetProperty("State");
+        Assert.Equal("ok", state.GetProperty("WikiRepo").GetString());
+        Assert.Equal("ok", state.GetProperty("StateDb").GetString());
+        Assert.Equal("failed", state.GetProperty("Egress").GetString());
+        Assert.Equal("not-ready", state.GetProperty("Status").GetString());
+    }
+
+    [Fact]
     public async Task EmitsEveryUs1SignalAsStructuredJsonOnStdout()
     {
         // The transport half of the gate: structured JSON on stdout, one event per line — the
@@ -183,18 +209,34 @@ public sealed class ObservabilityTests
         // a real process, because in-process hosting captures logs differently than production.
         var logs = await HubProcess.RunOneIngest("read-then-write", TestContext.Current.CancellationToken);
 
-        foreach (var signal in new[]
-                 {
-                     "grimoire.task.created",
-                     "grimoire.task.state_changed",
-                     "grimoire.run.dispatched",
-                     "grimoire.run.tool_call",
-                     "grimoire.run.ended",
-                     "grimoire.wiki.committed",
-                 })
-        {
-            Assert.Contains(logs, line => line.Contains(signal, StringComparison.Ordinal));
-        }
+        // The declared fields, not just the name: a row without them answers no question (plan IV).
+        var created = State(logs, "grimoire.task.created").Single();
+        Assert.False(string.IsNullOrEmpty(created.GetProperty("TaskId").GetString()));
+        Assert.Equal("text", created.GetProperty("Kind").GetString());
+
+        Assert.Contains(State(logs, "grimoire.task.state_changed"),
+            state => state.GetProperty("State").GetString() == "completed");
+
+        var dispatched = State(logs, "grimoire.run.dispatched").Single();
+        Assert.Matches("^[0-9a-f]{64}$", dispatched.GetProperty("InstructionVersion").GetString()!);
+        Assert.Equal("mcp__wiki__read_page,mcp__wiki__write_page", dispatched.GetProperty("ToolGrant").GetString());
+
+        var calls = State(logs, "grimoire.run.tool_call").ToList();
+        Assert.Equal([1, 2], calls.Select(call => call.GetProperty("Seq").GetInt32()));
+        Assert.Equal(["mcp__wiki__read_page", "mcp__wiki__write_page"], calls.Select(call => call.GetProperty("Tool").GetString()));
+        Assert.Equal(["index.md", "topics/scripted.md"], calls.Select(call => call.GetProperty("Target").GetString()));
+        Assert.All(calls, call => Assert.Equal("ok", call.GetProperty("Outcome").GetString()));
+
+        // Exactly once per run: a second event would make "did it finish?" ambiguous.
+        var ended = State(logs, "grimoire.run.ended").Single();
+        Assert.Equal("completed", ended.GetProperty("Outcome").GetString());
+        Assert.Equal(JsonValueKind.Null, ended.GetProperty("FailureReason").ValueKind);
+        Assert.Equal(2, ended.GetProperty("ToolCallCount").GetInt32());
+        Assert.True(ended.GetProperty("DurationMs").GetInt32() > 0);
+
+        var committed = State(logs, "grimoire.wiki.committed").Single();
+        Assert.Matches("^[0-9a-f]{40}$", committed.GetProperty("CommitSha").GetString()!);
+        Assert.Equal(1, committed.GetProperty("FilesChanged").GetInt32());
 
         // One event per line, every line is JSON, and every event says when it happened — in UTC,
         // as ISO 8601, so lines from different sources order and join without a timezone guess.
@@ -205,6 +247,36 @@ public sealed class ObservabilityTests
             Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$", timestamp.GetString()!);
         }
     }
+
+    [Fact]
+    public async Task ModelEndpointErrorsCarryTheStatusTheEndpointAnswered()
+    {
+        // The proxy is reachable and answers with an error of its own — the case a TCP probe cannot
+        // see. The signal says which status, and the task says it is the egress path, not the agent.
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("endpoint-refuses");
+        using var hub = await HubProcess.Start(wiki, model, cancellationToken: TestContext.Current.CancellationToken);
+
+        var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
+        var task = await hub.WaitForEnd(id, TestContext.Current.CancellationToken);
+
+        Assert.Equal("failed", task.GetProperty("state").GetString());
+        Assert.Contains("HTTP 403", task.GetProperty("failureReason").GetString()!, StringComparison.Ordinal);
+
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+        var signal = State(hub.Stdout, "grimoire.run.model_endpoint_unreachable").Single();
+        Assert.Equal(id, signal.GetProperty("TaskId").GetString());
+        Assert.Equal("403", signal.GetProperty("Status").GetString());
+        Assert.Equal(model.BaseUrl, signal.GetProperty("Endpoint").GetString());
+    }
+
+    /// <summary>The structured state of every stdout event carrying a signal, in emission order.</summary>
+    private static IEnumerable<JsonElement> State(IEnumerable<string> logs, string signal) =>
+        logs.Where(line => line.Contains(signal, StringComparison.Ordinal))
+            .Select(line => JsonDocument.Parse(line).RootElement)
+            .Where(root => root.GetProperty("State").GetProperty("{OriginalFormat}").GetString()!
+                .StartsWith(signal + " ", StringComparison.Ordinal))
+            .Select(root => root.GetProperty("State").Clone());
 }
 
 /// <summary>Groups the observability suites so they do not contend for the same environment.</summary>

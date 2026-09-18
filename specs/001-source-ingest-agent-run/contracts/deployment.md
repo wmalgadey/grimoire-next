@@ -77,16 +77,18 @@ refused. The proxy is not a forward proxy.
 
 | Variable | Value |
 |----------|-------|
-| `PATH` | minimal, enough to find `node` |
+| `PATH` | minimal: the directory holding `node`, then `/usr/bin` and `/bin` |
 | `HOME` | per-run directory on `tmpfs`, discarded with the run |
 | `ANTHROPIC_BASE_URL` | from `GRIMOIRE_MODEL_BASE_URL` |
 | `ANTHROPIC_AUTH_TOKEN` | from `GRIMOIRE_MODEL_TOKEN`; sent as `Authorization: Bearer` |
 | `ANTHROPIC_CUSTOM_HEADERS` | `X-Grimoire-Run: <runId>` — joins the proxy access log to a task |
 | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | `1` — **required**, see below |
+| `GRIMOIRE_INSTRUCTION` | absolute path of the instruction file the runner loads, resolved by the hub from its own `GRIMOIRE_INSTRUCTION` |
 | `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` | `1` — tests only, against the scripted model |
 
-Nothing else. No inherited process environment, no Anthropic credential, no git configuration, no
-hub paths.
+Nothing else. No inherited process environment, no Anthropic credential, no git configuration, and
+no hub path but the instruction file — the runner reads it to announce its version (FR-014), and no
+other hub path reaches it.
 
 > **Why `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` is required, not advisory**: Claude Code
 > otherwise sends version checks, telemetry, release notes, and third-party requests **outside** the

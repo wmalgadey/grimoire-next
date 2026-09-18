@@ -61,10 +61,9 @@ public sealed class RunOutcomeHandler(WikiMutation wiki)
 
     private async Task<RunSettlement> Commit(string taskId, RunOutcome.Changed changed, CancellationToken cancellationToken)
     {
+        // Commits, and leaves the working tree equal to the new tip — a file the run wrote that the
+        // wiki ignores is in no commit, so it does not survive the run (FR-015, FR-017).
         var commit = await wiki.CommitRun(taskId, changed.CommitMessage, cancellationToken);
-
-        // The agent said it changed something and the working tree says otherwise — for example
-        // it wrote a page's own content back. That is a no-change run, not a failure.
         return new RunSettlement(commit, null, changed.ToolCallCount);
     }
 
