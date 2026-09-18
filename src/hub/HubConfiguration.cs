@@ -49,8 +49,9 @@ public enum LogFormat
 /// <c>GRIMOIRE_RUN_MAX_ELAPSED_MS</c> — the elapsed half of the run limit (FR-009).
 /// </param>
 /// <param name="FetchProxy">
-/// <c>GRIMOIRE_FETCH_PROXY</c> — the proxy's fetch route used by URL retrieval (FR-003). Required
-/// in containers, absent when the hub runs as a plain process on a developer machine.
+/// <c>GRIMOIRE_FETCH_PROXY</c> — the URL of the proxy's fetch route used by URL retrieval (FR-003),
+/// e.g. <c>http://egress:8080/fetch</c>; the hub addresses it as <c>?url=…</c>. Required in
+/// containers, absent when the hub runs as a plain process on a developer machine.
 /// </param>
 /// <param name="LogFormat">
 /// <c>GRIMOIRE_LOG_FORMAT</c> — <c>json</c> (the default) or <c>text</c>, for reading the log by
@@ -89,6 +90,12 @@ public sealed record HubConfiguration(
         var maxToolCalls = PositiveInteger(lookup, "GRIMOIRE_RUN_MAX_TOOL_CALLS", DefaultRunMaxToolCalls, problems);
         var maxElapsedMs = PositiveInteger(lookup, "GRIMOIRE_RUN_MAX_ELAPSED_MS", DefaultRunMaxElapsedMs, problems);
         var fetchProxy = Optional(lookup, "GRIMOIRE_FETCH_PROXY");
+        if (fetchProxy is not null
+            && (!Uri.TryCreate(fetchProxy, UriKind.Absolute, out var fetchRoute) || fetchRoute.Scheme is not ("http" or "https")))
+        {
+            problems.Add($"GRIMOIRE_FETCH_PROXY must be the absolute http(s) URL of the proxy's fetch route; it is '{fetchProxy}'.");
+        }
+
         var logFormat = ReadLogFormat(lookup, problems);
 
         if (problems.Count > 0)

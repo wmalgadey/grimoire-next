@@ -24,30 +24,46 @@ public sealed record RetrievalResult(string? Text, string? Failure)
 /// <remarks>
 /// URL retrieval is the one place a user's input becomes an outbound request, so it is also the
 /// one place server-side request forgery has to be refused (research R16). In a container the
-/// request goes through <c>GRIMOIRE_FETCH_PROXY</c>, which enforces the same policy independently
-/// — two checks, because the in-process one gives the operator a readable reason and the network
-/// one makes the deny-all posture real (ADR-0010).
+/// request goes to the egress proxy's fetch route, <c>GRIMOIRE_FETCH_PROXY</c>, which enforces the
+/// same policy independently — two checks, because the in-process one protects a hub running with
+/// no proxy and the proxy's one sees the actual connection (ADR-0010).
+///
+/// The route is addressed explicitly — <c>GET {GRIMOIRE_FETCH_PROXY}?url=…</c> — not used as a
+/// forward proxy: an https destination through a forward proxy is a <c>CONNECT</c> tunnel, which
+/// the proxy could neither inspect nor serve.
 /// </remarks>
-public sealed class UrlFetch(HttpClient httpClient, bool checksDestinationItself)
+public sealed class UrlFetch(HttpClient httpClient, Uri? fetchRoute)
 {
+    /// <summary>
+    /// The response header in which the fetch route says why it refused or could not retrieve a
+    /// destination. Its text becomes the task's failure reason.
+    /// </summary>
+    public const string ProxyReasonHeader = "X-Grimoire-Egress-Reason";
+
     /// <summary>
     /// Whether this client applies the destination policy itself.
     ///
     /// It does when it connects directly — a plain process on a developer machine. It does not
-    /// when a fetch proxy is configured, because then the hub connects to the proxy and never
+    /// when a fetch route is configured, because then the hub connects to the proxy and never
     /// resolves the submitted host at all; the proxy is what reaches the destination and the proxy
     /// is what refuses it (ADR-0010, TS-21). Checking here as well would refuse every destination
     /// the hub itself cannot route to, which in a container is all of them.
     /// </summary>
-    public bool ChecksDestinationItself { get; } = checksDestinationItself;
+    public bool ChecksDestinationItself => fetchRoute is null;
 
     /// <summary>
-    /// Builds a client routed through the egress proxy when there is one, with redirects capped
-    /// and each hop re-checked rather than trusted.
+    /// Builds a client that goes through the egress proxy's fetch route when there is one, with
+    /// redirects capped and each hop re-checked rather than trusted.
     /// </summary>
-    public static UrlFetch Create(string? fetchProxy)
+    /// <exception cref="ArgumentException"><paramref name="fetchRoute"/> is not an absolute http(s) URL.</exception>
+    public static UrlFetch Create(string? fetchRoute)
     {
-        var checksDestinationItself = string.IsNullOrWhiteSpace(fetchProxy);
+        Uri? route = null;
+        if (!string.IsNullOrWhiteSpace(fetchRoute)
+            && (!Uri.TryCreate(fetchRoute, UriKind.Absolute, out route) || route.Scheme is not ("http" or "https")))
+        {
+            throw new ArgumentException($"GRIMOIRE_FETCH_PROXY must be an absolute http(s) URL; it is '{fetchRoute}'.");
+        }
 
         // A plain HttpClientHandler resolves the hostname once for Refuse(uri) below and again,
         // independently, for the actual connection — a DNS-rebinding host can answer the first
@@ -60,22 +76,14 @@ public sealed class UrlFetch(HttpClient httpClient, bool checksDestinationItself
             // Redirects are followed by hand below so every hop passes the same policy: an origin
             // that redirects to 169.254.169.254 must not be followed there.
             AllowAutoRedirect = false,
-            ConnectCallback = checksDestinationItself ? ConnectToACheckedAddress : null,
+            UseProxy = false,
+            // Through the fetch route the hub connects to the proxy — on the deployment's private
+            // network, which this policy would refuse — and never resolves the submitted host at
+            // all; the proxy is what reaches the destination and the proxy is what refuses it.
+            ConnectCallback = route is null ? ConnectToACheckedAddress : null,
         };
 
-        if (!string.IsNullOrWhiteSpace(fetchProxy))
-        {
-            // Routed through the fetch proxy: the hub connects to the proxy, never resolving the
-            // submitted host itself, so pinning a destination address here would be wrong — the
-            // proxy is what reaches the destination and the proxy is what enforces the policy
-            // (ADR-0010).
-            handler.Proxy = new WebProxy(fetchProxy);
-            handler.UseProxy = true;
-        }
-
-        return new UrlFetch(
-            new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) },
-            checksDestinationItself);
+        return new UrlFetch(new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) }, route);
     }
 
     /// <summary>
@@ -162,7 +170,7 @@ public sealed class UrlFetch(HttpClient httpClient, bool checksDestinationItself
             HttpResponseMessage response;
             try
             {
-                response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                response = await httpClient.GetAsync(Through(uri), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or SocketException)
             {
@@ -185,7 +193,7 @@ public sealed class UrlFetch(HttpClient httpClient, bool checksDestinationItself
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    return Failed($"{uri} answered {(int)response.StatusCode} {response.ReasonPhrase}.");
+                    return Failed(Unsuccessful(uri, response));
                 }
 
                 var mediaType = response.Content.Headers.ContentType?.MediaType;
@@ -283,6 +291,32 @@ public sealed class UrlFetch(HttpClient httpClient, bool checksDestinationItself
             >= 224 => true,                                   // multicast and reserved
             _ => false,
         };
+    }
+
+    /// <summary>
+    /// The reason an unsuccessful answer becomes. Through the fetch route that is the proxy's own
+    /// account when it gives one — a refused destination reads as a refusal, not as a bare 403.
+    /// </summary>
+    private string Unsuccessful(Uri uri, HttpResponseMessage response) =>
+        fetchRoute is not null
+        && response.Headers.TryGetValues(ProxyReasonHeader, out var reasons)
+        && string.Join(" ", reasons) is { Length: > 0 } reason
+            ? $"{uri} was not retrieved: {reason}"
+            : $"{uri} answered {(int)response.StatusCode} {response.ReasonPhrase}.";
+
+    /// <summary>Where the request for <paramref name="uri"/> is actually sent.</summary>
+    private Uri Through(Uri uri)
+    {
+        if (fetchRoute is null)
+        {
+            return uri;
+        }
+
+        var query = $"url={Uri.EscapeDataString(uri.AbsoluteUri)}";
+        return new UriBuilder(fetchRoute)
+        {
+            Query = string.IsNullOrEmpty(fetchRoute.Query) ? query : $"{fetchRoute.Query.TrimStart('?')}&{query}",
+        }.Uri;
     }
 
     private static bool IsRedirect(HttpStatusCode status) =>

@@ -140,6 +140,21 @@ public sealed class ConfigurationTests
         Assert.Equal("http://egress:8080/fetch", Read(environment).FetchProxy);
     }
 
+    [Theory]
+    [InlineData("egress:8080/fetch")]
+    [InlineData("ftp://egress/fetch")]
+    public void RefusesAFetchProxyThatIsNotAnHttpUrl(string value)
+    {
+        // The hub addresses the fetch route itself (ADR-0010); a value it cannot address would
+        // otherwise surface as every URL submission failing, long after startup said nothing.
+        var environment = Complete();
+        environment["GRIMOIRE_FETCH_PROXY"] = value;
+
+        var failure = Assert.Throws<ConfigurationException>(() => Read(environment));
+
+        Assert.Contains("GRIMOIRE_FETCH_PROXY", failure.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void LogsStructuredJsonUnlessTextIsAskedFor()
     {

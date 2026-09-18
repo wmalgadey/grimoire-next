@@ -24,7 +24,7 @@ public sealed class UrlRetrievalTests
     {
         using var origin = new TestOrigin(_ => (HttpStatusCode.InternalServerError, "text/plain", "boom"));
         using var wiki = new WikiRepositoryFixture();
-        using var proxy = new ForwardProxyFixture();
+        using var proxy = new FetchRouteFixture();
         using var hub = GrimoireHub.Start(wiki, extraEnvironment: Through(proxy));
 
         var id = await SubmitUrl(hub, origin.Url("/article"));
@@ -41,7 +41,7 @@ public sealed class UrlRetrievalTests
     {
         using var origin = new TestOrigin(_ => (HttpStatusCode.InternalServerError, "text/plain", "boom"));
         using var wiki = new WikiRepositoryFixture();
-        using var proxy = new ForwardProxyFixture();
+        using var proxy = new FetchRouteFixture();
         using var hub = GrimoireHub.Start(wiki, extraEnvironment: Through(proxy));
 
         var id = await SubmitUrl(hub, origin.Url("/article"));
@@ -60,7 +60,7 @@ public sealed class UrlRetrievalTests
         using var wiki = new WikiRepositoryFixture();
         var before = wiki.Snapshot();
         var tip = wiki.Head();
-        using var proxy = new ForwardProxyFixture();
+        using var proxy = new FetchRouteFixture();
         using var hub = GrimoireHub.Start(wiki, extraEnvironment: Through(proxy));
 
         var id = await SubmitUrl(hub, origin.Url("/article"));
@@ -76,7 +76,7 @@ public sealed class UrlRetrievalTests
     {
         using var origin = new TestOrigin(_ => (HttpStatusCode.OK, "image/png", "PNG"));
         using var wiki = new WikiRepositoryFixture();
-        using var proxy = new ForwardProxyFixture();
+        using var proxy = new FetchRouteFixture();
         using var hub = GrimoireHub.Start(wiki, extraEnvironment: Through(proxy));
 
         var id = await SubmitUrl(hub, origin.Url("/picture.png"));
@@ -91,7 +91,7 @@ public sealed class UrlRetrievalTests
     public async Task FailsTheTaskWhenTheHostIsUnreachable()
     {
         using var wiki = new WikiRepositoryFixture();
-        using var proxy = new ForwardProxyFixture();
+        using var proxy = new FetchRouteFixture();
         using var hub = GrimoireHub.Start(wiki, extraEnvironment: Through(proxy));
 
         var id = await SubmitUrl(hub, "http://no-such-host.invalid/article");
@@ -107,7 +107,7 @@ public sealed class UrlRetrievalTests
     {
         using var origin = new TestOrigin(_ => (HttpStatusCode.InternalServerError, "text/plain", "boom"));
         using var wiki = new WikiRepositoryFixture();
-        using var proxy = new ForwardProxyFixture();
+        using var proxy = new FetchRouteFixture();
         using var hub = GrimoireHub.Start(wiki, extraEnvironment: Through(proxy));
 
         var id = await SubmitUrl(hub, origin.Url("/article"));
@@ -123,7 +123,7 @@ public sealed class UrlRetrievalTests
         using var origin = new TestOrigin(_ => (HttpStatusCode.OK, "text/plain; charset=utf-8", body));
         using var wiki = new WikiRepositoryFixture();
         using var model = ScriptedModelFixture.Start("no-op");
-        using var proxy = new ForwardProxyFixture();
+        using var proxy = new FetchRouteFixture();
         using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: Through(proxy));
 
         var id = await SubmitUrl(hub, origin.Url("/article"));
@@ -137,8 +137,8 @@ public sealed class UrlRetrievalTests
     }
 
     /// <summary>Routes the hub's retrieval through the proxy, as a container deployment does.</summary>
-    private static Dictionary<string, string?> Through(ForwardProxyFixture proxy) =>
-        new() { ["GRIMOIRE_FETCH_PROXY"] = proxy.Url };
+    private static Dictionary<string, string?> Through(FetchRouteFixture proxy) =>
+        new() { ["GRIMOIRE_FETCH_PROXY"] = proxy.FetchRoute };
 
     private static async Task<string> SubmitUrl(GrimoireHub hub, string url)
     {

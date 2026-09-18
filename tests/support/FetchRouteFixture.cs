@@ -3,23 +3,24 @@ using System.Net;
 namespace Grimoire.Tests.Support;
 
 /// <summary>
-/// A real forward proxy, standing in for the egress proxy's fetch route
-/// (contracts/deployment.md Topology).
+/// A real proxy speaking the egress proxy's fetch-route protocol — <c>GET /fetch?url=…</c> — but
+/// with no destination policy (contracts/deployment.md Topology).
 /// </summary>
 /// <remarks>
 /// Not a double of the proxy — it is a proxy; the double in this system is the LLM alone
-/// (constitution III.2). It exists because the hub's own destination policy refuses loopback, so a
-/// test listener on loopback is unreachable without one. That is the production arrangement too:
-/// with <c>GRIMOIRE_FETCH_PROXY</c> set the hub connects to the proxy and the proxy reaches the
-/// destination, which is why the SSRF policy is enforced in both places (ADR-0010).
+/// (constitution III.2). It exists because both destination policies refuse loopback, the hub's
+/// and the real proxy's (<c>tests/egress/</c>), so a test origin on loopback is unreachable through
+/// either. That is the production arrangement: with <c>GRIMOIRE_FETCH_PROXY</c> set the hub connects
+/// to the proxy and the proxy reaches the destination, which is why the policy is enforced in both
+/// places (ADR-0010).
 /// </remarks>
-public sealed class ForwardProxyFixture : IDisposable
+public sealed class FetchRouteFixture : IDisposable
 {
     private readonly HttpListener _listener = new();
     private readonly CancellationTokenSource _stopping = new();
     private readonly HttpClient _client = new(new HttpClientHandler { AllowAutoRedirect = false });
 
-    public ForwardProxyFixture()
+    public FetchRouteFixture()
     {
         var port = FreePort();
         Url = $"http://127.0.0.1:{port}";
@@ -29,8 +30,11 @@ public sealed class ForwardProxyFixture : IDisposable
         _ = Task.Run(Serve);
     }
 
-    /// <summary>What the hub is configured with as <c>GRIMOIRE_FETCH_PROXY</c>.</summary>
+    /// <summary>The proxy's base URL.</summary>
     public string Url { get; }
+
+    /// <summary>What the hub is configured with as <c>GRIMOIRE_FETCH_PROXY</c>.</summary>
+    public string FetchRoute => $"{Url}/fetch";
 
     /// <inheritdoc />
     public void Dispose()
@@ -69,10 +73,8 @@ public sealed class ForwardProxyFixture : IDisposable
 
     private async Task Forward(HttpListenerContext context)
     {
-        // A forward proxy receives the absolute URI as the request target.
-        var target = context.Request.RawUrl is { } raw && raw.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-            ? raw
-            : context.Request.Url?.ToString();
+        // The destination is named in the query, exactly as the egress proxy's fetch route takes it.
+        var target = context.Request.Url?.AbsolutePath == "/fetch" ? context.Request.QueryString["url"] : null;
 
         if (target is null)
         {
