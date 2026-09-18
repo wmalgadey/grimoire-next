@@ -59,7 +59,8 @@ no setting is read from a path an operator cannot set.
 | Variable | Required | Meaning |
 |----------|----------|---------|
 | `GRIMOIRE_EGRESS_MODEL_UPSTREAM` | yes | The single upstream the model route reaches, e.g. `https://api.anthropic.com` — the whole allowlist |
-| `GRIMOIRE_EGRESS_MODEL_CREDENTIAL` | yes | The upstream credential, attached as `x-api-key`. Held by this process and no other |
+| `GRIMOIRE_EGRESS_MODEL_API_KEY` | exactly one of these two | The upstream API key, attached as `x-api-key`. Held by this process and no other |
+| `GRIMOIRE_EGRESS_MODEL_AUTH_TOKEN` | exactly one of these two | The upstream OAuth-style token, attached as `Authorization: Bearer`. Held by this process and no other |
 | `GRIMOIRE_EGRESS_INTERNAL_TOKEN` | yes | The opaque token callers must present as `Authorization: Bearer`; the hub's `GRIMOIRE_MODEL_TOKEN` |
 | `ASPNETCORE_URLS` | no | Where the proxy listens; the image default is `http://+:8080` |
 

@@ -10,8 +10,8 @@ namespace Grimoire.Egress;
 /// <see cref="Current"/> does not change. It is a class and not an interface because there is one
 /// implementation and nothing external behind it (constitution V.4).
 /// </remarks>
-public sealed class CredentialProvider(string credential)
+public sealed class CredentialProvider(ModelCredential credential)
 {
     /// <summary>The credential to attach to the next upstream request.</summary>
-    public string Current() => credential;
+    public ModelCredential Current() => credential;
 }

@@ -8,15 +8,16 @@ namespace Grimoire.Egress;
 /// <c>GRIMOIRE_EGRESS_MODEL_UPSTREAM</c> — the one upstream the model route reaches. The allowlist
 /// is this single value: there is no second destination to configure.
 /// </param>
-/// <param name="ModelCredential">
-/// <c>GRIMOIRE_EGRESS_MODEL_CREDENTIAL</c> — the upstream credential. This process is its only
-/// holder in the deployment (ADR-0010).
+/// <param name="Credential">
+/// The upstream credential, from exactly one of <c>GRIMOIRE_EGRESS_MODEL_API_KEY</c> (attached as
+/// <c>x-api-key</c>) or <c>GRIMOIRE_EGRESS_MODEL_AUTH_TOKEN</c> (attached as
+/// <c>Authorization: Bearer</c>). This process is its only holder in the deployment (ADR-0010).
 /// </param>
 /// <param name="InternalToken">
 /// <c>GRIMOIRE_EGRESS_INTERNAL_TOKEN</c> — the opaque token callers present on the model route; the
 /// hub's <c>GRIMOIRE_MODEL_TOKEN</c> carries the same value.
 /// </param>
-public sealed record EgressConfiguration(Uri ModelUpstream, string ModelCredential, string InternalToken)
+public sealed record EgressConfiguration(Uri ModelUpstream, ModelCredential Credential, string InternalToken)
 {
     /// <summary>Reads the configuration, naming every missing or unusable variable at once.</summary>
     /// <exception cref="InvalidOperationException">Anything required is missing or unusable.</exception>
@@ -25,7 +26,7 @@ public sealed record EgressConfiguration(Uri ModelUpstream, string ModelCredenti
         var problems = new List<string>();
 
         var upstream = Required(lookup, "GRIMOIRE_EGRESS_MODEL_UPSTREAM", problems);
-        var credential = Required(lookup, "GRIMOIRE_EGRESS_MODEL_CREDENTIAL", problems);
+        var credential = ReadCredential(lookup, problems);
         var token = Required(lookup, "GRIMOIRE_EGRESS_INTERNAL_TOKEN", problems);
 
         Uri? upstreamUri = null;
@@ -44,6 +45,35 @@ public sealed record EgressConfiguration(Uri ModelUpstream, string ModelCredenti
         }
 
         return new EgressConfiguration(upstreamUri!, credential!, token!);
+    }
+
+    private static ModelCredential? ReadCredential(Func<string, string?> lookup, List<string> problems)
+    {
+        var apiKey = lookup("GRIMOIRE_EGRESS_MODEL_API_KEY");
+        var authToken = lookup("GRIMOIRE_EGRESS_MODEL_AUTH_TOKEN");
+        var hasApiKey = !string.IsNullOrWhiteSpace(apiKey);
+        var hasAuthToken = !string.IsNullOrWhiteSpace(authToken);
+
+        if (hasApiKey && hasAuthToken)
+        {
+            problems.Add(
+                "Set exactly one of GRIMOIRE_EGRESS_MODEL_API_KEY or GRIMOIRE_EGRESS_MODEL_AUTH_TOKEN, not both.");
+            return null;
+        }
+
+        if (hasApiKey)
+        {
+            return new ModelCredential(ModelCredentialKind.ApiKey, apiKey!);
+        }
+
+        if (hasAuthToken)
+        {
+            return new ModelCredential(ModelCredentialKind.AuthToken, authToken!);
+        }
+
+        problems.Add(
+            "One of GRIMOIRE_EGRESS_MODEL_API_KEY or GRIMOIRE_EGRESS_MODEL_AUTH_TOKEN is required and neither is set.");
+        return null;
     }
 
     private static string? Required(Func<string, string?> lookup, string name, List<string> problems)

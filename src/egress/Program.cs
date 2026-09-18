@@ -23,7 +23,7 @@ builder.Logging.AddJsonConsole(options =>
     options.JsonWriterOptions = new JsonWriterOptions { Indented = false };
 });
 
-builder.Services.AddSingleton(new CredentialProvider(configuration.ModelCredential));
+builder.Services.AddSingleton(new CredentialProvider(configuration.Credential));
 var (routes, clusters) = ModelRoute.Config(configuration);
 builder.Services.AddReverseProxy()
     .LoadFromMemory(routes, clusters)

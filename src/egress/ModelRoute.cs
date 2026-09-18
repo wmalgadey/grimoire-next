@@ -64,7 +64,8 @@ public static class ModelRoute
             headers.Remove("Proxy-Authorization");
             headers.Remove("x-api-key");
             headers.Remove(RunHeader);
-            headers.TryAddWithoutValidation("x-api-key", credentials.Current());
+            var (name, value) = credentials.Current().AsHeader();
+            headers.TryAddWithoutValidation(name, value);
             return ValueTask.CompletedTask;
         });
     }

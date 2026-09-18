@@ -56,7 +56,7 @@ public sealed class EgressProcess : IDisposable
     }
 
     /// <summary>Starts the proxy with <paramref name="modelUpstream"/> as its one allowlisted upstream.</summary>
-    public static async Task<EgressProcess> Start(string modelUpstream, CancellationToken cancellationToken)
+    public static async Task<EgressProcess> Start(string modelUpstream, CancellationToken cancellationToken, bool useAuthToken = false)
     {
         var port = FreePort();
         var assembly = Path.Combine(
@@ -77,7 +77,15 @@ public sealed class EgressProcess : IDisposable
         info.Environment["DOTNET_ROOT"] = Environment.GetEnvironmentVariable("DOTNET_ROOT");
         info.Environment["ASPNETCORE_URLS"] = $"http://127.0.0.1:{port}";
         info.Environment["GRIMOIRE_EGRESS_MODEL_UPSTREAM"] = modelUpstream;
-        info.Environment["GRIMOIRE_EGRESS_MODEL_CREDENTIAL"] = UpstreamCredential;
+        if (useAuthToken)
+        {
+            info.Environment["GRIMOIRE_EGRESS_MODEL_AUTH_TOKEN"] = UpstreamCredential;
+        }
+        else
+        {
+            info.Environment["GRIMOIRE_EGRESS_MODEL_API_KEY"] = UpstreamCredential;
+        }
+
         info.Environment["GRIMOIRE_EGRESS_INTERNAL_TOKEN"] = InternalToken;
 
         var process = Process.Start(info)

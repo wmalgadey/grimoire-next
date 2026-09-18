@@ -127,7 +127,7 @@ public sealed class ContainerDeployment : IAsyncDisposable
             "--network", internalNetwork, "--network-alias", "egress",
             "--read-only", "--tmpfs", "/tmp", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--env", "GRIMOIRE_EGRESS_MODEL_UPSTREAM=http://model:8787",
-            "--env", $"GRIMOIRE_EGRESS_MODEL_CREDENTIAL={UpstreamCredential}",
+            "--env", $"GRIMOIRE_EGRESS_MODEL_API_KEY={UpstreamCredential}",
             "--env", $"GRIMOIRE_EGRESS_INTERNAL_TOKEN={InternalToken}",
             BuiltImages.Egress,
         ]);

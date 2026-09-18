@@ -57,6 +57,29 @@ public sealed class ModelRouteTests
         Assert.Equal(EgressProcess.UpstreamCredential, received.Headers["x-api-key"]);
     }
 
+    [Fact]
+    public async Task AttachesAnAuthTokenAsABearerAuthorizationHeaderWhenConfiguredWithOne()
+    {
+        using var upstream = new UpstreamListener();
+        using var egress = await EgressProcess.Start(upstream.Url, Cancel, useAuthToken: true);
+        using var client = egress.Client();
+
+        using var request = ModelRequest(EgressProcess.InternalToken);
+        using var response = await client.SendAsync(request, Cancel);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var received = Assert.Single(upstream.Received);
+        Assert.Equal($"Bearer {EgressProcess.UpstreamCredential}", received.Headers["Authorization"]);
+        Assert.Null(received.Headers["x-api-key"]);
+
+        // Not under any header name: the internal token is meaningless outside the deployment and
+        // has no business reaching the upstream at all.
+        foreach (var name in received.Headers.AllKeys)
+        {
+            Assert.DoesNotContain(EgressProcess.InternalToken, received.Headers[name] ?? "", StringComparison.Ordinal);
+        }
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("not-the-internal-token")]
