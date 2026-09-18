@@ -42,8 +42,11 @@ shipped as its own image.
   token and attaches the upstream credential obtained from an injected credential provider.
 - The **content route** uses YARP's direct forwarder with a per-request destination, after the
   destination policy rejects non-`http(s)` schemes and loopback, link-local and private targets.
-- The **credential provider** is an ordinary service. A static implementation and a refreshing one
-  are the same interface.
+- The **credential provider** is an ordinary service with one method the model route calls for the
+  credential to attach. Today it returns a static value; a refreshing credential replaces its body,
+  and the model route does not change. It is a class, not an interface: there is one implementation
+  and nothing external behind it, and an interface would be introduced only when a second
+  implementation has to coexist with the first.
 
 Response buffering is disabled on both routes so streamed responses pass through as they arrive.
 

@@ -82,6 +82,11 @@
     <dl>
       <dt>Kind</dt>
       <dd data-testid="source-kind">{task.source.kind}</dd>
+      {#if task.source.kind === "url"}
+        <!-- The URL stays visible once its text is retrieved: it is what was submitted (FR-021). -->
+        <dt>URL</dt>
+        <dd data-testid="source-url"><code>{task.source.submittedValue}</code></dd>
+      {/if}
       <dt>Size</dt>
       <dd>{task.source.byteLength} bytes</dd>
     </dl>

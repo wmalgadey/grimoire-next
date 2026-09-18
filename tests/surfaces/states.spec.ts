@@ -71,9 +71,32 @@ test.describe("a task opens in every state", () => {
   });
 
   test.describe("a run that fails", () => {
-    test.use({ script: "escape-attempts" });
+    // Fails every time and promptly: the model endpoint answers with an error. "completed or
+    // failed" would let this test pass without the failed state ever being shown.
+    test.use({ script: "endpoint-refuses" });
 
     test("shows the failed state with a reason a person can act on", async ({ page, hub }) => {
+      await page.goto(hub.baseUrl);
+      await page.getByTestId("source-value").fill("A source whose run will fail.");
+      await page.getByTestId("submit").click();
+
+      await expect(async () => {
+        await page.getByTestId("refresh").click();
+        await expect(page.getByTestId("state")).toHaveText("failed");
+      }).toPass({ timeout: 60_000 });
+
+      // The reason says what to fix — here, that the egress path answered with an error, not that
+      // the agent misjudged anything (FR-018).
+      await expect(page.getByTestId("failure-reason")).toBeVisible();
+      await expect(page.getByTestId("failure-reason")).toContainText("HTTP 403");
+      await expect(page.getByTestId("revert")).toHaveCount(0);
+    });
+  });
+
+  test.describe("a run that reaches outside its grant", () => {
+    test.use({ script: "escape-attempts" });
+
+    test("shows the refused calls on the record rather than leaving them out", async ({ page, hub }) => {
       await page.goto(hub.baseUrl);
       await page.getByTestId("source-value").fill("Something the agent will not manage.");
       await page.getByTestId("submit").click();

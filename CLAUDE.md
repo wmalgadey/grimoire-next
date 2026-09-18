@@ -127,7 +127,7 @@ When two principles conflict, resolve in precedence order: II (reversibility/con
 
 Two decisions were taken during implementation that a reader of `plan.md` alone would get wrong:
 
-- **Gate 2's TypeScript rule names `query()`, not the SDK package.** `plan.md` V says `@anthropic-ai/claude-agent-sdk` may be imported only under `src/agentrun/src/model/`, but `createSdkMcpServer`/`tool` are how the grant is *declared*, which is `src/wiki-tools/`'s subject (ADR-0009). Routing them through the model port would mean wrapping a framework. `.dependency-cruiser.cjs` permits the SDK under `model/` and `wiki-tools/`, and forbids `wiki-tools/ → model/`.
+- **Gate 2's TypeScript rule names `query()`, not the SDK package.** `plan.md` V says `@anthropic-ai/claude-agent-sdk` may be imported only under `src/agentrun/src/model/`, but `createSdkMcpServer`/`tool` are how the grant is *declared*, which is `src/wiki-tools/`'s subject (ADR-0009). Routing them through the model port would mean wrapping a framework. `.dependency-cruiser.cjs` permits the SDK under `model/` and `wiki-tools/`, and forbids `wiki-tools/ → model/`; `tests/architecture/model-call-confinement.test.ts` confines the `query` import itself to `model/`.
 - **Health checks are mapped as ordinary Minimal API routes**, not `MapHealthChecks`, because health-check endpoints carry no OpenAPI description and the contract drift test covers the whole served surface. The checks themselves are still the framework's own registrations run through `HealthCheckService`.
 
 ## Change routes
