@@ -196,11 +196,13 @@ public sealed class ObservabilityTests
             Assert.Contains(logs, line => line.Contains(signal, StringComparison.Ordinal));
         }
 
-        // One event per line, and every line is JSON.
+        // One event per line, every line is JSON, and every event says when it happened — in UTC,
+        // as ISO 8601, so lines from different sources order and join without a timezone guess.
         foreach (var line in logs.Where(line => line.Contains("grimoire.", StringComparison.Ordinal)))
         {
-            var exception = Record.Exception(() => JsonDocument.Parse(line));
-            Assert.Null(exception);
+            using var document = JsonDocument.Parse(line);
+            Assert.True(document.RootElement.TryGetProperty("Timestamp", out var timestamp), line);
+            Assert.Matches(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$", timestamp.GetString()!);
         }
     }
 }

@@ -36,6 +36,7 @@ else
     {
         options.IncludeScopes = false;
         options.UseUtcTimestamp = true;
+        options.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
         options.JsonWriterOptions = new JsonWriterOptions { Indented = false };
     });
 }
