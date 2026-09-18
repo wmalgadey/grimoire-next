@@ -89,13 +89,26 @@ deps: $(addsuffix /node_modules,$(NPM_WORKSPACES))
 	npm --prefix $* ci
 	@touch $@
 
-src/agentrun/dist/main.js: $(shell find src/agentrun/src -name '*.ts' 2>/dev/null) src/agentrun/tsconfig.json | src/agentrun/node_modules
+# The manifests and the build configuration are normal prerequisites, not order-only. Only
+# node_modules is order-only — reinstalling identical packages should not force a rebuild. A
+# changed dependency, compiler or build script must, or the stale-dist hole this file exists to
+# close reopens somewhere it is harder to see.
+src/agentrun/dist/main.js: $(shell find src/agentrun/src -name '*.ts' 2>/dev/null) \
+		src/agentrun/tsconfig.json src/agentrun/package.json src/agentrun/package-lock.json \
+		| src/agentrun/node_modules
 	npm --prefix src/agentrun run build
 
-tests/scripted-model/dist/server.js: $(shell find tests/scripted-model/src -name '*.ts' 2>/dev/null) tests/scripted-model/tsconfig.json | tests/scripted-model/node_modules
+tests/scripted-model/dist/server.js: $(shell find tests/scripted-model/src -name '*.ts' 2>/dev/null) \
+		tests/scripted-model/tsconfig.json tests/scripted-model/package.json \
+		tests/scripted-model/package-lock.json \
+		| tests/scripted-model/node_modules
 	npm --prefix tests/scripted-model run build
 
-frontend/build/index.html: $(shell find frontend/src -type f 2>/dev/null) frontend/package.json contracts/hub-api.openapi.yaml | frontend/node_modules
+frontend/build/index.html: $(shell find frontend/src -type f 2>/dev/null) \
+		frontend/package.json frontend/package-lock.json frontend/tsconfig.json \
+		$(wildcard frontend/vite.config.*) $(wildcard frontend/svelte.config.*) \
+		contracts/hub-api.openapi.yaml \
+		| frontend/node_modules
 	@$(MAKE) --no-print-directory require-node-20
 	npm --prefix frontend run build
 
@@ -137,8 +150,13 @@ test-%: build-hub build-runner build-model
 test-runner: build-runner
 	npx --prefix src/agentrun vitest run $(ARGS) --root .
 
-test-e2e: build-hub build-runner build-model build-frontend
-	npm --prefix frontend run test:e2e
+# The Playwright suite is its own npm package — @playwright/test has to resolve from the directory
+# the specs live in — so this installs it and its browser the way CI does. GRIMOIRE_BUILD_CONFIGURATION
+# is passed because the fixture otherwise picks whichever configuration was built most recently,
+# which is not necessarily the one this invocation just built.
+test-e2e: build-hub build-runner build-model build-frontend | tests/surfaces/node_modules
+	npm --prefix tests/surfaces exec -- playwright install chromium
+	GRIMOIRE_BUILD_CONFIGURATION=$(CONFIG) npm --prefix frontend run test:e2e
 
 .PHONY: lint
 lint: deps require-node-20
@@ -150,20 +168,19 @@ lint: deps require-node-20
 
 # ---------------------------------------------------------------- run
 
-# The hub's environment is exported to this target alone. Every suite builds its own environment
-# from scratch — the fixtures set what a run needs and nothing inherits — so a .env aimed at a
-# laptop must not reach a test hub through the recipe environment and quietly change what the suite
-# proves.
-run: export GRIMOIRE_WIKI_REPO := $(GRIMOIRE_WIKI_REPO)
-run: export GRIMOIRE_STATE_DB := $(GRIMOIRE_STATE_DB)
-run: export GRIMOIRE_INSTRUCTION := $(GRIMOIRE_INSTRUCTION)
-run: export GRIMOIRE_RUN_MAX_TOOL_CALLS := $(GRIMOIRE_RUN_MAX_TOOL_CALLS)
-run: export GRIMOIRE_RUN_MAX_ELAPSED_MS := $(GRIMOIRE_RUN_MAX_ELAPSED_MS)
-run: export GRIMOIRE_MODEL_BASE_URL := $(GRIMOIRE_MODEL_BASE_URL)
-run: export GRIMOIRE_MODEL_TOKEN := $(GRIMOIRE_MODEL_TOKEN)
-run: export GRIMOIRE_FETCH_PROXY := $(GRIMOIRE_FETCH_PROXY)
-run: export ASPNETCORE_URLS := $(ASPNETCORE_URLS)
-run: export ASPNETCORE_WEBROOT := $(ASPNETCORE_WEBROOT)
+# The hub's environment, handed to the hub process and to nothing else.
+#
+# Not `run: export VAR` — GNU Make propagates target-specific variables to a target's
+# prerequisites, so that form puts GRIMOIRE_MODEL_TOKEN into the environment of `dotnet build` and
+# `npm run build` as well. A credential in a compiler's environment is a credential in whatever
+# that compiler shells out to. An empty value is left out rather than exported empty, so an unset
+# optional setting stays unset rather than becoming the empty string.
+HUB_ENVIRONMENT = $(foreach v,\
+  GRIMOIRE_WIKI_REPO GRIMOIRE_STATE_DB GRIMOIRE_INSTRUCTION \
+  GRIMOIRE_RUN_MAX_TOOL_CALLS GRIMOIRE_RUN_MAX_ELAPSED_MS \
+  GRIMOIRE_MODEL_BASE_URL GRIMOIRE_MODEL_TOKEN GRIMOIRE_FETCH_PROXY \
+  ASPNETCORE_URLS ASPNETCORE_WEBROOT,\
+  $(if $($(v)),$(v)='$($(v))'))
 
 # The hub serves /api and the built frontend on one origin. Its whole configuration is environment
 # variables, read once at the composition root, and a missing required one fails startup loudly —
@@ -186,7 +203,7 @@ run: build-hub build-runner
 	fi; \
 	[ -f "$(ASPNETCORE_WEBROOT)/index.html" ] || \
 	  echo "note: no built frontend at $(ASPNETCORE_WEBROOT) — /api answers, the surfaces 404. 'make build-frontend' needs Node 20.19+." >&2
-	dotnet run --project src/hub --configuration $(CONFIG) --no-build
+	env $(HUB_ENVIRONMENT) dotnet run --project src/hub --configuration $(CONFIG) --no-build
 
 # A wiki repository and a state database under .local/, plus a starter .env. Idempotent, and it
 # never overwrites an existing .env.
@@ -194,9 +211,11 @@ run: build-hub build-runner
 dev-setup:
 	@mkdir -p .local
 	@if ! git -C .local/wiki rev-parse HEAD >/dev/null 2>&1; then \
-	  git init -q -b main .local/wiki; \
-	  git -C .local/wiki commit -q --allow-empty -m "Initialise the wiki"; \
-	  echo "created .local/wiki"; \
+	  git init -q -b main .local/wiki \
+	  && git -C .local/wiki config user.name "Grimoire" \
+	  && git -C .local/wiki config user.email "grimoire@localhost" \
+	  && git -C .local/wiki commit -q --allow-empty -m "Initialise the wiki" \
+	  && echo "created .local/wiki"; \
 	else echo ".local/wiki already exists"; fi
 	@if [ -f .env ]; then echo ".env already exists, left alone"; else \
 	  printf '%s\n' \
