@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Grimoire is a **hub** with a web frontend that dispatches **LLM agents** which maintain a **markdown wiki in git**, exposing every operation as an inspectable **task artifact**.
 
-Feature `001-source-ingest-agent-run` is partly built: Phases 1–3 of `specs/001-source-ingest-agent-run/tasks.md` (T001–T079) are done and User Story 1 runs end to end — submit a source, one task, one real agent run under the versioned instruction file with exactly two granted tools, one commit, and a task view showing what happened. Phases 4–6 (revert, queue/recovery/`SIGTERM`, egress proxy and container) are not started.
+Feature `001-source-ingest-agent-run` is built through Phase 6 of `specs/001-source-ingest-agent-run/tasks.md`: ingest (US1), revert (US2), queue/recovery/`SIGTERM` (US3), and the deployment — the egress proxy in `src/egress/`, the two images and the compose file in `deploy/`, and the CI gates. Branches stack: `001-source-ingest-agent-run` → `001-revert` → `001-egress`.
 
 Vocabulary is used precisely (see `docs/adr/index.md`):
 - **Hub** — the orchestrator. Owns the HTTP surface, dispatch, task artifacts, the wiki repository, the operational store, observability. It supervises agent processes; it does not run agents.
@@ -70,6 +70,7 @@ Spec Kit skills, invoked as `/speckit-<name>`: `specify`, `clarify`, `plan`, `ta
 
 - **Node here is 18; the project targets 22.** The runner suite and scripted model happen to work on 18. `vite build` (so all of `frontend/` and `tests/surfaces/`) and `dependency-cruiser` (gate 2's TypeScript half) need 20.19+ and currently cannot run.
 - **`Grimoire.Tasks.Task` collides with `System.Threading.Tasks.Task`.** The artifact is called Task because that is the product's word for it. Async files that touch it carry `using Task = System.Threading.Tasks.Task;` and spell the artifact `Grimoire.Tasks.Task` in full. Test projects get that alias globally from `tests/Directory.Build.props`.
+- **TS-18 (`tests/deployment/ContainerBoundaryTests.cs`) builds and runs the real images.** It needs a container runtime (`docker`, or `GRIMOIRE_CONTAINER_CLI`; Podman works) and skips with the reason when there is none — except under `CI`, where it fails. The first run builds `deploy/hub.Dockerfile`, which takes minutes. The SDK sends `/api/hello` to `ANTHROPIC_BASE_URL` even with non-essential traffic off; the proxy answers it and forwards nothing.
 - **The C# suites run serially**, via an `xunit.runner.json` per test project. Configuration is process environment by constitutional rule and a run holds the wiki working tree, so two hubs cannot coexist. Removing it produces failures that move between runs.
 
 ## Architecture
@@ -101,7 +102,7 @@ The `disallowedTools` list rots — the SDK grows tools between releases, and el
 
 **Run end is one value with three named handlers** (`RunOutcome` → `RunOutcomeHandler`): changed, changed-nothing, failed. Commit, reset, reset. This is the one method in the system that would otherwise accumulate conditionals until nobody could tell which combinations were reachable. Keep it three handlers.
 
-**The SSRF policy lives in two places, and the in-process half steps aside when a proxy is configured.** With `GRIMOIRE_FETCH_PROXY` set the hub connects to the proxy and never resolves the submitted host, so checking in-process would refuse every destination a container can reach. The proxy enforces instead (ADR-0010). This is why `tests/ingest/UrlRetrievalTests.cs` routes through a real forward proxy while `UrlFetchPolicyTests.cs` does not — they exercise the two halves.
+**The SSRF policy lives in two places, and the in-process half steps aside when a proxy is configured.** With `GRIMOIRE_FETCH_PROXY` set the hub requests `GET {GRIMOIRE_FETCH_PROXY}?url=…` from the egress proxy and never resolves the submitted host, so checking in-process would refuse every destination a container can reach. The proxy enforces instead, in its connect step (`src/egress/DestinationPolicy.cs`, ADR-0010), and its refusal reason comes back in `X-Grimoire-Egress-Reason`. The route is addressed explicitly, not used as a forward proxy, because https through a forward proxy is `CONNECT` and Kestrel does not hand a tunnel to an application. Both policies refuse loopback, so `tests/ingest/UrlRetrievalTests.cs` routes through `tests/support/FetchRouteFixture.cs` — the same protocol, no policy — while `UrlFetchPolicyTests.cs` and `tests/egress/FetchRouteTests.cs` exercise the two policies.
 
 **The scripted model picks its turn from the conversation, never from a request counter.** The SDK legitimately sends the same request twice — a streaming attempt and a non-streaming fallback, or a retry — and a counter hands each a different turn, silently skipping steps so the loop under test is not the loop that ran. `turnFor()` counts assistant messages in the request. The double also speaks SSE when asked to; answering a `stream: true` request with plain JSON is what caused the duplicate in the first place.
 

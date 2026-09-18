@@ -15,9 +15,9 @@
 #     runs the built test applications one after another instead, so a single suite can take
 #     ARGS filters and a failing one is named at the end.
 #
-# There is deliberately no `deploy` target: src/egress/ and the container (Phases 4-6 of
-# specs/001-source-ingest-agent-run/tasks.md) are not built yet, and a target that deploys nothing
-# would be a claim this repository cannot honour.
+# There is deliberately no `deploy` target: the deployment is deploy/compose.yaml, run with
+# `docker compose -f deploy/compose.yaml up --build`, and wrapping it here would add nothing but a
+# second place for its environment to be documented.
 
 CONFIG ?= Debug
 
@@ -42,8 +42,8 @@ GRIMOIRE_INSTRUCTION ?= $(CURDIR)/src/instructions/ingest.md
 # tests/ mirrors the slices, so a C# suite is a tests/<slice>/ holding both a project and tests,
 # and its test application is named after that project. Derived rather than listed: a new slice
 # needs no edit here; tests/support/ (shared helpers, no project) stays out; and a slice whose
-# tests are not written yet — today egress — stays out until it has one, instead of failing the
-# run with MTP's "zero tests" exit.
+# tests are not written yet stays out until it has one, instead of failing the run with MTP's
+# "zero tests" exit.
 CS_PROJECTS := $(wildcard tests/*/*.csproj)
 CS_SUITES := $(sort $(foreach p,$(CS_PROJECTS),\
   $(if $(wildcard $(dir $(p))*.cs),$(patsubst tests/%/,%,$(dir $(p))))))
@@ -72,7 +72,7 @@ help:
 	@echo '  make clean           build output; leaves node_modules and .local/'
 	@echo
 	@echo 'CONFIG=$(CONFIG) (set CONFIG=Release to match CI).'
-	@echo 'No deploy target: the egress proxy and the container are not built yet.'
+	@echo 'The container deployment: docker compose -f deploy/compose.yaml up --build'
 
 # ---------------------------------------------------------------- build
 

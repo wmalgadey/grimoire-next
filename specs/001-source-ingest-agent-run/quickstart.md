@@ -36,7 +36,7 @@ Environment the hub reads:
 
 | Variable | Meaning |
 |----------|---------|
-| `GRIMOIRE_WIKI_REPO` | Path to the bare wiki repository |
+| `GRIMOIRE_WIKI_REPO` | Path to the wiki repository — a working tree on `main`, not a bare repository |
 | `GRIMOIRE_STATE_DB` | Path to the SQLite operational-state file |
 | `GRIMOIRE_INSTRUCTION` | Path to the ingest instruction (default `src/instructions/ingest.md`) |
 | `GRIMOIRE_RUN_MAX_TOOL_CALLS`, `GRIMOIRE_RUN_MAX_ELAPSED_MS` | The run limit (FR-009) |
@@ -230,10 +230,12 @@ Run the built image against a deny-all network with exactly one permitted destin
 1. **Identity and filesystem**: the container runs as a non-root user with a read-only root
    filesystem; only the three volumes and the `tmpfs` are writable.
 2. **Egress**: complete a full ingest. **Expected**: the only outbound connections are to the
-   configured model endpoint and, for a URL submission, the fetch route. Nothing else is attempted —
-   in particular no version checks, telemetry, or release-note traffic, because
+   configured model endpoint and, for a URL submission, the fetch route. Nothing else leaves — in
+   particular no version checks, telemetry, or release-note traffic, because
    `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` turns off the background traffic the SDK would
-   otherwise send *outside* the gateway path.
+   otherwise send *outside* the gateway path. The SDK does still send one request of its own *to*
+   the gateway, `GET /api/hello`; the proxy answers it `404` and forwards nothing, because only
+   `/v1/*` has an upstream.
 3. **Credentials**: inspect the runner process's environment. **Expected**: `ANTHROPIC_AUTH_TOKEN`
    holds the opaque internal token and no Anthropic credential is present anywhere in the container.
 4. **Blocked upstream**: block the model endpoint and submit a source. **Expected**: the run ends

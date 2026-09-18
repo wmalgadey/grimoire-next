@@ -30,6 +30,11 @@ the egress seam ([ADR-0010](../../../docs/adr/0010-model-egress-and-credential-c
 The hub container has **exactly one permitted destination**. Everything else is denied at the network
 layer, which is what TS-18 asserts against the built image.
 
+A container attached only to an `internal` network cannot publish a port, so in
+`deploy/compose.yaml` the browser reaches the hub through an **ingress relay** — a reverse proxy on
+both networks that forwards only *to* the hub. It is inbound plumbing: it holds no credential and
+forwards nothing outward, so the hub's one route *out* is still the egress proxy.
+
 ## Environment contract
 
 Configuration is environment variables only. No configuration file is baked into an image layer, and
@@ -46,8 +51,27 @@ no setting is read from a path an operator cannot set.
 | `GRIMOIRE_RUN_MAX_ELAPSED_MS` | no | Elapsed half of the run limit (FR-009) |
 | `GRIMOIRE_MODEL_BASE_URL` | yes | Proxy model route; passed to the runner as `ANTHROPIC_BASE_URL` |
 | `GRIMOIRE_MODEL_TOKEN` | yes | **Opaque internal token** for the proxy; never an Anthropic credential |
-| `GRIMOIRE_FETCH_PROXY` | in containers | Proxy fetch route used by URL retrieval (FR-003) |
+| `GRIMOIRE_FETCH_PROXY` | in containers | URL of the proxy's fetch route used by URL retrieval (FR-003), e.g. `http://egress:8080/fetch`; the hub requests `?url=<destination>` from it |
 | `GRIMOIRE_LOG_FORMAT` | no | `json` (default) or `text`; `text` is for reading the log by eye outside a container |
+
+### Egress proxy
+
+| Variable | Required | Meaning |
+|----------|----------|---------|
+| `GRIMOIRE_EGRESS_MODEL_UPSTREAM` | yes | The single upstream the model route reaches, e.g. `https://api.anthropic.com` — the whole allowlist |
+| `GRIMOIRE_EGRESS_MODEL_CREDENTIAL` | yes | The upstream credential, attached as `x-api-key`. Held by this process and no other |
+| `GRIMOIRE_EGRESS_INTERNAL_TOKEN` | yes | The opaque token callers must present as `Authorization: Bearer`; the hub's `GRIMOIRE_MODEL_TOKEN` |
+| `ASPNETCORE_URLS` | no | Where the proxy listens; the image default is `http://+:8080` |
+
+The two routes:
+
+| Route | Accepts | Forwards |
+|-------|---------|----------|
+| model | `/v1/*` with the internal token | to the configured upstream; the caller's `Authorization`, `x-api-key` and `X-Grimoire-Run` removed, the upstream credential attached, the response streamed unbuffered |
+| fetch | `GET /fetch?url=<http(s) URL>` | to that URL only if every address it resolves to is public — checked in the connect step itself; none of the caller's headers and no credential; redirects returned, not followed. A refusal is `403` with the reason in `X-Grimoire-Egress-Reason`, which the hub records on the task |
+
+Anything else — another path, an absolute-form or `CONNECT` request naming its own destination — is
+refused. The proxy is not a forward proxy.
 
 ### Runner (set by the hub at spawn; `env` is **replaced**, not merged)
 
@@ -140,10 +164,11 @@ through the `X-Grimoire-Run` header.
 
 ## What this feature does and does not build
 
-**Builds**: the runtime contract above, both images, the compose deployment with the hub container on an
-`internal: true` network, the deny-all egress posture, and the minimal YARP proxy (two routes,
-static upstream credential, single-upstream allowlist, SSRF policy) so that posture is real and
-testable.
+**Builds**: the runtime contract above, both images (`deploy/hub.Dockerfile`,
+`deploy/egress.Dockerfile`), the compose deployment (`deploy/compose.yaml`) with the hub container on
+an `internal: true` network and an inbound relay, the deny-all egress posture, and the minimal YARP
+proxy (two routes, static upstream credential, single-upstream allowlist, SSRF policy) so that
+posture is real and testable.
 
 **Does not build**: credential refresh, usage accounting, per-run quotas, or upstream failover.
 Those are swaps behind the proxy's `CredentialProvider` and additions to one pipeline
