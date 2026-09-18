@@ -32,7 +32,7 @@ As the container deployment — the hub on a network whose only way out is the e
 alone holds the upstream credential ([contracts/deployment.md](specs/001-source-ingest-agent-run/contracts/deployment.md)):
 
 ```bash
-docker compose -f deploy/compose.yaml up --build
+docker compose -f deploy/compose.yaml -f deploy/compose.override.yaml up --build
 curl -fsS localhost:8080/readyz
 ```
 
