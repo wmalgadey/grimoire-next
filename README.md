@@ -32,8 +32,10 @@ As the container deployment — the hub on a network whose only way out is the e
 alone holds the upstream credential ([contracts/deployment.md](specs/001-source-ingest-agent-run/contracts/deployment.md)):
 
 ```bash
-docker compose -f deploy/compose.yaml -f deploy/compose.override.yaml up --build
+docker compose -f deploy/compose.yaml -f deploy/compose.override.yaml up -d --build
 curl -fsS localhost:8080/readyz
+
+docker compose -f deploy/compose.yaml -f deploy/compose.override.yaml down
 ```
 
 `CLAUDE.md` is the working guide for changing the code: the mechanisms that span files, the
