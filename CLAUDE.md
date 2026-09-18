@@ -17,8 +17,8 @@ Vocabulary is used precisely (see `docs/adr/index.md`):
 
 `Makefile` wraps everything below — `make build`, `make test`, `make test-cs`, `make test-hub
 ARGS='--filter-method "*Readyz*"'`, `make run`, `make dev-setup`, `make help`. It encodes the build
-order the tests depend on and runs the C# test applications directly rather than through the broken
-`dotnet test`. The raw commands are kept here because they are what CI runs and what a target that
+order the tests depend on and runs the C# test applications one at a time, so a single suite can
+take filters. The raw commands are kept here because they are what CI runs and what a target that
 misbehaves has to be checked against.
 
 ### Build
@@ -35,10 +35,10 @@ The runner build must be current before any C# suite that drives a run: the hub 
 
 ### Test
 
-**`dotnet test` reports `Zero tests ran` on this SDK and cannot be relied on.** .NET 10 dropped VSTest for Microsoft.Testing.Platform; the opt-in is wired (`test.runner` in `global.json` plus `UseMicrosoftTestingPlatformRunner` in `tests/Directory.Build.props`) and the binaries are proper MTP test applications, but the orchestrator gets nothing back. Run the built test applications directly instead:
+`dotnet test` runs every C# suite and is what CI runs. It works only because two Microsoft.Testing.Platform opt-ins are both wired: `test.runner` in `global.json` and `UseMicrosoftTestingPlatformRunner` in `tests/Directory.Build.props`. Remove either and it reports `Zero tests ran`; if CI's C# test count ever drops to zero, look there first. For one suite or a filter, run the built test application directly:
 
 ```bash
-dotnet build
+dotnet build && dotnet test --no-build                 # every C# suite, as CI
 ./tests/wiki/bin/Debug/net10.0/Grimoire.Tests.Wiki            # one suite
 ./tests/tasks/bin/Debug/net10.0/Grimoire.Tests.Tasks --filter-class "*SqliteStoreTests*"
 ./tests/hub/bin/Debug/net10.0/Grimoire.Tests.Hub --filter-method "*Readyz*"

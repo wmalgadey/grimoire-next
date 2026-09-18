@@ -9,11 +9,11 @@
 #     the suite tests the previous runner and says nothing about the change under test. Every test
 #     target here therefore depends on the builds it needs.
 #
-#  2. `dotnet test` reports "Zero tests ran" on this SDK. .NET 10 dropped VSTest for
-#     Microsoft.Testing.Platform; the opt-in is wired (test.runner in global.json plus
-#     UseMicrosoftTestingPlatformRunner in tests/Directory.Build.props) and the binaries are proper
-#     MTP test applications, but the orchestrator gets nothing back. `make test-cs` runs the built
-#     test applications directly instead.
+#  2. `dotnet test` runs every C# suite, and is what CI runs. It depends on two opt-ins together —
+#     test.runner in global.json and UseMicrosoftTestingPlatformRunner in tests/Directory.Build.props
+#     — and with either missing it reports "Zero tests ran". `make test-cs`
+#     runs the built test applications one after another instead, so a single suite can take
+#     ARGS filters and a failing one is named at the end.
 #
 # There is deliberately no `deploy` target: src/egress/ and the container (Phases 4-6 of
 # specs/001-source-ingest-agent-run/tasks.md) are not built yet, and a target that deploys nothing
@@ -41,9 +41,9 @@ GRIMOIRE_INSTRUCTION ?= $(CURDIR)/src/instructions/ingest.md
 
 # tests/ mirrors the slices, so a C# suite is a tests/<slice>/ holding both a project and tests,
 # and its test application is named after that project. Derived rather than listed: a new slice
-# needs no edit here; tests/support/ (shared helpers, no project) stays out; and the two slices
-# whose tests are not written yet — deployment, egress — stay out until they have one, instead of
-# failing the run with MTP's "zero tests" exit.
+# needs no edit here; tests/support/ (shared helpers, no project) stays out; and a slice whose
+# tests are not written yet — today egress — stays out until it has one, instead of failing the
+# run with MTP's "zero tests" exit.
 CS_PROJECTS := $(wildcard tests/*/*.csproj)
 CS_SUITES := $(sort $(foreach p,$(CS_PROJECTS),\
   $(if $(wildcard $(dir $(p))*.cs),$(patsubst tests/%/,%,$(dir $(p))))))
