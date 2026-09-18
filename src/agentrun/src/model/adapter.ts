@@ -67,6 +67,13 @@ export interface ModelRunResult {
   readonly finalMessage: string;
   /** Set when the run could not complete. */
   readonly failureReason: string | null;
+  /**
+   * Set when the model endpoint ended the run by answering with an error: the HTTP status, or
+   * `no-response`. Null when the run ended on its own account (plan IV).
+   */
+  readonly modelEndpointStatus: string | null;
+  /** Whether the model refused the prompt as too large to take in (FR-029). */
+  readonly promptTooLong: boolean;
 }
 
 /** What the model port needs to run one ingest. */
@@ -94,6 +101,14 @@ export async function runModel(request: ModelRunRequest): Promise<ModelRunResult
   const wikiTools = createWikiToolServer(request.repositoryRoot, request.guard);
   let finalMessage = "";
   let failureReason: string | null = null;
+  let apiError: { status: string; detail: string } | null = null;
+  let lastRetryStatus: string | null = null;
+  let promptTooLong = false;
+
+  // The guard refuses every call past the ceiling; stopping the conversation there is what keeps
+  // the model from being asked for another turn the run is not allowed to act on (FR-009).
+  const abortController = new AbortController();
+  request.guard.onCeiling = () => abortController.abort();
 
   try {
     const conversation = query({
@@ -115,6 +130,7 @@ export async function runModel(request: ModelRunRequest): Promise<ModelRunResult
         // PreToolUse hook, and recorded (FR-011).
         permissionMode: "dontAsk",
         maxTurns: request.maxToolCalls + 1,
+        abortController,
         hooks: {
           PreToolUse: [
             {
@@ -147,6 +163,16 @@ export async function runModel(request: ModelRunRequest): Promise<ModelRunResult
     });
 
     for await (const message of conversation) {
+      if (message.type === "system" && message.subtype === "api_retry") {
+        lastRetryStatus = message.error_status === null ? "no-response" : String(message.error_status);
+      }
+
+      // An API error arrives as a synthetic assistant message carrying the error's text. That text
+      // is the SDK's, not the agent's, so it is never the run's final message.
+      if (message.type === "assistant" && message.error !== undefined) {
+        continue;
+      }
+
       if (message.type === "assistant") {
         const text = message.message.content
           .map((block) => (block.type === "text" ? block.text : ""))
@@ -170,13 +196,36 @@ export async function runModel(request: ModelRunRequest): Promise<ModelRunResult
         }
       }
 
-      if (message.type === "result" && message.subtype !== "success") {
-        failureReason = `The run ended without completing: ${message.subtype}.`;
+      if (message.type === "result") {
+        if (message.terminal_reason === "prompt_too_long") {
+          promptTooLong = true;
+        }
+
+        if (message.subtype !== "success") {
+          failureReason = `The run ended without completing: ${message.subtype}.`;
+        } else if (message.is_error) {
+          // A turn that ended on an API error reports `success` with `is_error` set; left there,
+          // it would read as an agent that judged nothing needed changing.
+          promptTooLong ||= /prompt is too long/i.test(message.result);
+          const status =
+            message.api_error_status === null || message.api_error_status === undefined
+              ? lastRetryStatus ?? "no-response"
+              : String(message.api_error_status);
+          apiError = { status, detail: message.result };
+          failureReason = message.result;
+        }
       }
     }
   } catch (cause) {
     failureReason = (cause as Error).message;
   }
 
-  return { finalMessage, failureReason };
+  const modelEndpointStatus = apiError !== null && !promptTooLong ? apiError.status : null;
+  if (modelEndpointStatus !== null) {
+    failureReason =
+      `The model endpoint answered ${modelEndpointStatus === "no-response" ? "with no response" : `HTTP ${modelEndpointStatus}`}`
+      + ` (${apiError!.detail}). This is the egress path or the upstream behind it, not the agent.`;
+  }
+
+  return { finalMessage, failureReason, modelEndpointStatus, promptTooLong };
 }

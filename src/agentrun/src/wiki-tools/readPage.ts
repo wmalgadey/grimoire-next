@@ -21,6 +21,8 @@ export const readPageSchema = {
 export interface ReadPageResult {
   readonly text: string;
   readonly refusedDetail?: string;
+  /** Why an existing page or directory could not be read. */
+  readonly failedDetail?: string;
 }
 
 /**
@@ -43,8 +45,23 @@ export async function readPage(repositoryRoot: string, requestedPath: string): P
     return { text: `No such page: ${requestedPath}` };
   }
 
-  if (entry.isDirectory()) {
-    const entries = await readdir(contained.absolutePath, { withFileTypes: true });
+  try {
+    return await readContained(contained.absolutePath, requestedPath, entry.isDirectory());
+  } catch (cause) {
+    // It exists and could not be read — a permission, an I/O error. The call still happened, so it
+    // is recorded as failed rather than escaping the handler unrecorded (FR-021).
+    const detail = (cause as NodeJS.ErrnoException).code ?? (cause as Error).message;
+    return { text: `Could not read ${requestedPath}: ${detail}`, failedDetail: detail };
+  }
+}
+
+async function readContained(
+  absolutePath: string,
+  requestedPath: string,
+  isDirectory: boolean,
+): Promise<ReadPageResult> {
+  if (isDirectory) {
+    const entries = await readdir(absolutePath, { withFileTypes: true });
     const listing = entries
       .filter((child) => child.name !== ".git")
       .map((child) => (child.isDirectory() ? `${child.name}/` : child.name))
@@ -58,5 +75,5 @@ export async function readPage(repositoryRoot: string, requestedPath: string): P
     };
   }
 
-  return { text: await readFile(contained.absolutePath, "utf8") };
+  return { text: await readFile(absolutePath, "utf8") };
 }

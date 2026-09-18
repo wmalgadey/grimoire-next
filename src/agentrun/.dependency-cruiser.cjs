@@ -8,9 +8,10 @@
  * The SDK's in-process MCP registration helpers (`createSdkMcpServer`, `tool`) are a different
  * thing: they declare what the agent may do, which is `src/wiki-tools/`'s subject and the thing
  * ADR-0009 is about. Routing them through `src/model/` would mean wrapping a framework to satisfy
- * a rule (constitution VII.1), so the rule names the boundary it actually protects: nothing
- * outside `src/model/` may call the model, and nothing outside `src/model/` and `src/wiki-tools/`
- * may reach for the SDK at all.
+ * a rule (constitution VII.1), so the rules here say nothing outside `src/model/` and
+ * `src/wiki-tools/` may reach for the SDK at all. dependency-cruiser sees modules, not named
+ * imports, so "nothing outside `src/model/` may call the model" — may import `query` — is asserted
+ * by `tests/architecture/model-call-confinement.test.ts`, the other half of this gate.
  *
  * @type {import('dependency-cruiser').IConfiguration}
  */

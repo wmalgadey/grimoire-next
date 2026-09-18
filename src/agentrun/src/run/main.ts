@@ -138,7 +138,7 @@ async function main(): Promise<void> {
   // instruction version and the grant on the task.
   await proceed;
 
-  const guard = new ToolGuard();
+  const guard = new ToolGuard(dispatched.maxToolCalls);
   guard.onRecorded = (call) => {
     // Not awaited: the callback is synchronous (ToolGuard does not await it) and Node's stdout
     // is one ordered stream, so these writes still complete, in order, before the final `emit`
@@ -163,12 +163,17 @@ async function main(): Promise<void> {
     maxToolCalls: dispatched.maxToolCalls,
   });
 
-  // The tool-call ceiling is enforced here as well as by the hub's own kill, so a run that
-  // overruns ends with a reason rather than a dead process (FR-009).
-  const overran = guard.count > dispatched.maxToolCalls;
-  const failureReason = overran
-    ? `The run made ${guard.count} tool calls, past its ceiling of ${dispatched.maxToolCalls}.`
-    : result.failureReason;
+  // The guard stopped the run at its tool-call ceiling; the hub checks the count again at run end,
+  // so a runner that failed to stop still cannot have its work committed (FR-009).
+  const failureReason = guard.overran
+    ? `The run reached its ceiling of ${dispatched.maxToolCalls} tool calls and was stopped; `
+      + `${guard.count - dispatched.maxToolCalls} further call(s) were refused. `
+      + "Raise GRIMOIRE_RUN_MAX_TOOL_CALLS if the ceiling is too tight."
+    : result.promptTooLong
+      ? `The source is ${Buffer.byteLength(dispatched.sourceText, "utf8").toLocaleString("en-US")} bytes, `
+        + "more than the model can take in at once, so the run could not proceed. The source was "
+        + "passed whole; splitting it and submitting the parts is left to you."
+      : result.failureReason;
 
   await emit({
     type: "run_end",
@@ -176,6 +181,7 @@ async function main(): Promise<void> {
     failureReason,
     commitMessage: result.finalMessage,
     toolCallCount: guard.count,
+    modelEndpointStatus: guard.overran ? null : result.modelEndpointStatus,
   });
 }
 

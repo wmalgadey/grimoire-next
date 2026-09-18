@@ -24,6 +24,9 @@ export const GRANTED_TOOLS = ["mcp__wiki__read_page", "mcp__wiki__write_page"] a
 /** The reason a call outside the grant is refused, in the words the record carries. */
 export const NOT_GRANTED = "tool not granted";
 
+/** The reason a granted call past the run's tool-call ceiling is refused (FR-009). */
+export const CEILING_REACHED = "the run's tool-call ceiling was reached";
+
 /** One entry in the run's tool-call record. */
 export interface RecordedCall {
   readonly seq: number;
@@ -48,6 +51,23 @@ export class ToolGuard {
   private readonly calls: RecordedCall[] = [];
   private readonly recordedAttempts = new Set<string>();
   private nextSeq = 1;
+  private ceilingSignalled = false;
+
+  /**
+   * @param maxToolCalls The tool-call half of the run limit (FR-009). Calls up to it act; the next
+   * one is refused and recorded, and {@link onCeiling} fires so the run can be stopped. Enforced
+   * here, per call, because the SDK's turn limit bounds turns — and one turn can carry any number
+   * of tool uses.
+   */
+  constructor(private readonly maxToolCalls: number = Number.POSITIVE_INFINITY) {}
+
+  /** Called once, when the record first goes past the ceiling. */
+  onCeiling: (() => void) | undefined;
+
+  /** Whether the run went past its tool-call ceiling. */
+  get overran(): boolean {
+    return this.calls.length > this.maxToolCalls;
+  }
 
   /** Whether a tool name is inside the grant. Deny-by-default: unknown means denied. */
   static isGranted(tool: string): boolean {
@@ -62,12 +82,17 @@ export class ToolGuard {
    * rather than what was attempted.
    */
   decide(tool: string, input: unknown, toolUseId?: string): GuardDecision {
-    if (ToolGuard.isGranted(tool)) {
-      return { allow: true };
+    if (!ToolGuard.isGranted(tool)) {
+      this.recordRefusedAttempt(tool, input, toolUseId);
+      return { allow: false, reason: NOT_GRANTED };
     }
 
-    this.recordRefusedAttempt(tool, input, toolUseId);
-    return { allow: false, reason: NOT_GRANTED };
+    if (this.calls.length >= this.maxToolCalls) {
+      this.recordRefusedAttempt(tool, input, toolUseId, CEILING_REACHED);
+      return { allow: false, reason: CEILING_REACHED };
+    }
+
+    return { allow: true };
   }
 
   /**
@@ -80,7 +105,7 @@ export class ToolGuard {
    * of what FR-011 and FR-021 ask for. So the model port also reports every `tool_use` block it
    * sees, and this method is idempotent per tool-use id so the two paths cannot double-count.
    */
-  recordRefusedAttempt(tool: string, input: unknown, toolUseId?: string): void {
+  recordRefusedAttempt(tool: string, input: unknown, toolUseId?: string, detail: string = NOT_GRANTED): void {
     const key = toolUseId ?? `${tool}:${this.nextSeq}`;
     if (this.recordedAttempts.has(key)) {
       return;
@@ -92,7 +117,7 @@ export class ToolGuard {
       tool,
       target: describeTarget(input),
       outcome: "refused",
-      detail: NOT_GRANTED,
+      detail,
       at: new Date().toISOString(),
     });
   }
@@ -128,6 +153,11 @@ export class ToolGuard {
   private append(call: RecordedCall): void {
     this.calls.push(call);
     this.onRecorded?.(call);
+
+    if (this.overran && !this.ceilingSignalled) {
+      this.ceilingSignalled = true;
+      this.onCeiling?.();
+    }
   }
 }
 

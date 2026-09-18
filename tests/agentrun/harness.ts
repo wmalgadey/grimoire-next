@@ -92,6 +92,8 @@ export interface RunResult {
    * model can call until it loads one through a tool search the grant does not include.
    */
   readonly toolNamesDeferred: readonly (readonly string[])[];
+  /** Every Messages API request body the model received, in arrival order. */
+  readonly requestBodies: readonly unknown[];
 }
 
 /** Options for driving one run. */
@@ -232,6 +234,10 @@ export async function runAgent(options: RunOptions): Promise<RunResult> {
   const toolNamesDeferred = offeredTools.map((tools) =>
     tools.filter((tool) => tool.defer_loading === true).map((tool) => tool.name ?? ""));
 
+  const requestBodies = model.requests
+    .filter((request) => request.url.includes("/messages"))
+    .map((request) => request.body);
+
   await model.close();
   rmSync(home, { recursive: true, force: true });
 
@@ -242,6 +248,7 @@ export async function runAgent(options: RunOptions): Promise<RunResult> {
     stderr,
     toolNamesOffered,
     toolNamesDeferred,
+    requestBodies,
   };
 }
 

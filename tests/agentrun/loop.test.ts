@@ -54,6 +54,38 @@ describe("the agent loop", () => {
     ]);
   });
 
+  it("hands each call's result to the model in the very next request", async () => {
+    // The targets above could be reproduced by a loop that dropped results, since the script picks
+    // its turn from the conversation. This asserts the other half: request k+1 carries the result
+    // of call k, with its content, answering that call's own tool_use id (SC-007).
+    const result = await runAgent({ wiki, script: "escalation-8" });
+
+    type Block = { type?: string; id?: string; tool_use_id?: string; content?: unknown };
+    type Message = { role?: string; content?: string | Block[] };
+    const conversations = result.requestBodies
+      .map((body) => ((body as { messages?: Message[] } | null)?.messages ?? []))
+      .filter((messages) => messages.length > 0);
+
+    for (let k = 1; k <= 8; k++) {
+      const next = conversations.find(
+        (messages) => messages.filter((message) => message.role === "assistant").length === k,
+      );
+      expect(next, `no request followed call ${k}`).toBeDefined();
+
+      const blocks = (messages: Message[], role: string) =>
+        messages
+          .filter((message) => message.role === role)
+          .flatMap((message) => (Array.isArray(message.content) ? message.content : []));
+      const toolUse = blocks(next!, "assistant").filter((block) => block.type === "tool_use").at(-1);
+      const toolResult = blocks(next!, "user").find(
+        (block) => block.type === "tool_result" && block.tool_use_id === toolUse?.id,
+      );
+
+      expect(toolResult, `request ${k + 1} does not answer call ${k}`).toBeDefined();
+      expect(JSON.stringify(toolResult?.content)).toContain(`step-${k}.md`);
+    }
+  });
+
   it("ends the run with the agent's own final message, verbatim", async () => {
     const result = await runAgent({ wiki, script: "escalation-3" });
 

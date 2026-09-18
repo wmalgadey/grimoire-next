@@ -16,7 +16,7 @@ Spawned by `src/dispatch/adapters/RunnerProcess.cs`, one process per run, never 
 | Aspect | Value | Why |
 |--------|-------|-----|
 | `cwd` | the wiki repository's working tree | The agent's entire filesystem world (ADR-0005, ADR-0007) |
-| `env` | **replaced**, not merged. Exactly: `PATH`, `HOME` (per-run `tmpfs` dir), `ANTHROPIC_BASE_URL` (the proxy), `ANTHROPIC_AUTH_TOKEN` (an **opaque internal token**, never an Anthropic credential), `ANTHROPIC_CUSTOM_HEADERS: X-Grimoire-Run: <runId>`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`; tests add `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`. Full table in [deployment.md](./deployment.md) | The SDK's `env` option replaces `process.env`, so credential and host-environment scrubbing is a property of the spawn (ADR-0007, ADR-0010) |
+| `env` | **replaced**, not merged. Exactly: `PATH`, `HOME` (per-run `tmpfs` dir), `ANTHROPIC_BASE_URL` (the proxy), `ANTHROPIC_AUTH_TOKEN` (an **opaque internal token**, never an Anthropic credential), `ANTHROPIC_CUSTOM_HEADERS: X-Grimoire-Run: <runId>`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `GRIMOIRE_INSTRUCTION` (the instruction file's absolute path); tests add `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`. Full table in [deployment.md](./deployment.md) | The SDK's `env` option replaces `process.env`, so credential and host-environment scrubbing is a property of the spawn (ADR-0007, ADR-0010) |
 | `stdin` | NDJSON, hub → runner | Carries the dispatch payload and the `proceed` gate |
 | `stdout` | NDJSON, runner → hub | The run's event stream |
 | `stderr` | free text | Diagnostics only; never parsed, never a source of task state |
@@ -109,8 +109,21 @@ are emitted the same way as successful ones — a refusal is a recorded tool cal
   "outcome": "completed",
   "failureReason": null,
   "commitMessage": "Add kafka topic page, link from streaming index",
-  "toolCallCount": 4 }
+  "toolCallCount": 4,
+  "modelEndpointStatus": null }
 ```
+
+`modelEndpointStatus` is set when the run ended because the model endpoint answered with an error
+rather than a message — the HTTP status as a string, or `no-response` when there was none. The hub
+emits `grimoire.run.model_endpoint_unreachable` with it, so a broken egress path or upstream is
+distinguishable from the agent failing even when the proxy is reachable. A prompt the model refuses
+as too long is the source's size, not the endpoint: `modelEndpointStatus` stays `null` and
+`failureReason` names the source's byte length (FR-029).
+
+The tool-call ceiling is enforced per call by the runner's guard: the call past the ceiling is
+refused and recorded, the conversation is stopped, and `run_end` reports `failed`. The hub checks the
+recorded count again at run end, so a runner that failed to stop still cannot have its work
+committed (FR-009).
 
 `commitMessage` is the run's final assistant message text, verbatim — commit-message wording is
 judgment and lives in the instruction file (research R9). Empty message → the hub commits under the

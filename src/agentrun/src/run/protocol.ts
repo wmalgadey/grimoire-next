@@ -68,6 +68,13 @@ const runEnd = z.object({
    */
   commitMessage: z.string().nullable(),
   toolCallCount: z.number().int().nonnegative(),
+  /**
+   * Set when the run ended because the model endpoint answered with an error rather than a
+   * message: the HTTP status, or `no-response` when there was none. Lets the hub say "this is the
+   * egress path, not the agent" (plan IV, grimoire.run.model_endpoint_unreachable). A prompt too
+   * large for the model is the source's size, not the endpoint, and leaves this null (FR-029).
+   */
+  modelEndpointStatus: z.string().nullable(),
 });
 
 const runnerEvent = z.discriminatedUnion("type", [instructionLoaded, toolGrant, toolCall, runEnd]);

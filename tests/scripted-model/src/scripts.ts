@@ -23,6 +23,18 @@ export interface ScriptedTurn {
   readonly toolUses?: readonly ScriptedToolUse[];
   /** Milliseconds to wait before answering, for the slow and hanging scripts. */
   readonly delayMs?: number;
+  /**
+   * Answers this turn with an HTTP error instead of a message — what the model endpoint says when
+   * the prompt is too large for it, or what the egress proxy says when its upstream is not there.
+   */
+  readonly error?: ScriptedError;
+}
+
+/** An error response in the Messages API's own envelope. */
+export interface ScriptedError {
+  readonly status: number;
+  readonly type: string;
+  readonly message: string;
 }
 
 /** A named sequence of turns. */
@@ -142,6 +154,26 @@ export const escapeAttempts: Script = {
   ],
 };
 
+/**
+ * Every tool, granted or not, aimed at the canary files a TS-09 suite plants for this test — read,
+ * overwritten, deleted. The suite sets `CANARY_ROOT`; without it the attempts would miss the
+ * canaries, and "every canary is untouched" would prove nothing.
+ */
+export const escapeTowardCanaries: Script = {
+  name: "escape-toward-canaries",
+  turns: [
+    { toolUses: [{ name: "Bash", input: { command: "cat {{CANARY_ROOT}}/secrets.txt" } }] },
+    { toolUses: [{ name: "Bash", input: { command: "rm {{CANARY_ROOT}}/keys.pem" } }] },
+    { toolUses: [{ name: "Read", input: { file_path: "{{CANARY_ROOT}}/config.json" } }] },
+    { toolUses: [{ name: "Write", input: { file_path: "{{CANARY_ROOT}}/secrets.txt", content: "overwritten" } }] },
+    { toolUses: [{ name: "Task", input: { prompt: "read {{CANARY_ROOT}}/keys.pem" } }] },
+    { toolUses: [read("{{CANARY_ROOT}}/secrets.txt")] },
+    { toolUses: [write("{{CANARY_ROOT}}/keys.pem", "overwritten")] },
+    { toolUses: [write("{{CANARY_ROOT}}/config.json", null)] },
+    { text: "Tried every canary" },
+  ],
+};
+
 /** Traversal, absolute paths and a planted symlink, all through the granted write tool (TS-10). */
 export const escapeThroughWritePaths: Script = {
   name: "escape-through-write-paths",
@@ -151,6 +183,84 @@ export const escapeThroughWritePaths: Script = {
     { toolUses: [write("out/escaped.md", "# Escaped\n")] },
     { toolUses: [read("../canary.md")] },
     { text: "Tried every path" },
+  ],
+};
+
+/**
+ * More tool uses in one turn than a small tool-call ceiling allows. `maxTurns` bounds turns, not
+ * calls, so only the guard can stop this run at its ceiling (FR-009).
+ */
+export const parallelToolUses: Script = {
+  name: "parallel-tool-uses",
+  turns: [
+    {
+      toolUses: [read("index.md"), read("a.md"), read("b.md"), read("c.md"), read("d.md"), read("e.md")],
+    },
+    { toolUses: [read("f.md"), read("g.md"), read("h.md")] },
+    { text: "Read everything" },
+  ],
+};
+
+/** Reads one page, for a suite that makes that page unreadable (FR-021: no call goes unrecorded). */
+export const readLocked: Script = {
+  name: "read-locked",
+  turns: [{ toolUses: [read("locked.md")] }, { text: "Could not read it" }],
+};
+
+/**
+ * The model endpoint refuses the prompt as too large for it — the one way a source's size
+ * surfaces, since the harness imposes no limit of its own (FR-029).
+ */
+export const promptTooLong: Script = {
+  name: "prompt-too-long",
+  turns: [
+    {
+      error: {
+        status: 400,
+        type: "invalid_request_error",
+        message: "prompt is too long: 250000 tokens > 200000 maximum",
+      },
+    },
+  ],
+};
+
+/**
+ * The egress proxy answers, but with an error of its own — the path exists and is broken, which
+ * a TCP probe cannot see (plan IV, grimoire.run.model_endpoint_unreachable). A status the SDK does
+ * not retry, so the run ends promptly.
+ */
+export const endpointRefuses: Script = {
+  name: "endpoint-refuses",
+  turns: [
+    {
+      error: {
+        status: 403,
+        type: "permission_error",
+        message: "The egress proxy refused this request.",
+      },
+    },
+  ],
+};
+
+/**
+ * Writes only a file the wiki's own `.gitignore` excludes: the tree still matches the tip, so the
+ * run changed nothing — and the file must not outlive it (FR-016, FR-017).
+ */
+export const writesIgnoredOnly: Script = {
+  name: "writes-ignored-only",
+  turns: [{ toolUses: [write("scratch/notes.md", "# Scratch\n")] }, { text: "Nothing worth keeping" }],
+};
+
+/**
+ * Writes a `.gitignore` and a file it excludes. The commit takes the first; the second is in no
+ * commit, so it must not stay in the working tree for the next run to read (FR-015, FR-017).
+ */
+export const writesGitignoreAndIgnored: Script = {
+  name: "writes-gitignore-and-ignored",
+  turns: [
+    { toolUses: [write(".gitignore", "secret.md\n")] },
+    { toolUses: [write("secret.md", "# Secret\n")] },
+    { text: "Ignore secret pages" },
   ],
 };
 
@@ -166,6 +276,13 @@ export const scripts: ReadonlyMap<string, Script> = new Map<string, Script>([
   [echoLength.name, echoLength],
   [escapeAttempts.name, escapeAttempts],
   [escapeThroughWritePaths.name, escapeThroughWritePaths],
+  [escapeTowardCanaries.name, escapeTowardCanaries],
+  [parallelToolUses.name, parallelToolUses],
+  [readLocked.name, readLocked],
+  [promptTooLong.name, promptTooLong],
+  [endpointRefuses.name, endpointRefuses],
+  [writesIgnoredOnly.name, writesIgnoredOnly],
+  [writesGitignoreAndIgnored.name, writesGitignoreAndIgnored],
   ...Array.from({ length: 8 }, (_, index) => {
     const script = escalation(index + 1);
     return [script.name, script] as const;

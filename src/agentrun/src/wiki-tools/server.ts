@@ -28,16 +28,17 @@ export function createWikiToolServer(repositoryRoot: string, guard: ToolGuard) {
     readPageSchema,
     async (args) => {
       const result = await readPage(repositoryRoot, args.path);
+      const outcome = result.refusedDetail ? "refused" : result.failedDetail ? "failed" : "ok";
       guard.recordResolved(
         "mcp__wiki__read_page",
         args.path,
-        result.refusedDetail ? "refused" : "ok",
-        result.refusedDetail ?? null,
+        outcome,
+        result.refusedDetail ?? result.failedDetail ?? null,
       );
 
       return {
         content: [{ type: "text" as const, text: result.text }],
-        ...(result.refusedDetail ? { isError: true } : {}),
+        ...(outcome === "ok" ? {} : { isError: true }),
       };
     },
   );

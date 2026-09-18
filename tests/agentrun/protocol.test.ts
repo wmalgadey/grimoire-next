@@ -20,6 +20,7 @@ describe("the NDJSON envelope", () => {
       // A commit message is the agent's final text, verbatim — and may well contain newlines.
       commitMessage: "Add kafka topic page\n\nLinked from the streaming index.",
       toolCallCount: 4,
+      modelEndpointStatus: null,
     });
 
     expect(line).not.toContain("\n");
@@ -35,6 +36,7 @@ describe("the NDJSON envelope", () => {
         failureReason: null,
         commitMessage,
         toolCallCount: 1,
+        modelEndpointStatus: null,
       }),
     );
 

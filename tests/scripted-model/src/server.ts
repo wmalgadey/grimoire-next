@@ -58,6 +58,7 @@ export async function startScriptedModel(
 ): Promise<ScriptedModel> {
   let script: Script = scriptByName(scriptName);
   const requests: RecordedRequest[] = [];
+  const variables = new Map<string, string>();
 
   const server: Server = createServer((request, response) => {
     void handle(request, response);
@@ -119,6 +120,16 @@ export async function startScriptedModel(
       return;
     }
 
+    // Lets a suite aim a script at something only it knows — a canary path created for one test.
+    // `{{name}}` in a scripted tool input is replaced with the value. Not part of the Anthropic
+    // surface; a path the SDK never calls.
+    if ((request.url ?? "").startsWith("/__var/")) {
+      variables.set(decodeURIComponent((request.url ?? "").slice("/__var/".length)), bodyBytes.toString("utf8"));
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+      return;
+    }
+
     if (!(request.url ?? "").includes("/messages")) {
       // Anything but the Messages API is a request this double does not model. Answering it with
       // a success would hide an egress the deny-all posture is supposed to make visible.
@@ -148,7 +159,15 @@ export async function startScriptedModel(
       }
     }
 
-    const message = messageFrom(turn, bodyBytes);
+    if (turn.error) {
+      response.writeHead(turn.error.status, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({ type: "error", error: { type: turn.error.type, message: turn.error.message } }),
+      );
+      return;
+    }
+
+    const message = messageFrom(turn, bodyBytes, variables);
     if (parsed.stream) {
       writeEventStream(response, message);
       return;
@@ -192,7 +211,30 @@ function turnFor(script: Script, body: RequestBody): ScriptedTurn | undefined {
   return script.repeatLastTurn ? script.turns[script.turns.length - 1] : undefined;
 }
 
-function messageFrom(turn: ScriptedTurn, requestBytes: Buffer): Record<string, unknown> {
+/** Replaces `{{name}}` in every string of a scripted tool input. */
+function substitute(value: unknown, variables: ReadonlyMap<string, string>): unknown {
+  if (typeof value === "string") {
+    return value.replace(/\{\{(\w+)\}\}/g, (whole, name: string) => variables.get(name) ?? whole);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => substitute(item, variables));
+  }
+
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, substitute(item, variables)]),
+    );
+  }
+
+  return value;
+}
+
+function messageFrom(
+  turn: ScriptedTurn,
+  requestBytes: Buffer,
+  variables: ReadonlyMap<string, string>,
+): Record<string, unknown> {
   const content: AnthropicContentBlock[] = [];
 
   if (turn.text !== undefined) {
@@ -208,7 +250,7 @@ function messageFrom(turn: ScriptedTurn, requestBytes: Buffer): Record<string, u
       type: "tool_use",
       id: `toolu_scripted_${Date.now()}_${index}`,
       name: use.name,
-      input: use.input,
+      input: substitute(use.input, variables) as Record<string, unknown>,
     });
   }
 
