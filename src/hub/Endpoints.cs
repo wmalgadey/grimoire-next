@@ -145,6 +145,7 @@ public static class Endpoints
         string taskId,
         SqliteStore store,
         WikiMutation wiki,
+        RunQueue queue,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
@@ -154,6 +155,19 @@ public static class Endpoints
         if (task is null)
         {
             return Problem("No such task.", $"There is no task '{taskId}'.", StatusCodes.Status404NotFound);
+        }
+
+        // A run in flight holds the working tree, and its writes are uncommitted. Reverting now
+        // would resolve the revert against that tree and sweep the running agent's half-finished
+        // work into the revert commit — one commit carrying two runs' changes, which is the
+        // property the single-writer lock cannot defend on its own: the lock serialises git
+        // commands, not the agent writing files between them (FR-015, FR-019).
+        if (queue.IsRunning)
+        {
+            return Problem(
+                "This ingest cannot be reverted right now.",
+                "A run is in progress and is writing into the wiki. Try again once it has ended.",
+                StatusCodes.Status409Conflict);
         }
 
         var tip = wiki.Tip();

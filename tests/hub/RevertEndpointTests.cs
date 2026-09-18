@@ -118,6 +118,58 @@ public sealed class RevertEndpointTests
     }
 
     [Fact]
+    public async Task RefusesWhileARunIsInFlight()
+    {
+        using var wiki = new WikiRepositoryFixture();
+        using var model = ScriptedModelFixture.Start("slow-read-then-write");
+        using var hub = GrimoireHub.Start(wiki, model);
+
+        var first = await hub.SubmitText("first source", TestContext.Current.CancellationToken);
+        var completed = await hub.WaitForEnd(first, TestContext.Current.CancellationToken);
+        Assert.True(completed.GetProperty("revertEligibility").GetProperty("eligible").GetBoolean());
+
+        // A second run is now writing into the same working tree. The first task's commit is still
+        // the tip, so eligibility alone would say yes.
+        var second = await hub.SubmitText("second source", TestContext.Current.CancellationToken);
+        await WaitForState(hub, second, "running", TestContext.Current.CancellationToken);
+
+        using var response = await hub.Revert(first, TestContext.Current.CancellationToken);
+
+        // Refused, because a revert resolved against a tree a live agent is writing into would
+        // carry that agent's half-finished work in the revert commit (FR-015).
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Contains("run is in progress", problem.GetProperty("detail").GetString()!, StringComparison.OrdinalIgnoreCase);
+
+        // And once the run has ended it is offered again: this is a "not now", not a "never". The
+        // second run wrote the same page with the same content, so it committed nothing and the
+        // first task's commit is still the tip — the refusal above was about the live tree alone.
+        await hub.WaitForEnd(second, TestContext.Current.CancellationToken);
+        var later = await hub.GetTask(first, TestContext.Current.CancellationToken);
+        Assert.True(later.GetProperty("revertEligibility").GetProperty("eligible").GetBoolean());
+        using var afterwards = await hub.Revert(first, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, afterwards.StatusCode);
+    }
+
+    private static async Task WaitForState(
+        GrimoireHub hub, string taskId, string state, CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            var task = await hub.GetTask(taskId, cancellationToken);
+            if (task.GetProperty("state").GetString() == state)
+            {
+                return;
+            }
+
+            await Task.Delay(100, cancellationToken);
+        }
+
+        throw new TimeoutException($"Task {taskId} never reached '{state}'.");
+    }
+
+    [Fact]
     public async Task TwoConcurrentAttemptsRevertExactlyOnce()
     {
         using var wiki = new WikiRepositoryFixture();

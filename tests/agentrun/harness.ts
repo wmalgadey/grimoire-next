@@ -100,6 +100,11 @@ export interface RunOptions {
   readonly instructionPath?: string;
   /** Kills the runner this many milliseconds after the first tool call, for TS-12. */
   readonly killAfterFirstToolCallMs?: number;
+  /**
+   * Closes the runner's stdin this many milliseconds after the first tool call — what an
+   * orphaned runner sees when the hub supervising it dies.
+   */
+  readonly closeStdinAfterFirstToolCallMs?: number;
 }
 
 /**
@@ -171,6 +176,17 @@ export async function runAgent(options: RunOptions): Promise<RunResult> {
         if (event.type === "tool_call" && !sawFirstToolCall && options.killAfterFirstToolCallMs !== undefined) {
           sawFirstToolCall = true;
           killTimer = setTimeout(() => child.kill("SIGKILL"), options.killAfterFirstToolCallMs);
+        }
+
+        if (
+          event.type === "tool_call"
+          && !sawFirstToolCall
+          && options.closeStdinAfterFirstToolCallMs !== undefined
+        ) {
+          sawFirstToolCall = true;
+          // EOF, not a signal: the runner is left alive and unsupervised, exactly as it would be
+          // after its hub was killed.
+          killTimer = setTimeout(() => child.stdin.end(), options.closeStdinAfterFirstToolCallMs);
         }
       }
     });

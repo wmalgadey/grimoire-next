@@ -75,6 +75,20 @@ function hubMessages(): {
   proceed.catch(() => {});
 
   const lines = createInterface({ input: process.stdin });
+
+  // The hub holds this pipe open for the whole run, so EOF means the hub is gone — killed, OOMed,
+  // or the node it was on went away. A runner that kept going would write into a wiki nobody is
+  // supervising, and the next hub's startup recovery would reset that working tree and dispatch
+  // the next run while this process was still writing into it (FR-017, FR-028).
+  //
+  // This is the parent-death mechanism both platforms have. `PR_SET_PDEATHSIG` is Linux-only, and
+  // a process group only helps when whoever kills the hub signals the group — an OOM kill does
+  // not. Exiting on EOF needs nothing from the killer.
+  process.stdin.on("end", () => {
+    diagnostic("the hub closed the protocol stream; exiting rather than running unsupervised");
+    process.exit(1);
+  });
+
   lines.on("line", (line) => {
     const trimmed = line.trim();
     if (trimmed.length === 0) {
