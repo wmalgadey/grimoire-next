@@ -47,6 +47,7 @@ no setting is read from a path an operator cannot set.
 | `GRIMOIRE_MODEL_BASE_URL` | yes | Proxy model route; passed to the runner as `ANTHROPIC_BASE_URL` |
 | `GRIMOIRE_MODEL_TOKEN` | yes | **Opaque internal token** for the proxy; never an Anthropic credential |
 | `GRIMOIRE_FETCH_PROXY` | in containers | Proxy fetch route used by URL retrieval (FR-003) |
+| `GRIMOIRE_LOG_FORMAT` | no | `json` (default) or `text`; `text` is for reading the log by eye outside a container |
 
 ### Runner (set by the hub at spawn; `env` is **replaced**, not merged)
 

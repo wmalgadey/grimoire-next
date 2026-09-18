@@ -139,4 +139,27 @@ public sealed class ConfigurationTests
 
         Assert.Equal("http://egress:8080/fetch", Read(environment).FetchProxy);
     }
+
+    [Fact]
+    public void LogsStructuredJsonUnlessTextIsAskedFor()
+    {
+        // JSON is the transport for every declared signal; reading the log by eye is the opt-in.
+        Assert.Equal(LogFormat.Json, Read(Complete()).LogFormat);
+
+        var environment = Complete();
+        environment["GRIMOIRE_LOG_FORMAT"] = "text";
+
+        Assert.Equal(LogFormat.Text, Read(environment).LogFormat);
+    }
+
+    [Fact]
+    public void RefusesALogFormatItDoesNotKnow()
+    {
+        var environment = Complete();
+        environment["GRIMOIRE_LOG_FORMAT"] = "pretty";
+
+        var failure = Assert.Throws<ConfigurationException>(() => Read(environment));
+
+        Assert.Contains("GRIMOIRE_LOG_FORMAT", failure.Message, StringComparison.Ordinal);
+    }
 }

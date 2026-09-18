@@ -19,13 +19,26 @@ builder.Services.AddSingleton(configuration);
 
 // Structured JSON on stdout, one event per line. No files, no rotation, no sink configuration:
 // the container convention, and the transport for every signal in the plan's observability table.
+// GRIMOIRE_LOG_FORMAT=text swaps the formatter for reading by eye; the events are the same.
 builder.Logging.ClearProviders();
-builder.Logging.AddJsonConsole(options =>
+if (configuration.LogFormat == LogFormat.Text)
 {
-    options.IncludeScopes = false;
-    options.UseUtcTimestamp = true;
-    options.JsonWriterOptions = new JsonWriterOptions { Indented = false };
-});
+    builder.Logging.AddSimpleConsole(options =>
+    {
+        options.IncludeScopes = false;
+        options.UseUtcTimestamp = true;
+        options.TimestampFormat = "HH:mm:ss.fff ";
+    });
+}
+else
+{
+    builder.Logging.AddJsonConsole(options =>
+    {
+        options.IncludeScopes = false;
+        options.UseUtcTimestamp = true;
+        options.JsonWriterOptions = new JsonWriterOptions { Indented = false };
+    });
+}
 
 // The two stores, opened once. The wiki repository holds content and history; the operational
 // store holds the task artifact and commit identities, never wiki content (data-model).
