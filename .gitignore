@@ -28,6 +28,9 @@ blob-report/
 .local/
 .env
 
+# Personal compose overrides (e.g. a bind-mounted host wiki path) — never generic across machines.
+deploy/compose.override.yaml
+
 # Editors and OS
 .DS_Store
 Thumbs.db
