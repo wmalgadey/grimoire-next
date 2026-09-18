@@ -35,6 +35,8 @@ alone holds the upstream credential ([contracts/deployment.md](specs/001-source-
 docker compose -f deploy/compose.yaml -f deploy/compose.override.yaml up -d --build
 curl -fsS localhost:8080/readyz
 
+lnav <(podman logs -f --tail 200 grimoire-hub) <(podman logs -f --tail 200 grimoire-egress)
+
 docker compose -f deploy/compose.yaml -f deploy/compose.override.yaml down
 ```
 
