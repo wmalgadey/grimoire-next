@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Grimoire.Tests.Hub;
 
@@ -114,16 +116,21 @@ public sealed class HubFixture : WebApplicationFactory<HubEntryPoint>, IAsyncLif
     }
 
     /// <summary>
-    /// This host's configuration, under the names production reads from its environment — given to
-    /// this host alone rather than to the whole test process.
+    /// This host's configuration, parsed by the rules production applies to its environment and
+    /// given to this host alone rather than to the whole test process.
     /// </summary>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseSetting("GRIMOIRE_WIKI_REPO", WikiRepositoryPath);
-        builder.UseSetting("GRIMOIRE_STATE_DB", StateDatabasePath);
-        // Port 1 is never listening, so the readiness check for egress fails deterministically.
-        builder.UseSetting("GRIMOIRE_MODEL_BASE_URL", "http://127.0.0.1:1/v1");
-        builder.UseSetting("GRIMOIRE_MODEL_TOKEN", "an-opaque-internal-token");
+        var environment = new Dictionary<string, string?>
+        {
+            ["GRIMOIRE_WIKI_REPO"] = WikiRepositoryPath,
+            ["GRIMOIRE_STATE_DB"] = StateDatabasePath,
+            // Port 1 is never listening, so the readiness check for egress fails deterministically.
+            ["GRIMOIRE_MODEL_BASE_URL"] = "http://127.0.0.1:1/v1",
+            ["GRIMOIRE_MODEL_TOKEN"] = "an-opaque-internal-token",
+        };
+        var configuration = HubConfiguration.Read(name => environment.GetValueOrDefault(name));
+        builder.ConfigureTestServices(services => services.AddSingleton(configuration));
     }
 
     public override async ValueTask DisposeAsync()

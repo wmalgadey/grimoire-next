@@ -39,15 +39,27 @@ public static class Operations
     public const string EgressCheck = "egress";
 
     /// <summary>Registers one health check per dependency the replica needs to do its work.</summary>
-    public static IServiceCollection AddOperations(this IServiceCollection services, HubConfiguration configuration)
+    public static IServiceCollection AddOperations(this IServiceCollection services)
     {
         services.AddSingleton<DrainState>();
         services.AddHealthChecks()
-            .AddCheck(WikiRepositoryCheck, () => CheckWikiRepository(configuration.WikiRepositoryPath))
-            .AddCheck(StateDatabaseCheck, () => CheckStateDatabase(configuration.StateDatabasePath))
-            .AddCheck(EgressCheck, () => CheckEgress(configuration.ModelBaseUrl));
+            .Add(Registration(WikiRepositoryCheck, configuration => CheckWikiRepository(configuration.WikiRepositoryPath)))
+            .Add(Registration(StateDatabaseCheck, configuration => CheckStateDatabase(configuration.StateDatabasePath)))
+            .Add(Registration(EgressCheck, configuration => CheckEgress(configuration.ModelBaseUrl)));
 
         return services;
+    }
+
+    /// <summary>A check against the configuration the host was given, resolved when it runs.</summary>
+    private static HealthCheckRegistration Registration(string name, Func<HubConfiguration, HealthCheckResult> check) =>
+        new(name, services => new ConfiguredCheck(check, services.GetRequiredService<HubConfiguration>()),
+            failureStatus: null, tags: null);
+
+    private sealed class ConfiguredCheck(Func<HubConfiguration, HealthCheckResult> check, HubConfiguration configuration)
+        : IHealthCheck
+    {
+        public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default) =>
+            Task.FromResult(check(configuration));
     }
 
     /// <summary>

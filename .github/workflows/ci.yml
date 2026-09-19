@@ -14,7 +14,7 @@ name: CI
 #   6  observability through the production composition root    tests/hub/Observability*Tests.cs, tests/surfaces
 #   7  the full hermetic suite                                  every step of build-and-test
 #   8  per-method complexity, regressions only                  the complexity job
-#   9  ADR lint                                                 the adr-lint job — pending, see there
+#   9  ADR lint                                                 .github/adr-lint/lint.mjs (the adr-lint job)
 #
 # TS-18 and TS-19 need a container runtime and a real process signal. They skip locally with a
 # named reason when there is none; here CI is set, so a missing runtime fails instead of skipping.
@@ -135,9 +135,20 @@ jobs:
         run: docker compose -f deploy/compose.yaml config --quiet
 
   adr-lint:
-    # Gate 9 is pending until the ADR lint exists (constitution "Quality gates", item 9). This slot
-    # is where it runs; it checks nothing yet and says so, rather than passing as if it had.
+    # Gate 9 (constitution VI.1-VI.3): the fixed template, a valid status, supersessions that
+    # resolve, no citations between records, and an index row of exactly one kind per record.
+    # The lint's own tests run first, so a lint that stopped rejecting anything fails here.
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: ADR lint (quality gate 9) — pending
-        run: echo "::notice title=Quality gate 9::The ADR lint does not exist yet; nothing was checked."
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: The ADR lint's own tests
+        run: node --test .github/adr-lint/lint.test.mjs
+
+      - name: ADR lint (quality gate 9)
+        run: node .github/adr-lint/lint.mjs

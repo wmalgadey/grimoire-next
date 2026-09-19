@@ -67,6 +67,7 @@ help:
 	@echo '  make test-runner     the runner: real SDK loop against the scripted model'
 	@echo '  make test-e2e        Playwright over the three surfaces (needs Node 20.19+)'
 	@echo '  make lint            eslint + dependency-cruiser in each npm workspace'
+	@echo '  make lint-adr        the ADR lint (quality gate 9) and its tests'
 	@echo '  make run             the hub, on $(ASPNETCORE_URLS)'
 	@echo '  make dev-setup       a scratch wiki repository and a starter .env, for make run'
 	@echo '  make clean           build output; leaves node_modules and .local/'
@@ -171,6 +172,12 @@ lint: deps require-node-20
 	  npm --prefix $$ws run lint --if-present || exit 1; \
 	  npm --prefix $$ws run depcruise --if-present || exit 1; \
 	done
+
+# Quality gate 9. Plain Node, no workspace and no dependencies.
+.PHONY: lint-adr
+lint-adr:
+	node --test .github/adr-lint/lint.test.mjs
+	node .github/adr-lint/lint.mjs
 
 # ---------------------------------------------------------------- run
 

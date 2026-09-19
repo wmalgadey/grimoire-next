@@ -5,6 +5,7 @@ using Grimoire.Hub;
 using Grimoire.Tasks.Adapters;
 using Grimoire.Wiki;
 using Grimoire.Wiki.Adapters;
+using Microsoft.Extensions.Logging.Console;
 
 // The composition root (ADR-0011). Everything the hub is made of is wired here and nowhere else:
 // configuration straight from the environment with no abstraction over it, structured JSON logs
@@ -12,64 +13,73 @@ using Grimoire.Wiki.Adapters;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuration is environment variables only, read through the host's configuration — the hub
-// ships no settings file, so the environment is its one source. A missing required variable fails
-// fast and loudly, before the replica serves anything (contracts/deployment.md "Startup", step 1).
-var configuration = HubConfiguration.From(builder.Configuration);
-builder.Services.AddSingleton(configuration);
+// Configuration is environment variables only, read from the process environment and nothing
+// else — not the host's aggregate configuration, which would also take command-line arguments and
+// settings files and put a token in argv (contracts/deployment.md "Environment contract"). It is
+// registered rather than read here so an in-process test host can give each hub its own,
+// parsed by the same rules, without touching the process environment every hub shares. A missing
+// required variable still fails fast and loudly, before the replica serves anything
+// (contracts/deployment.md "Startup", step 1): see the first line after Build().
+builder.Services.AddSingleton(_ => HubConfiguration.FromEnvironment());
 
 // Structured JSON on stdout, one event per line. No files, no rotation, no sink configuration:
 // the container convention, and the transport for every signal in the plan's observability table.
 // GRIMOIRE_LOG_FORMAT=text swaps the formatter for reading by eye; the events are the same.
 builder.Logging.ClearProviders();
-if (configuration.LogFormat == LogFormat.Text)
+builder.Logging.AddSimpleConsole(options =>
 {
-    builder.Logging.AddSimpleConsole(options =>
-    {
-        options.IncludeScopes = false;
-        options.UseUtcTimestamp = true;
-        options.TimestampFormat = "HH:mm:ss.fff ";
-    });
-}
-else
+    options.IncludeScopes = false;
+    options.UseUtcTimestamp = true;
+    options.TimestampFormat = "HH:mm:ss.fff ";
+});
+builder.Logging.AddJsonConsole(options =>
 {
-    builder.Logging.AddJsonConsole(options =>
-    {
-        options.IncludeScopes = false;
-        options.UseUtcTimestamp = true;
-        options.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
-        options.JsonWriterOptions = new JsonWriterOptions { Indented = false };
-    });
-}
+    options.IncludeScopes = false;
+    options.UseUtcTimestamp = true;
+    options.TimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
+    options.JsonWriterOptions = new JsonWriterOptions { Indented = false };
+});
+builder.Services.AddOptions<ConsoleLoggerOptions>().Configure<HubConfiguration>((options, configuration) =>
+    options.FormatterName = configuration.LogFormat == LogFormat.Text
+        ? ConsoleFormatterNames.Simple
+        : ConsoleFormatterNames.Json);
 
 // The two stores, opened once. The wiki repository holds content and history; the operational
 // store holds the task artifact and commit identities, never wiki content (data-model).
-builder.Services.AddSingleton(_ =>
+builder.Services.AddSingleton(services =>
 {
-    var store = new SqliteStore(configuration.StateDatabasePath);
+    var store = new SqliteStore(services.GetRequiredService<HubConfiguration>().StateDatabasePath);
     store.EnsureSchema();
     return store;
 });
-builder.Services.AddSingleton(_ => new GitCli(configuration.WikiRepositoryPath));
+builder.Services.AddSingleton(services =>
+    new GitCli(services.GetRequiredService<HubConfiguration>().WikiRepositoryPath));
 
 // One client for the process lifetime: FetchProxy never changes after startup, and a fresh
 // HttpClient (and its handler and sockets) per submission is a resource leak under sustained URL
 // ingestion (UrlFetch is not disposable, and nothing was disposing it either).
-builder.Services.AddSingleton(_ => UrlFetch.Create(
-    configuration.FetchProxy, TimeSpan.FromMilliseconds(configuration.FetchDeadlineMs)));
+builder.Services.AddSingleton(services =>
+{
+    var configuration = services.GetRequiredService<HubConfiguration>();
+    return UrlFetch.Create(configuration.FetchProxy, TimeSpan.FromMilliseconds(configuration.FetchDeadlineMs));
+});
 
 // The single wiki mutation path, and the single-writer lock inside it (constitution II.1).
 builder.Services.AddSingleton(services => new WikiMutation(
     services.GetRequiredService<GitCli>(), services.GetRequiredService<ILogger<WikiMutation>>()));
 builder.Services.AddSingleton(services => new RunOutcomeHandler(services.GetRequiredService<WikiMutation>()));
 
-builder.Services.AddSingleton(new DispatchSettings(
-    RepositoryRoot: RepositoryRoot(builder.Configuration["GRIMOIRE_ROOT"]),
-    WikiRepositoryPath: configuration.WikiRepositoryPath,
-    ModelBaseUrl: configuration.ModelBaseUrl,
-    ModelToken: configuration.ModelToken,
-    InstructionPath: configuration.InstructionPath,
-    Limit: new RunLimit(configuration.RunMaxToolCalls, configuration.RunMaxElapsedMs)));
+builder.Services.AddSingleton(services =>
+{
+    var configuration = services.GetRequiredService<HubConfiguration>();
+    return new DispatchSettings(
+        RepositoryRoot: configuration.ApplicationRoot ?? RepositoryRoot(),
+        WikiRepositoryPath: configuration.WikiRepositoryPath,
+        ModelBaseUrl: configuration.ModelBaseUrl,
+        ModelToken: configuration.ModelToken,
+        InstructionPath: configuration.InstructionPath,
+        Limit: new RunLimit(configuration.RunMaxToolCalls, configuration.RunMaxElapsedMs));
+});
 
 builder.Services.AddSingleton<Dispatcher>();
 builder.Services.AddSingleton<RunQueue>();
@@ -81,10 +91,14 @@ builder.Services.AddSingleton<GracefulShutdown>();
 // "SIGTERM"). The default five seconds is shorter than the grace the shutdown itself allows.
 builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
-builder.Services.AddOperations(configuration);
+builder.Services.AddOperations();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+// Step 1 of startup: the configuration is read, and a replica that cannot work fails here, naming
+// every missing variable at once, before anything else is resolved or served.
+_ = app.Services.GetRequiredService<HubConfiguration>();
 
 // The built frontend is served from this same origin, so the surfaces and /api need no CORS and
 // no second listener (ADR-0002, contracts/deployment.md Topology).
@@ -127,13 +141,8 @@ app.Run();
 // Where src/agentrun/dist/main.js is resolved from. The hub runs from its own output directory in
 // development and from the image's install root in a container; both sit under the repository or
 // image root the runner build was published into.
-static string RepositoryRoot(string? fromEnvironment)
+static string RepositoryRoot()
 {
-    if (!string.IsNullOrWhiteSpace(fromEnvironment))
-    {
-        return fromEnvironment;
-    }
-
     var directory = new DirectoryInfo(AppContext.BaseDirectory);
     while (directory is not null)
     {

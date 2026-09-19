@@ -68,7 +68,8 @@ public sealed class HubProcess : IDisposable
         ScriptedModelFixture? model = null,
         string? stateDatabasePath = null,
         IReadOnlyDictionary<string, string?>? extraEnvironment = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<string>? arguments = null)
     {
         var port = FreePort();
         var root = ScriptedModelFixture.RepositoryRoot;
@@ -85,6 +86,15 @@ public sealed class HubProcess : IDisposable
         info.ArgumentList.Add("--no-build");
         info.ArgumentList.Add("--configuration");
         info.ArgumentList.Add(Configuration);
+        if (arguments is { Count: > 0 })
+        {
+            // Past `--`, so they reach the hub itself rather than `dotnet run`.
+            info.ArgumentList.Add("--");
+            foreach (var argument in arguments)
+            {
+                info.ArgumentList.Add(argument);
+            }
+        }
 
         info.Environment["ASPNETCORE_URLS"] = $"http://127.0.0.1:{port}";
         info.Environment["GRIMOIRE_WIKI_REPO"] = wiki.Path;

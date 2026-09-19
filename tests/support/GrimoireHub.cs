@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Grimoire.Tests.Support;
 
@@ -70,17 +72,15 @@ public sealed class GrimoireHub : IDisposable
             environment[name] = value;
         }
 
-        // Given to this host alone, under the names production reads from its environment. Setting
-        // them on the process instead would hand every hub in the test process the last one's
-        // wiki, which is why the suites once had to run one test at a time.
+        // Parsed by the same rules production applies to its environment, and given to this host
+        // alone. Setting the variables on the process instead would hand every hub in the test
+        // process the last one's wiki, which is why the suites once had to run one test at a time.
+        var configuration = HubConfiguration.Read(name => environment.GetValueOrDefault(name));
         var factory = new WebApplicationFactory<HubEntryPoint>()
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Production");
-                foreach (var (name, value) in environment)
-                {
-                    builder.UseSetting(name, value);
-                }
+                builder.ConfigureTestServices(services => services.AddSingleton(configuration));
             });
 
         return new GrimoireHub(factory, wiki, model, statePath);

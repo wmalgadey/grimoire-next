@@ -1,5 +1,4 @@
 using System.Globalization;
-using Microsoft.Extensions.Configuration;
 
 namespace Grimoire.Hub;
 
@@ -58,6 +57,10 @@ public enum LogFormat
 /// <c>GRIMOIRE_FETCH_DEADLINE_MS</c> — how long URL retrieval may take in all, redirects and the
 /// body read included, before the task fails (FR-003).
 /// </param>
+/// <param name="ApplicationRoot">
+/// <c>GRIMOIRE_ROOT</c> — where <c>src/agentrun/dist/main.js</c> and the default instruction are
+/// resolved from; the image sets it. When absent, the hub looks upward from its own binary.
+/// </param>
 /// <param name="LogFormat">
 /// <c>GRIMOIRE_LOG_FORMAT</c> — <c>json</c> (the default) or <c>text</c>, for reading the log by
 /// eye when the hub runs without a container or log toolchain.
@@ -72,6 +75,7 @@ public sealed record HubConfiguration(
     int RunMaxElapsedMs,
     string? FetchProxy,
     int FetchDeadlineMs,
+    string? ApplicationRoot,
     LogFormat LogFormat)
 {
     /// <summary>The instruction file the hub ships with, when the environment names no other.</summary>
@@ -114,17 +118,13 @@ public sealed record HubConfiguration(
         }
 
         return new HubConfiguration(
-            wikiRepo!, stateDb!, modelBaseUrl!, modelToken!, instruction, maxToolCalls, maxElapsedMs, fetchProxy, fetchDeadlineMs, logFormat);
+            wikiRepo!, stateDb!, modelBaseUrl!, modelToken!, instruction, maxToolCalls, maxElapsedMs, fetchProxy, fetchDeadlineMs,
+            Optional(lookup, "GRIMOIRE_ROOT"), logFormat);
     }
 
-    /// <summary>
-    /// Reads the configuration from the host's configuration — whose source in a deployment is the
-    /// process environment, and nothing else: the hub ships no settings file. Reading it there
-    /// rather than from the process directly is what lets two hubs in one test process each have
-    /// their own, which a process-wide environment cannot give them.
-    /// </summary>
-    public static HubConfiguration From(IConfiguration configuration) =>
-        Read(name => configuration[name]);
+    /// <summary>Reads the configuration from this process's environment, and from nothing else.</summary>
+    public static HubConfiguration FromEnvironment() =>
+        Read(Environment.GetEnvironmentVariable);
 
     // Ceilings generous enough that a real ingest finishes, tight enough that a never-stopping
     // run ends. Both halves are configuration, not specification (FR-009).
