@@ -14,7 +14,7 @@ The result is a lasting artifact: a wiki of linked Markdown files that gains coh
 
 Classic RAG systems transform raw data into a form the user can neither read nor use directly, and derive every answer anew from the raw material. With Grimoire the wiki itself is the result. It is readable, editable with any tool, and usable even without Grimoire. Answers arise from pages that have already been synthesized.
 
-The wiki follows the [Open Knowledge Format](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing), an open format of Markdown files with metadata about provenance and confidence, readable by humans and agents without special tools.
+The wiki follows the [Open Knowledge Format](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing) in version 0.2, an open format of Markdown files with metadata about provenance and confidence, readable by humans and agents without special tools. Those metadata are written by the agent — Grimoire itself never judges content.
 
 ## How it is meant to work
 
@@ -24,19 +24,21 @@ Three operations work on the wiki:
 - **Query** answers questions from the wiki pages and backs the answer with references. Valuable results can themselves become wiki pages.
 - **Lint** checks the wiki for contradictions, outdated statements, orphaned pages and missing cross-references.
 
-The roles are separated. Grimoire limits what an agent can reach and execute, and records what it did and why. Grimoire never decides about content. The agent and the user do that. The user sees the agent's decisions and approves what is consequential.
+Operations are what happens to the wiki. `docs/product.md` cuts the system along a second axis, into capabilities — not every capability is an operation.
+
+The roles are separated. Grimoire never decides about content; the agent and the user do that. What Grimoire does is record what an agent did and why, and expose an agent's abilities as narrowly scoped tools instead of general execution access. Keeping a tight limit on what an agent can reach is a goal on the roadmap, not yet a guarantee. Runs are judged after the fact rather than approved up front; only consequential lint proposals wait for the user.
 
 ## Where things live
 
-| Question                              | Place                           |
-|---------------------------------------|---------------------------------|
-| What gets built, what does not?        | docs/product.md                 |
-| What exists and how does it behave?    | docs/capabilities/              |
-| What is proven?                        | docs/trace.md                   |
-| Which rules apply?                     | .specify/memory/constitution.md |
-| What is a PR checked against?          | docs/review-checklist.md        |
-| How did it come about?                 | specs/NNN-*                     |
+| Question                            | Place                           |
+| ----------------------------------- | ------------------------------- |
+| What gets built, what does not?     | docs/product.md                 |
+| What exists and how does it behave? | docs/capabilities/              |
+| What is proven?                     | docs/trace.md                   |
+| Which rules apply?                  | .specify/memory/constitution.md |
+| What is a PR checked against?       | docs/review-checklist.md        |
+| How did it come about?              | specs/NNN-*                     |
 
 ## Development
 
-Grimoire is built with Spec-Driven Development (Spec Kit). Every feature advances exactly one outcome from `docs/product.md` and goes through specify → plan → tasks → implement → converge.
+Grimoire is built with Spec-Driven Development (Spec Kit). Every feature advances exactly one outcome from `docs/product.md` and goes through specify → plan → tasks → implement → converge; its spec id is written back into that outcome's Specs column.
