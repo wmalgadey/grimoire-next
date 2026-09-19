@@ -85,8 +85,8 @@ curl -fsS localhost:8080/readyz | jq   # checks: wikiRepo, stateDb, egress
 *Spec: User Story 1, acceptance 1–5, SC-001/002/004/007/008. Automated by TS-02, TS-05, TS-06, TS-13.*
 
 1. Open the submit surface, paste a paragraph of notes, submit.
-2. **Expected**: exactly one task appears and is openable **within 2 seconds** (SC-001). No second
-   task, no second run.
+2. **Expected**: exactly one task appears and is **openable from the moment it is created**
+   (SC-001). No second task, no second run.
 3. Wait for the run to end, then open the task.
 4. **Expected on the task view**, without opening a terminal or the repository (SC-008):
    - state `completed`;
@@ -219,8 +219,9 @@ wiki is untouched. The task is still openable and still shows its source.
    task created** — nothing appears in the task list.
 2. Submit a source far larger than the agent can take in. **Expected**: the submission is
    **accepted**, the task is created, the source is passed **whole** (no truncation, no summary),
-   and the run ends `failed` with a reason **identifying the source size**, with no commit.
-   Splitting an oversized source is left to the user.
+   and if the run cannot proceed, it ends `failed` with **that run's own reason recorded
+   verbatim**, with no commit. The harness itself never inspects or reasons about the source's
+   size. Splitting an oversized source is left to the user.
 
 ## Scenario 11 — The container boundary and the egress policy hold
 

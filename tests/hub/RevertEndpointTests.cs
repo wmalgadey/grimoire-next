@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Runtime.Versioning;
 using System.Text.Json;
 using Grimoire.Tests.Support;
 
@@ -44,7 +43,6 @@ public sealed class RevertEndpointTests
     }
 
     [Fact]
-    [UnsupportedOSPlatform("windows")] // file modes are how the ref is made unwritable
     public async Task ResetsTheWikiAndAnswersWithAProblemWhenGitCannotCompleteTheRevert()
     {
         using var wiki = new WikiRepositoryFixture();
@@ -57,9 +55,12 @@ public sealed class RevertEndpointTests
         var content = wiki.Snapshot();
 
         // `revert --no-commit` rewrites the tree and index; the restoring commit then cannot move
-        // the branch, because its ref cannot be locked. The revert fails half-way through.
-        var heads = Path.Combine(wiki.Path, ".git", "refs", "heads");
-        File.SetUnixFileMode(heads, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        // the branch, because its ref is already locked. A stale lock file is what git itself
+        // refuses to write past — an EEXIST check, not a permission one, so it fails identically
+        // whichever user runs the test (unlike making the ref directory unwritable, which a
+        // process running as root simply ignores).
+        var refLock = Path.Combine(wiki.Path, ".git", "refs", "heads", "main.lock");
+        await File.WriteAllTextAsync(refLock, string.Empty, TestContext.Current.CancellationToken);
         HttpResponseMessage response;
         try
         {
@@ -67,7 +68,7 @@ public sealed class RevertEndpointTests
         }
         finally
         {
-            File.SetUnixFileMode(heads, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            File.Delete(refLock);
         }
 
         using (response)
