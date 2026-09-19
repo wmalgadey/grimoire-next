@@ -25,8 +25,8 @@ public enum SourceKind
 /// </param>
 /// <param name="RetrievedAt">Set with <paramref name="RetrievedText"/>.</param>
 /// <param name="ByteLength">
-/// Byte length of the text handed to the run, recorded so an oversized-source failure can name
-/// the size (FR-029).
+/// Byte length of the text handed to the run, shown with the source. Recorded, never acted on:
+/// no size limit applies (FR-029).
 /// </param>
 public sealed record Source(
     SourceKind Kind,

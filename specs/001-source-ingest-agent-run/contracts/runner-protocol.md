@@ -116,9 +116,9 @@ are emitted the same way as successful ones — a refusal is a recorded tool cal
 `modelEndpointStatus` is set when the run ended because the model endpoint answered with an error
 rather than a message — the HTTP status as a string, or `no-response` when there was none. The hub
 emits `grimoire.run.model_endpoint_unreachable` with it, so a broken egress path or upstream is
-distinguishable from the agent failing even when the proxy is reachable. A prompt the model refuses
-as too long is the source's size, not the endpoint: `modelEndpointStatus` stays `null` and
-`failureReason` names the source's byte length (FR-029).
+distinguishable from the agent failing even when the proxy is reachable. The runner makes no size
+determination of its own: a run that cannot proceed — for whatever reason, a source too large for
+the model included — reports that run's own reason in `failureReason`, verbatim (FR-029).
 
 The tool-call ceiling is enforced per call by the runner's guard: the call past the ceiling is
 refused and recorded, the conversation is stopped, and `run_end` reports `failed`. The hub checks the

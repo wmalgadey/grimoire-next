@@ -24,8 +24,8 @@ export interface ScriptedTurn {
   /** Milliseconds to wait before answering, for the slow and hanging scripts. */
   readonly delayMs?: number;
   /**
-   * Answers this turn with an HTTP error instead of a message — what the model endpoint says when
-   * the prompt is too large for it, or what the egress proxy says when its upstream is not there.
+   * Answers this turn with an HTTP error instead of a message — what the egress proxy says when
+   * its upstream is not there.
    */
   readonly error?: ScriptedError;
 }

@@ -82,11 +82,12 @@ What the user submitted. Belongs to exactly one task.
 | `submittedValue` | string | The pasted text, or the URL as typed. Non-empty after trimming, else the submission is rejected with no task created (FR-001) |
 | `retrievedText` | string, nullable | For `kind = url`, the text fetched before dispatch; `null` until retrieved and permanently `null` if retrieval failed (FR-003) |
 | `retrievedAt` | timestamp, UTC, nullable | Set with `retrievedText` |
-| `byteLength` | integer | Of the text handed to the run; recorded so an oversized-source failure can name the size (FR-029) |
+| `byteLength` | integer | Of the text handed to the run; shown with the source on the task view, never acted on (FR-029) |
 
 **No size limit and no truncation** (FR-029). The text handed to the run is
-`kind = text ? submittedValue : retrievedText`, whole. A run that cannot proceed because of size
-fails with a reason identifying the byte length and produces no commit.
+`kind = text ? submittedValue : retrievedText`, whole. The harness never inspects or reasons about
+its size: a run that cannot proceed fails with that run's own reason, verbatim, and produces no
+commit.
 
 ---
 

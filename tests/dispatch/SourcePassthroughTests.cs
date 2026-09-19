@@ -9,9 +9,9 @@ namespace Grimoire.Tests.Dispatch;
 /// through a real spawned runner and the real SDK loop.
 /// </summary>
 /// <remarks>
-/// "No maximum source size" is a clarified decision, not an oversight: an oversized source
-/// surfaces as a failed run with a reason naming the byte length, never as a rejected submission
-/// or a quietly shortened prompt.
+/// "No maximum source size" is a clarified decision, not an oversight: a source too large for the
+/// run surfaces as a failed run with that run's own reason, never as a rejected submission or a
+/// quietly shortened prompt.
 /// </remarks>
 public sealed class SourcePassthroughTests
 {
