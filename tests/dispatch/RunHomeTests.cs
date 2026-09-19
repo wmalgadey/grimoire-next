@@ -35,7 +35,9 @@ public sealed class RunHomeTests
         using var model = ScriptedModelFixture.Start("write-then-hang");
         using var hub = GrimoireHub.Start(wiki, model, extraEnvironment: new Dictionary<string, string?>
         {
-            ["GRIMOIRE_RUN_MAX_ELAPSED_MS"] = "4000",
+            // Long enough that the run is dispatched and has written before the ceiling stops it,
+            // even with every suite starting runners at once.
+            ["GRIMOIRE_RUN_MAX_ELAPSED_MS"] = "15000",
         });
 
         var id = await hub.SubmitText("notes", TestContext.Current.CancellationToken);
