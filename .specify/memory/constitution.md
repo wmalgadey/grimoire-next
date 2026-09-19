@@ -77,7 +77,9 @@ operator can undo.
    not interactions between our own collaborators.
 2. Tests MUST use real infrastructure: real filesystem, real git repositories, real
    child processes, real HTTP hosting. The LLM is the single sanctioned test double;
-   it is replaced behind the model port and driven by scripted responses.
+   it is replaced behind the model port and driven by scripted responses. A scripted
+   peer at a process protocol boundary is permitted only for a failure mode the real
+   peer cannot be made to produce; it is named as such in the test.
 3. Harness contracts MUST be tested exhaustively and hermetically — no third-party
    network, no shared mutable state, deterministic ordering, safe in parallel.
 4. Agent judgment is NEVER a CI gate. No test asserts that the model produced
@@ -283,6 +285,15 @@ required kinds (VI.4); otherwise the plan states the trade-off and the choice ma
    in its task artifact (I.4), so any behaviour change is attributable to a specific
    instruction revision.
 
+**Convergence.** `/speckit-converge` output is a proposal. Each finding is classified
+before any task is written: a code defect becomes a task; a spec defect goes through
+`/speckit-clarify` and never into code. Converge runs once per feature; a second run
+needs the owner's explicit request.
+
+**Review findings.** A finding from a review, human or bot, is answered with the
+smallest change that resolves it; a finding whose answer is a new mechanism, table, or
+protocol is an owner decision, not a fix.
+
 **Amendment procedure.** An amendment is proposed as a PR that modifies this file and
 nothing else. It states the principles affected, the rules added, changed, or removed,
 the proposed version bump, the reasoning for that bump, and the templates requiring
@@ -302,4 +313,4 @@ come into compliance; untouched parts stay as they are.
 **Compliance review.** Every PR names the principles it touches, and review verifies
 them against the rules above. The Quality Gates run on every PR.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-16 | **Last Amended**: 2026-09-16
+**Version**: 1.1.0 | **Ratified**: 2026-09-16 | **Last Amended**: 2026-09-19
