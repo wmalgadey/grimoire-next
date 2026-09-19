@@ -368,9 +368,8 @@ public sealed class Dispatcher(
                     && !(settlement.FailureReason is { } reason && store.FailTask(taskId, reason, endedAt))
                     && settlement.Commit is { } orphan)
                 {
-                    // Nothing a restart could do differently: the task is already settled, so the
-                    // pending commit is not left for startup to retry.
-                    store.DiscardPendingSettlement(taskId);
+                    // Nothing here can undo it: it is a fact of wiki history now, whatever the task
+                    // says. An operator needs to reconcile the two by hand.
                     logger.LogCritical(
                         "The commit {CommitSha} for task {TaskId} exists in the wiki, but the task had "
                         + "already been settled without it. An operator needs to reconcile the task "
@@ -394,8 +393,8 @@ public sealed class Dispatcher(
                 // letting the generic failure path silently no-op a reset over it.
                 logger.LogCritical(exception,
                     "The commit {CommitSha} for task {TaskId} exists in the wiki, but the task could "
-                    + "not be updated to reflect it after {Attempts} attempts. It is on record as "
-                    + "pending, and the hub records it on the task when it next starts.",
+                    + "not be updated to reflect it after {Attempts} attempts. The hub reconciles it "
+                    + "against wiki history when it next starts.",
                     settlement.Commit.Sha, taskId, attempt);
                 throw;
             }

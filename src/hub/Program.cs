@@ -67,8 +67,7 @@ builder.Services.AddSingleton(services =>
 // The single wiki mutation path, and the single-writer lock inside it (constitution II.1).
 builder.Services.AddSingleton(services => new WikiMutation(
     services.GetRequiredService<GitCli>(), services.GetRequiredService<ILogger<WikiMutation>>()));
-builder.Services.AddSingleton(services => new RunOutcomeHandler(
-    services.GetRequiredService<WikiMutation>(), services.GetRequiredService<SqliteStore>()));
+builder.Services.AddSingleton(services => new RunOutcomeHandler(services.GetRequiredService<WikiMutation>()));
 
 builder.Services.AddSingleton(services =>
 {

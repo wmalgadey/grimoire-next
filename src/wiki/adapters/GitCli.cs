@@ -26,36 +26,17 @@ public sealed class GitCli(string repositoryPath)
     public bool HasChanges() => Execute("status", "--porcelain").Length > 0;
 
     /// <summary>
-    /// Stages everything and produces <b>exactly one</b> commit (FR-015). Returns <c>null</c>
-    /// without committing when the working tree is clean, so a run that changed nothing leaves
-    /// no commit at all rather than an empty one (FR-016).
+    /// Stages everything and produces <b>exactly one</b> commit (FR-015), moving the branch to it
+    /// — compare-and-swap against its parent, as plumbing rather than <c>git commit</c> so the
+    /// commit's identity is known as soon as it is built. Returns <c>null</c> without committing
+    /// when the working tree is clean, so a run that changed nothing leaves no commit at all
+    /// rather than an empty one (FR-016).
     /// </summary>
     /// <param name="message">
     /// The run's final assistant message, verbatim (research R9). Passed as an argument, never
     /// interpolated into a shell — there is no shell.
     /// </param>
     public WikiCommit? CommitAll(string message)
-    {
-        var commit = PrepareCommit(message);
-        if (commit is not null)
-        {
-            Publish(commit);
-        }
-
-        return commit;
-    }
-
-    /// <summary>
-    /// Builds the one commit of everything the working tree holds, <b>without moving the branch
-    /// to it</b>: until <see cref="Publish"/>, it is in no history. Returns <c>null</c> when the
-    /// tree matches the tip (FR-016).
-    /// </summary>
-    /// <remarks>
-    /// Plumbing rather than <c>git commit</c>, so everything recorded about the commit — its
-    /// identity included — is known before the branch moves, and can be put on record first. The
-    /// moment the branch moves, the commit is a fact of history (FR-015, FR-028).
-    /// </remarks>
-    public WikiCommit? PrepareCommit(string message)
     {
         Execute("add", "-A");
 
@@ -64,19 +45,10 @@ public sealed class GitCli(string repositoryPath)
             return null;
         }
 
-        return CommitTree(RevParseHead(), message);
-    }
-
-    /// <summary>
-    /// Moves the branch to a prepared commit — compare-and-swap against its parent, as
-    /// <c>git commit</c> does, so a tip that moved in the meantime refuses rather than orphans it.
-    /// </summary>
-    public void Publish(WikiCommit commit) =>
+        var commit = CommitTree(RevParseHead(), message);
         Execute("update-ref", "-m", "commit", "HEAD", commit.Sha, commit.ParentSha);
-
-    /// <summary>Whether a commit is in the wiki's history — reachable from the tip.</summary>
-    public bool IsInHistory(string sha) =>
-        Succeeds("cat-file", "-e", $"{sha}^{{commit}}") && Succeeds("merge-base", "--is-ancestor", sha, "HEAD");
+        return commit;
+    }
 
     /// <summary>
     /// Discards everything the working tree holds that the tip does not — a modification, a new
@@ -108,29 +80,30 @@ public sealed class GitCli(string repositoryPath)
     /// <returns>The identity of the restoring commit.</returns>
     public string Revert(string sha)
     {
-        var revert = PrepareRevert(sha);
-        Publish(revert);
-        ClearRevertState();
-        return revert.Sha;
-    }
-
-    /// <summary>
-    /// Builds the commit that restores what <paramref name="sha"/> changed, on top of the tip,
-    /// <b>without moving the branch to it</b> — the revert's counterpart of
-    /// <see cref="PrepareCommit"/>. The working tree and index already hold the restored content.
-    /// </summary>
-    public WikiCommit PrepareRevert(string sha)
-    {
         Execute("-c", $"user.name={CommitterName}", "-c", $"user.email={CommitterEmail}",
             "revert", "--no-edit", "--no-commit", sha);
-        return CommitTree(RevParseHead(), $"Revert \"{MessageOf(sha)}\"");
+        var commit = CommitTree(RevParseHead(), $"Revert \"{MessageOf(sha)}\"");
+        Execute("update-ref", "-m", "commit", "HEAD", commit.Sha, commit.ParentSha);
+        // Forgets the in-progress state `revert --no-commit` leaves (REVERT_HEAD, MERGE_MSG) now
+        // that its commit is published, so the next commit does not pick it up.
+        Execute("revert", "--quit");
+        return commit.Sha;
     }
 
     /// <summary>
-    /// Forgets the in-progress state <c>revert --no-commit</c> leaves (REVERT_HEAD, MERGE_MSG) once
-    /// its commit is published, so the next commit does not pick it up.
+    /// The commit exactly as it already exists in history — its parent, subject, and date read
+    /// back rather than built. Used only by startup HEAD reconciliation, which never makes a
+    /// commit, only attributes one it finds already there (FR-028).
     /// </summary>
-    public void ClearRevertState() => Execute("revert", "--quit");
+    public WikiCommit CommitAt(string sha)
+    {
+        var parents = Execute("rev-list", "--parents", "-n", "1", sha)
+            .Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var parent = parents.Length > 1 ? parents[1] : string.Empty;
+        var fields = Execute("show", "--no-patch", "--format=%s%x1f%cI", sha).Split('\x1f');
+        var committedAt = DateTimeOffset.Parse(fields[1].Trim(), CultureInfo.InvariantCulture);
+        return new WikiCommit(sha, parent, fields[0], committedAt);
+    }
 
     /// <summary>
     /// The per-file share of a commit, derived from the commit on read and never stored, so the
@@ -184,19 +157,6 @@ public sealed class GitCli(string repositoryPath)
             "-c", $"user.name={CommitterName}", "-c", $"user.email={CommitterEmail}",
             "commit-tree", tree, "-p", parent, "-m", message).Trim();
         return new WikiCommit(sha, parent, message, committedAt);
-    }
-
-    private bool Succeeds(params string[] args)
-    {
-        try
-        {
-            Execute(args);
-            return true;
-        }
-        catch (GitCommandFailedException)
-        {
-            return false;
-        }
     }
 
     private string MessageOf(string sha) => Execute("show", "--no-patch", "--format=%s", sha).Trim();

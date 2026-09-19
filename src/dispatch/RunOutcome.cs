@@ -1,5 +1,4 @@
 using Grimoire.Tasks;
-using Grimoire.Tasks.Adapters;
 using Grimoire.Wiki;
 
 namespace Grimoire.Dispatch;
@@ -49,7 +48,7 @@ public sealed record RunSettlement(WikiCommit? Commit, string? FailureReason, in
 }
 
 /// <summary>The three things the hub does at run end, one per outcome.</summary>
-public sealed class RunOutcomeHandler(WikiMutation wiki, SqliteStore store)
+public sealed class RunOutcomeHandler(WikiMutation wiki)
 {
     /// <summary>Settles a run: commits, records a no-change, or resets.</summary>
     public Task<RunSettlement> Settle(string taskId, RunOutcome outcome, CancellationToken cancellationToken) =>
@@ -64,14 +63,10 @@ public sealed class RunOutcomeHandler(WikiMutation wiki, SqliteStore store)
     private async Task<RunSettlement> Commit(string taskId, RunOutcome.Changed changed, CancellationToken cancellationToken)
     {
         // Commits, and leaves the working tree equal to the new tip — a file the run wrote that the
-        // wiki ignores is in no commit, so it does not survive the run (FR-015, FR-017).
-        // The commit goes on record as pending before the branch moves to it, so a hub that dies
-        // between the two leaves a commit the next start can settle this task with (FR-028).
-        var commit = await wiki.CommitRun(
-            taskId,
-            changed.CommitMessage,
-            prepared => store.RecordPendingSettlement(taskId, SettlementKind.RunCommit, prepared, DateTimeOffset.UtcNow),
-            cancellationToken);
+        // wiki ignores is in no commit, so it does not survive the run (FR-015, FR-017). If the hub
+        // dies before this is recorded on the task, the commit is still a fact of wiki history: the
+        // next start's HEAD reconciliation (StartupRecovery) attributes it (FR-028).
+        var commit = await wiki.CommitRun(taskId, changed.CommitMessage, cancellationToken);
         return new RunSettlement(commit, null, changed.ToolCallCount);
     }
 

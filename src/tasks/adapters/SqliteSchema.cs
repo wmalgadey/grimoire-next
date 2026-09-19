@@ -1,7 +1,7 @@
 namespace Grimoire.Tasks.Adapters;
 
 /// <summary>
-/// The seven tables the operational store is made of (ADR-0006, data-model "Storage notes").
+/// The six tables the operational store is made of (ADR-0006, data-model "Storage notes").
 /// The wiki repository holds content and history; this store holds the task artifact and
 /// commit *identities*, never wiki content.
 /// </summary>
@@ -86,19 +86,6 @@ internal static class SqliteSchema
             task_id           TEXT PRIMARY KEY REFERENCES task (id) ON DELETE CASCADE,
             revert_commit_sha TEXT NOT NULL,
             reverted_at       TEXT NOT NULL
-        );
-
-        -- A commit on record before the branch moves to it; deleted in the transaction that
-        -- records it on its task. A row that survives a restart is a settlement to finish.
-        CREATE TABLE IF NOT EXISTS pending_settlement (
-            task_id      TEXT PRIMARY KEY REFERENCES task (id) ON DELETE CASCADE,
-            kind         TEXT NOT NULL,
-            commit_sha   TEXT NOT NULL,
-            parent_sha   TEXT NOT NULL,
-            message      TEXT NOT NULL,
-            committed_at TEXT NOT NULL,
-            recorded_at  TEXT NOT NULL,
-            CHECK (kind IN ('run-commit', 'revert'))
         );
         """;
 }

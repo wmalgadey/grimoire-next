@@ -36,7 +36,7 @@ public sealed class WikiMutationTests : IDisposable
         WikiCommit? commit;
         try
         {
-            commit = await mutation.CommitRun("task-1", "Add kept topic", _ => { }, TestContext.Current.CancellationToken);
+            commit = await mutation.CommitRun("task-1", "Add kept topic", TestContext.Current.CancellationToken);
         }
         finally
         {
@@ -55,29 +55,12 @@ public sealed class WikiMutationTests : IDisposable
         _wiki.Write("topics/kept.md", "# Kept\n");
         var mutation = new WikiMutation(new GitCli(_wiki.Path), NullLogger<WikiMutation>.Instance);
 
-        var commit = await mutation.CommitRun("task-1", "Add kept topic", _ => { }, TestContext.Current.CancellationToken);
+        var commit = await mutation.CommitRun("task-1", "Add kept topic", TestContext.Current.CancellationToken);
 
         Assert.NotNull(commit);
         Assert.Equal(_wiki.Head(), commit.Sha);
         Assert.Equal(2, _wiki.CommitCount());
         Assert.True(_wiki.IsClean());
         Assert.InRange(commit.CommittedAt, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddSeconds(1));
-    }
-
-    [Fact]
-    public async Task NeverMovesTheBranchWhenTheCommitCannotBePutOnRecord()
-    {
-        // The record comes first: a commit that could not be put on record must not reach history,
-        // or a crash after it would leave a commit nothing accounts for (FR-028).
-        var tip = _wiki.Head();
-        _wiki.Write("topics/unrecorded.md", "# Unrecorded\n");
-        var mutation = new WikiMutation(new GitCli(_wiki.Path), NullLogger<WikiMutation>.Instance);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => mutation.CommitRun(
-            "task-1", "Add unrecorded topic", _ => throw new InvalidOperationException("the store is down"),
-            TestContext.Current.CancellationToken));
-
-        Assert.Equal(tip, _wiki.Head());
-        Assert.Equal(1, _wiki.CommitCount());
     }
 }

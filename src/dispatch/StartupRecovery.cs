@@ -20,9 +20,10 @@ namespace Grimoire.Dispatch;
 /// the same task would break "at most one run per task, ever" (FR-005). Every interrupted task is
 /// failed with a reason that names the interruption, and the wiki is put back to its last commit.
 ///
-/// The one thing it finishes is a settlement: a commit the previous process put on record and may
-/// have moved the branch to before it died. That run, or that revert, is done — only its record is
-/// missing — so the commit is recorded on its task if it is in history, and forgotten if not.
+/// Git history is the one journal a commit is ever written to. Before anything is failed,
+/// <see cref="ReconcileHead"/> reads HEAD and, if it is a commit no task recorded — the previous
+/// process died between moving the branch and writing the store — attributes it to whichever task
+/// it plainly belongs to. There is no second, provisional record of a commit kept anywhere else.
 ///
 /// It is also the backstop for the graceful path. <see cref="GracefulShutdown"/> reaches the same
 /// end state on <c>SIGTERM</c>; when the process never got the chance, this does it on the way up.
@@ -39,19 +40,13 @@ public sealed class StartupRecovery(
         + "is not retried: submit the source again to start a new one.";
 
     /// <summary>
-    /// Fails whatever was left running, resets the working tree, then dispatches the backlog —
-    /// in that order, because a queued task must not be dispatched into a dirty tree left by the
-    /// run that died.
+    /// Reconciles HEAD against the task store, fails whatever was left running, resets the working
+    /// tree, then dispatches the backlog — in that order, because a queued task must not be
+    /// dispatched into a dirty tree left by the run that died.
     /// </summary>
     public async Task Recover(CancellationToken cancellationToken)
     {
-        // First, the settlements the previous process began: a commit it put on record and may
-        // have moved the branch to before it died. Settled before anything is failed, because a
-        // task whose commit is in history finished its run — only its record did not.
-        foreach (var pending in store.ListPendingSettlements())
-        {
-            Settle(pending);
-        }
+        ReconcileHead();
 
         var interrupted = store.ListTasksInState(TaskState.Running);
         foreach (var task in interrupted)
@@ -80,55 +75,64 @@ public sealed class StartupRecovery(
     }
 
     /// <summary>
-    /// Finishes a settlement the previous process began. A commit in history is recorded on its
-    /// task, exactly as that process would have; one that never reached history is forgotten, and
-    /// the task is handled as if the commit had never been built (FR-015, FR-025, FR-028).
+    /// Attributes a HEAD the previous process moved the branch to but died before recording
+    /// (FR-015, FR-025, FR-028). Run before the running→failed pass, because a HEAD that turns out
+    /// to be that pass's own task's run commit must be adopted as completed, not failed.
     /// </summary>
-    private void Settle(PendingSettlement pending)
+    private void ReconcileHead()
     {
-        if (!wiki.IsInHistory(pending.Commit.Sha))
+        var head = wiki.Tip();
+        if (store.FindTaskByCommit(head) is not null)
         {
-            store.DiscardPendingSettlement(pending.TaskId);
+            // Already accounted for — the ordinary case after a clean run or a clean revert.
             return;
         }
 
-        var task = store.GetTask(pending.TaskId);
-        var settled = pending.Kind switch
+        var commit = wiki.CommitAt(head);
+        if (commit.ParentSha.Length is 0)
         {
-            SettlementKind.RunCommit => store.EndRun(
-                pending.TaskId, RunOutcomeKind.Completed, null, pending.Commit,
-                task?.StartedAt is { } startedAt ? (int)(pending.RecordedAt - startedAt).TotalMilliseconds : null,
-                pending.RecordedAt),
-            _ => store.RecordRevert(pending.TaskId, new RevertRecord(pending.Commit.Sha, pending.Commit.CommittedAt)),
-        };
-
-        if (!settled)
-        {
-            // The task had moved on without it. The commit stands in history regardless, and
-            // nothing here can say what it should mean now.
-            store.DiscardPendingSettlement(pending.TaskId);
-            logger.LogCritical(
-                "The commit {CommitSha} for task {TaskId} is in the wiki, but the task was no longer in a state "
-                + "to record it when the hub restarted. An operator needs to reconcile the task with wiki history.",
-                pending.Commit.Sha, pending.TaskId);
+            // HEAD has no parent, so it is the wiki repository's own root commit — the one every
+            // run and every revert is built on top of (constitution assumption: the wiki has at
+            // least one commit before the first ingest). It predates every task and is never a
+            // commit to attribute to one, whether none has run yet or one is running but has not
+            // written anything.
             return;
         }
 
-        if (pending.Kind is SettlementKind.RunCommit)
+        // (a) A revert: HEAD's parent is a commit some task's run recorded, and HEAD says so.
+        if (commit.Message.StartsWith("Revert", StringComparison.Ordinal)
+            && store.FindTaskByRunCommit(commit.ParentSha) is { } revertedTask)
         {
+            store.RecordRevert(revertedTask.Id, new RevertRecord(head, commit.CommittedAt));
+            logger.LogInformation("grimoire.wiki.reverted {TaskId} {RevertCommitSha}", revertedTask.Id, head);
+            logger.LogInformation("grimoire.task.state_changed {TaskId} {State}", revertedTask.Id, "reverted");
+            return;
+        }
+
+        // (b) A run commit: exactly one task was left running, so it can only be that run's.
+        var running = store.ListTasksInState(TaskState.Running);
+        if (running.Count is 1)
+        {
+            var task = running[0];
+            var durationMs = task.StartedAt is { } startedAt
+                ? (int)(commit.CommittedAt - startedAt).TotalMilliseconds
+                : (int?)null;
+            store.EndRun(task.Id, RunOutcomeKind.Completed, null, commit, durationMs, commit.CommittedAt);
             logger.LogInformation(
                 "grimoire.wiki.committed {TaskId} {CommitSha} {FilesChanged}",
-                pending.TaskId, pending.Commit.Sha, wiki.DiffOf(pending.Commit.Sha).Count);
+                task.Id, head, wiki.DiffOf(head).Count);
             logger.LogInformation(
                 "grimoire.run.ended {TaskId} {Outcome} {FailureReason} {ToolCallCount} {DurationMs}",
-                pending.TaskId, "completed", null, task?.Run?.ToolCalls.Count ?? 0, null);
-            logger.LogInformation("grimoire.task.state_changed {TaskId} {State}", pending.TaskId, "completed");
+                task.Id, "completed", null, task.Run?.ToolCalls.Count ?? 0, durationMs);
+            logger.LogInformation("grimoire.task.state_changed {TaskId} {State}", task.Id, "completed");
+            return;
         }
-        else
-        {
-            logger.LogInformation(
-                "grimoire.wiki.reverted {TaskId} {RevertCommitSha}", pending.TaskId, pending.Commit.Sha);
-            logger.LogInformation("grimoire.task.state_changed {TaskId} {State}", pending.TaskId, "reverted");
-        }
+
+        // (c) Neither shape fits. Left to the running→failed pass; an operator has to reconcile
+        // this HEAD with the task store by hand.
+        logger.LogCritical(
+            "HEAD {Sha} is a commit no task recorded, and it could not be attributed: {RunningCount} tasks "
+            + "were left running, not exactly one. An operator needs to reconcile it by hand.",
+            head, running.Count);
     }
 }

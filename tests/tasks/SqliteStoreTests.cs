@@ -387,56 +387,22 @@ public sealed class SqliteStoreTests : IDisposable
     }
 
     [Fact]
-    public void ClearsAPendingRunCommitWhenThatCommitIsRecorded()
+    public void FindsTheTaskThatRecordedAGivenCommitEitherAsItsRunOrItsRevert()
     {
         using var store = NewStore();
         var at = new DateTimeOffset(2026, 9, 19, 9, 0, 0, TimeSpan.Zero);
-        store.AddTask(QueuedTask("t-pending", at));
-        store.StartRun("t-pending", NewRun(at), at);
+        store.AddTask(QueuedTask("t-commit", at));
+        store.StartRun("t-commit", NewRun(at), at);
         var commit = new WikiCommit(new string('c', 40), new string('p', 40), "Add a page", at);
-
-        store.RecordPendingSettlement("t-pending", SettlementKind.RunCommit, commit, at);
-        var pending = Assert.Single(store.ListPendingSettlements());
-        Assert.Equal(commit, pending.Commit);
-        Assert.Equal(SettlementKind.RunCommit, pending.Kind);
-
-        store.EndRun("t-pending", RunOutcomeKind.Completed, null, commit, 100, at);
-
-        Assert.Empty(store.ListPendingSettlements());
-    }
-
-    [Fact]
-    public void KeepsAPendingRunCommitWhenTheRunIsRecordedAsFailedWithoutIt()
-    {
-        // A failure recorded after the commit was put on record says nothing about whether the
-        // branch moved: startup decides that against history, so the row has to survive.
-        using var store = NewStore();
-        var at = new DateTimeOffset(2026, 9, 19, 9, 0, 0, TimeSpan.Zero);
-        store.AddTask(QueuedTask("t-failed", at));
-        store.StartRun("t-failed", NewRun(at), at);
-        var commit = new WikiCommit(new string('c', 40), new string('p', 40), "Add a page", at);
-
-        store.RecordPendingSettlement("t-failed", SettlementKind.RunCommit, commit, at);
-        store.EndRun("t-failed", RunOutcomeKind.Failed, "the run failed", null, 100, at);
-
-        Assert.Single(store.ListPendingSettlements());
-    }
-
-    [Fact]
-    public void ClearsAPendingRevertWhenTheRevertIsRecorded()
-    {
-        using var store = NewStore();
-        var at = new DateTimeOffset(2026, 9, 19, 9, 0, 0, TimeSpan.Zero);
-        store.AddTask(QueuedTask("t-revert", at));
-        store.StartRun("t-revert", NewRun(at), at);
-        var commit = new WikiCommit(new string('c', 40), new string('p', 40), "Add a page", at);
-        store.EndRun("t-revert", RunOutcomeKind.Completed, null, commit, 100, at);
+        store.EndRun("t-commit", RunOutcomeKind.Completed, null, commit, 100, at);
         var revert = new WikiCommit(new string('r', 40), commit.Sha, "Revert \"Add a page\"", at);
+        store.RecordRevert("t-commit", new RevertRecord(revert.Sha, at));
 
-        store.RecordPendingSettlement("t-revert", SettlementKind.Revert, revert, at);
-        store.RecordRevert("t-revert", new RevertRecord(revert.Sha, at));
-
-        Assert.Empty(store.ListPendingSettlements());
+        Assert.Equal("t-commit", store.FindTaskByCommit(commit.Sha)?.Id);
+        Assert.Equal("t-commit", store.FindTaskByCommit(revert.Sha)?.Id);
+        Assert.Equal("t-commit", store.FindTaskByRunCommit(commit.Sha)?.Id);
+        Assert.Null(store.FindTaskByRunCommit(revert.Sha));
+        Assert.Null(store.FindTaskByCommit(new string('z', 40)));
     }
 
     private static AgentRun NewRun(DateTimeOffset at) => new(
