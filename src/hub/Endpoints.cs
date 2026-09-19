@@ -172,7 +172,13 @@ public static class Endpoints
         string? revertCommitSha;
         try
         {
-            revertCommitSha = await wiki.RevertIfStillTip(task.Run!.Commit!.Sha, tip, cancellationToken);
+            // On record as pending before the branch moves, so a hub that dies before RecordRevert
+            // leaves a revert the next start settles this task with (FR-025, FR-028).
+            revertCommitSha = await wiki.RevertIfStillTip(
+                task.Run!.Commit!.Sha,
+                tip,
+                prepared => store.RecordPendingSettlement(taskId, SettlementKind.Revert, prepared, DateTimeOffset.UtcNow),
+                cancellationToken);
         }
         catch (WikiRevertFailedException exception)
         {
@@ -200,8 +206,8 @@ public static class Endpoints
         {
             return Problem(
                 "The revert landed in the wiki but could not be recorded on the task.",
-                $"The wiki now has the revert commit {revertCommitSha}, but this task does not show it. "
-                + "An operator needs to reconcile the task with wiki history.",
+                $"The wiki now has the revert commit {revertCommitSha}, but this task does not show it yet. "
+                + "It is on record as pending, and the hub records it on the task when it next starts.",
                 StatusCodes.Status500InternalServerError);
         }
 
@@ -228,6 +234,9 @@ public static class Endpoints
                     return true;
                 }
 
+                // Nothing a restart could do differently: the task is not one a revert can be
+                // recorded on, so the pending revert is not left for startup to retry.
+                store.DiscardPendingSettlement(taskId);
                 logger.LogCritical(
                     "The revert commit {RevertCommitSha} exists in the wiki, but task {TaskId} was no longer "
                     + "a completed task when it was recorded. An operator needs to reconcile the task with "
@@ -247,8 +256,8 @@ public static class Endpoints
             {
                 logger.LogCritical(exception,
                     "The revert commit {RevertCommitSha} exists in the wiki, but task {TaskId} could not be "
-                    + "updated to reflect it after {Attempts} attempts. An operator needs to reconcile the "
-                    + "task with wiki history by hand.",
+                    + "updated to reflect it after {Attempts} attempts. It is on record as pending, and the "
+                    + "hub records it on the task when it next starts.",
                     revertCommitSha, taskId, attempt);
                 return false;
             }

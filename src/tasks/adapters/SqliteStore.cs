@@ -234,6 +234,14 @@ public sealed class SqliteStore : IDisposable
                 ("$failureReason", failureReason),
                 ("$taskId", taskId));
 
+            // The commit is recorded now, so it is no longer pending. Only that commit: a run that
+            // ends failed after its commit was put on record leaves the row for startup to judge
+            // against history.
+            Execute(transaction,
+                "DELETE FROM pending_settlement WHERE task_id = $taskId AND commit_sha = $sha;",
+                ("$taskId", taskId),
+                ("$sha", commit?.Sha));
+
             transaction.Commit();
             return true;
         }
@@ -315,6 +323,8 @@ public sealed class SqliteStore : IDisposable
                 ("$sha", revert.RevertCommitSha),
                 ("$at", Time(revert.RevertedAt)));
 
+            Execute(transaction, "DELETE FROM pending_settlement WHERE task_id = $taskId;", ("$taskId", taskId));
+
             transaction.Commit();
             return true;
         }
@@ -366,6 +376,67 @@ public sealed class SqliteStore : IDisposable
         lock (_gate)
         {
             return ReadTasks("WHERE t.state = $state", [("$state", StateToDb(state))], ascending: true);
+        }
+    }
+
+    /// <summary>
+    /// Puts a commit on record before the wiki branch moves to it. <see cref="EndRun"/> and
+    /// <see cref="RecordRevert"/> clear it in the transaction that records the commit on its task;
+    /// until then, a restart finds it here (FR-028).
+    /// </summary>
+    public void RecordPendingSettlement(string taskId, SettlementKind kind, WikiCommit commit, DateTimeOffset recordedAt)
+    {
+        lock (_gate)
+        {
+            Execute(null,
+                """
+                INSERT OR REPLACE INTO pending_settlement
+                    (task_id, kind, commit_sha, parent_sha, message, committed_at, recorded_at)
+                VALUES ($taskId, $kind, $sha, $parentSha, $message, $committedAt, $recordedAt);
+                """,
+                ("$taskId", taskId),
+                ("$kind", kind is SettlementKind.RunCommit ? "run-commit" : "revert"),
+                ("$sha", commit.Sha),
+                ("$parentSha", commit.ParentSha),
+                ("$message", commit.Message),
+                ("$committedAt", Time(commit.CommittedAt)),
+                ("$recordedAt", Time(recordedAt)));
+        }
+    }
+
+    /// <summary>Every settlement a previous process began and did not finish, oldest first.</summary>
+    public IReadOnlyList<PendingSettlement> ListPendingSettlements()
+    {
+        lock (_gate)
+        {
+            using var command = _connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT task_id, kind, commit_sha, parent_sha, message, committed_at, recorded_at
+                  FROM pending_settlement ORDER BY recorded_at;
+                """;
+
+            var pending = new List<PendingSettlement>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                pending.Add(new PendingSettlement(
+                    reader.GetString(0),
+                    reader.GetString(1) is "run-commit" ? SettlementKind.RunCommit : SettlementKind.Revert,
+                    new WikiCommit(reader.GetString(2), reader.GetString(3), reader.GetString(4), ParseTime(reader.GetString(5))),
+                    ParseTime(reader.GetString(6))));
+            }
+
+            return pending;
+        }
+    }
+
+    /// <summary>Forgets a pending settlement whose commit never reached history.</summary>
+    public void DiscardPendingSettlement(string taskId)
+    {
+        lock (_gate)
+        {
+            Execute(null, "DELETE FROM pending_settlement WHERE task_id = $taskId;", ("$taskId", taskId));
         }
     }
 

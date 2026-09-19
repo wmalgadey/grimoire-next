@@ -224,8 +224,13 @@ WikiCommit 1 ──── 0..n FileDiff    (derived from git on read, never stor
 
 ## Storage notes
 
-- Six SQLite tables — `task`, `source`, `agent_run`, `tool_grant`, `tool_call`, `revert_record` —
-  with `tool_call` append-only and ordered by `(run_id, seq)`.
+- Seven SQLite tables — `task`, `source`, `agent_run`, `tool_grant`, `tool_call`, `revert_record`,
+  `pending_settlement` — with `tool_call` append-only and ordered by `(run_id, seq)`.
+- `pending_settlement` holds a run commit or revert commit put on record **before** the wiki branch
+  moves to it, and is cleared in the transaction that records that commit on its task. A row that
+  survives a restart is a settlement the previous process began: startup records the commit on its
+  task if it is in history, and forgets it if not (FR-015, FR-025, FR-028). Nothing is rewritten
+  either way.
 - The task list query is `ORDER BY submitted_at DESC` with a cursor; every retained task is
   reachable from it, so closing the browser loses access to no task (SC-006).
 - `agent_run` carries a uniqueness constraint on `task_id`. FR-005's "never a second run" is then a

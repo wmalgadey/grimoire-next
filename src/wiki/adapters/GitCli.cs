@@ -36,6 +36,27 @@ public sealed class GitCli(string repositoryPath)
     /// </param>
     public WikiCommit? CommitAll(string message)
     {
+        var commit = PrepareCommit(message);
+        if (commit is not null)
+        {
+            Publish(commit);
+        }
+
+        return commit;
+    }
+
+    /// <summary>
+    /// Builds the one commit of everything the working tree holds, <b>without moving the branch
+    /// to it</b>: until <see cref="Publish"/>, it is in no history. Returns <c>null</c> when the
+    /// tree matches the tip (FR-016).
+    /// </summary>
+    /// <remarks>
+    /// Plumbing rather than <c>git commit</c>, so everything recorded about the commit — its
+    /// identity included — is known before the branch moves, and can be put on record first. The
+    /// moment the branch moves, the commit is a fact of history (FR-015, FR-028).
+    /// </remarks>
+    public WikiCommit? PrepareCommit(string message)
+    {
         Execute("add", "-A");
 
         if (!HasChanges())
@@ -43,24 +64,19 @@ public sealed class GitCli(string repositoryPath)
             return null;
         }
 
-        // Built from plumbing so that everything the task records about the commit is known
-        // before the branch moves: the moment it moves, the commit is a fact of history, and a
-        // read-back that failed after that point would leave a commit no task accounts for. The
-        // ref update is the last step, and a failure there means no commit exists at all.
-        var parent = RevParseHead();
-        var tree = Execute("write-tree").Trim();
-        var committedAt = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        var date = $"@{committedAt.ToUnixTimeSeconds()} +0000";
-        var sha = Execute(
-            new Dictionary<string, string> { ["GIT_AUTHOR_DATE"] = date, ["GIT_COMMITTER_DATE"] = date },
-            "-c", $"user.name={CommitterName}", "-c", $"user.email={CommitterEmail}",
-            "commit-tree", tree, "-p", parent, "-m", message).Trim();
-
-        // Compare-and-swap against the parent, as `git commit` does: the tip cannot have moved
-        // under the single-writer lock, and if it somehow had, this refuses rather than orphaning it.
-        Execute("update-ref", "-m", "commit", "HEAD", sha, parent);
-        return new WikiCommit(sha, parent, message, committedAt);
+        return CommitTree(RevParseHead(), message);
     }
+
+    /// <summary>
+    /// Moves the branch to a prepared commit — compare-and-swap against its parent, as
+    /// <c>git commit</c> does, so a tip that moved in the meantime refuses rather than orphans it.
+    /// </summary>
+    public void Publish(WikiCommit commit) =>
+        Execute("update-ref", "-m", "commit", "HEAD", commit.Sha, commit.ParentSha);
+
+    /// <summary>Whether a commit is in the wiki's history — reachable from the tip.</summary>
+    public bool IsInHistory(string sha) =>
+        Succeeds("cat-file", "-e", $"{sha}^{{commit}}") && Succeeds("merge-base", "--is-ancestor", sha, "HEAD");
 
     /// <summary>
     /// Discards everything the working tree holds that the tip does not — a modification, a new
@@ -92,12 +108,29 @@ public sealed class GitCli(string repositoryPath)
     /// <returns>The identity of the restoring commit.</returns>
     public string Revert(string sha)
     {
+        var revert = PrepareRevert(sha);
+        Publish(revert);
+        ClearRevertState();
+        return revert.Sha;
+    }
+
+    /// <summary>
+    /// Builds the commit that restores what <paramref name="sha"/> changed, on top of the tip,
+    /// <b>without moving the branch to it</b> — the revert's counterpart of
+    /// <see cref="PrepareCommit"/>. The working tree and index already hold the restored content.
+    /// </summary>
+    public WikiCommit PrepareRevert(string sha)
+    {
         Execute("-c", $"user.name={CommitterName}", "-c", $"user.email={CommitterEmail}",
             "revert", "--no-edit", "--no-commit", sha);
-        Execute("-c", $"user.name={CommitterName}", "-c", $"user.email={CommitterEmail}",
-            "commit", "--no-verify", "--message", $"Revert \"{MessageOf(sha)}\"");
-        return RevParseHead();
+        return CommitTree(RevParseHead(), $"Revert \"{MessageOf(sha)}\"");
     }
+
+    /// <summary>
+    /// Forgets the in-progress state <c>revert --no-commit</c> leaves (REVERT_HEAD, MERGE_MSG) once
+    /// its commit is published, so the next commit does not pick it up.
+    /// </summary>
+    public void ClearRevertState() => Execute("revert", "--quit");
 
     /// <summary>
     /// The per-file share of a commit, derived from the commit on read and never stored, so the
@@ -140,6 +173,31 @@ public sealed class GitCli(string repositoryPath)
     /// <summary>Every commit identity in history, newest first.</summary>
     public IReadOnlyList<string> CommitShas() =>
         Execute("rev-list", "HEAD").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+    private WikiCommit CommitTree(string parent, string message)
+    {
+        var tree = Execute("write-tree").Trim();
+        var committedAt = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        var date = $"@{committedAt.ToUnixTimeSeconds()} +0000";
+        var sha = Execute(
+            new Dictionary<string, string> { ["GIT_AUTHOR_DATE"] = date, ["GIT_COMMITTER_DATE"] = date },
+            "-c", $"user.name={CommitterName}", "-c", $"user.email={CommitterEmail}",
+            "commit-tree", tree, "-p", parent, "-m", message).Trim();
+        return new WikiCommit(sha, parent, message, committedAt);
+    }
+
+    private bool Succeeds(params string[] args)
+    {
+        try
+        {
+            Execute(args);
+            return true;
+        }
+        catch (GitCommandFailedException)
+        {
+            return false;
+        }
+    }
 
     private string MessageOf(string sha) => Execute("show", "--no-patch", "--format=%s", sha).Trim();
 

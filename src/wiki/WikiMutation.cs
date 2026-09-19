@@ -31,7 +31,13 @@ public sealed class WikiMutation(GitCli git, ILogger<WikiMutation> logger)
     /// The run's final assistant message, verbatim — commit-message wording is judgment and lives
     /// in the instruction file (research R9). Empty falls back to the fixed constant.
     /// </param>
-    public async Task<WikiCommit?> CommitRun(string taskId, string? commitMessage, CancellationToken cancellationToken)
+    /// <param name="beforePublish">
+    /// Given the commit once it is built and before the branch moves to it — where its caller puts
+    /// it on record, so a process that dies after the branch moved leaves a commit a restart can
+    /// account for (FR-028). If it throws, the branch never moves.
+    /// </param>
+    public async Task<WikiCommit?> CommitRun(
+        string taskId, string? commitMessage, Action<WikiCommit> beforePublish, CancellationToken cancellationToken)
     {
         await _singleWriter.WaitAsync(cancellationToken);
         try
@@ -41,11 +47,14 @@ public sealed class WikiMutation(GitCli git, ILogger<WikiMutation> logger)
                 ? FallbackMessage(taskId)
                 : commitMessage;
 
-            var commit = git.CommitAll(message);
+            var commit = git.PrepareCommit(message);
             if (commit is null)
             {
                 return null;
             }
+
+            beforePublish(commit);
+            git.Publish(commit);
 
             // What is left is what the commit did not take: files the wiki ignores. They are in no
             // commit and cannot be reverted, so the next run must not find them (FR-017).
@@ -115,7 +124,12 @@ public sealed class WikiMutation(GitCli git, ILogger<WikiMutation> logger)
     /// The commit that must still be the tip. A caller that lost the race gets <c>null</c> back
     /// rather than a revert of someone else's work.
     /// </param>
-    public async Task<string?> RevertIfStillTip(string sha, string expectedTip, CancellationToken cancellationToken)
+    /// <param name="beforePublish">
+    /// Given the restoring commit once it is built and before the branch moves to it, as for
+    /// <see cref="CommitRun"/>. If it throws, the branch never moves and the tree is reset.
+    /// </param>
+    public async Task<string?> RevertIfStillTip(
+        string sha, string expectedTip, Action<WikiCommit> beforePublish, CancellationToken cancellationToken)
     {
         await _singleWriter.WaitAsync(cancellationToken);
         try
@@ -127,17 +141,22 @@ public sealed class WikiMutation(GitCli git, ILogger<WikiMutation> logger)
 
             try
             {
-                return git.Revert(sha);
+                var revert = git.PrepareRevert(sha);
+                beforePublish(revert);
+                git.Publish(revert);
+                git.ClearRevertState();
+                return revert.Sha;
             }
-            catch (GitCommandFailedException exception)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                // `revert --no-commit` has already rewritten the tree and the index when the
-                // restoring commit fails, and that half-done revert is exactly what the next run
-                // would otherwise start from and sweep into its own commit (constitution II.1).
+                // `revert --no-commit` has already rewritten the tree and the index by the time
+                // anything after it fails — building the commit, putting it on record, moving the
+                // branch — and that half-done revert is exactly what the next run would otherwise
+                // start from and sweep into its own commit (constitution II.1).
                 git.ResetWorkingTree();
 
                 // Under the lock only this revert moves the tip, so a moved tip means the restoring
-                // commit landed and only reading it back failed. It is history now; say so.
+                // commit landed and only what came after it failed. It is history now; say so.
                 var tip = git.RevParseHead();
                 if (tip != expectedTip)
                 {
@@ -153,6 +172,12 @@ public sealed class WikiMutation(GitCli git, ILogger<WikiMutation> logger)
             _singleWriter.Release();
         }
     }
+
+    /// <summary>
+    /// Whether a commit is in the wiki's history — how startup tells a settlement the previous
+    /// process finished in git from one it never reached (FR-028).
+    /// </summary>
+    public bool IsInHistory(string sha) => git.IsInHistory(sha);
 
     /// <summary>
     /// The per-file diff of a commit, derived from history on read and never stored, so the
