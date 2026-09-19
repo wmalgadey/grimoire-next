@@ -408,3 +408,40 @@ Task: "Task list surface in frontend/src/routes/tasks/+page.svelte"
 - [X] T149 Tighten gate 2 so `Microsoft.Data.Sqlite`, `System.Diagnostics.Process` and `HttpClient` are confined to adapter namespaces, not whole slices, and move the per-run home-directory handling out of `Dispatcher` into `RunnerProcess`, per Constitution V.2, V.3 (partial)
 - [X] T150 Strengthen TS-14/TS-19: queue two or more tasks across a restart and assert their dispatch order, assert no model request for a recovered task after restart, and assert the dirty tree before `SIGTERM` and the runner's exit after it, per FR-028, TS-14, TS-19 (partial)
 - [X] T151 Assert in TS-16 that a running task shows the tool calls recorded so far and that a queued task appears as queued in the task list, per US3/AC1, US3/AC2 (partial)
+
+---
+
+## Phase 9: Retrenchment
+
+Phases 7 and 8 (T114–T151) overshot: over-precise spec wording turned into mechanisms. This phase
+removes the overshoot without losing any guarantee an existing test proved, one commit per item.
+
+- [X] R1 Settlement recovery → HEAD reconciliation. Removed `PendingSettlement.cs`, the
+  `pending_settlement` table and its store methods, `GitCli`'s two-phase `PrepareCommit`/`Publish`/
+  `PrepareRevert`/`ClearRevertState`/`IsInHistory` split, and the `beforePublish` callbacks through
+  `WikiMutation` and `RunOutcomeHandler`; restored single-step `GitCli.CommitAll` and `GitCli.Revert`.
+  Replaced with `StartupRecovery.ReconcileHead`, run before the running→failed pass: read HEAD, and
+  if it is a commit no task recorded, attribute it as a revert, as a run commit, or leave it to the
+  running→failed pass. Git history is the only journal. Net **-211 lines** (156 insertions, 367
+  deletions across 13 files).
+- [X] R2 StubRunner → only what the real runner cannot produce. Deleted
+  `StubRunner.CrashesAfterProceed` and `StubRunner.LeavesStateInItsHome`; rewrote
+  `FailureContainmentTests` and `RunHomeTests` against the real runner, killed by the hub's own
+  elapsed-ceiling path. Amended constitution III.2 (PATCH, 1.0.0 → 1.0.1): a scripted peer at a
+  process protocol boundary is permitted only for a failure mode the real peer cannot be made to
+  produce. Net **-4 lines** (68 insertions, 72 deletions across 4 files).
+- [X] R3 FR-029 back to what a harness can honestly do. Deleted `promptTooLong` detection in
+  `src/agentrun/src/model/adapter.ts` and the byte-count failure reason in
+  `src/agentrun/src/run/main.ts`, the "too large" scripted turn and its vitest case, and the 30 MB
+  upload test (keeping the Kestrel body-limit lift and charset decoding). Ran `/speckit-clarify` on
+  spec.md with three pre-decided answers: FR-029 drops "identifying the source size", SC-001 drops
+  "within 2 seconds", FR-012 is narrowed to the surfaces the harness shows. Net **-58 lines** (15
+  insertions, 73 deletions across 6 files).
+- [X] R4 Feature-scoped invariants out of the structural tests. Deleted the exact-list assertions in
+  `tests/architecture/SliceStructureTests.cs` — `ExpectedSlices`, the `tests/` directory list, the
+  project-per-slice list — keeping the forbidden-name rule and the `deploy/`-has-no-code rule. Net
+  **-30 lines** (1 insertion, 31 deletions).
+- [X] R5 Governance: convergence and review findings. Added to the constitution's Governance
+  section (MINOR, 1.0.1 → 1.1.0): `/speckit-converge` output is a proposal classified before any task
+  is written, and a review finding is answered with the smallest change that resolves it, a new
+  mechanism being an owner decision rather than a fix. This Phase 9 entry.
