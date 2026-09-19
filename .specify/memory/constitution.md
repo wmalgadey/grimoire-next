@@ -77,7 +77,9 @@ operator can undo.
    not interactions between our own collaborators.
 2. Tests MUST use real infrastructure: real filesystem, real git repositories, real
    child processes, real HTTP hosting. The LLM is the single sanctioned test double;
-   it is replaced behind the model port and driven by scripted responses.
+   it is replaced behind the model port and driven by scripted responses. A scripted
+   peer at a process protocol boundary is permitted only for a failure mode the real
+   peer cannot be made to produce; it is named as such in the test.
 3. Harness contracts MUST be tested exhaustively and hermetically — no third-party
    network, no shared mutable state, deterministic ordering, safe in parallel.
 4. Agent judgment is NEVER a CI gate. No test asserts that the model produced
@@ -302,4 +304,4 @@ come into compliance; untouched parts stay as they are.
 **Compliance review.** Every PR names the principles it touches, and review verifies
 them against the rules above. The Quality Gates run on every PR.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-16 | **Last Amended**: 2026-09-16
+**Version**: 1.0.1 | **Ratified**: 2026-09-16 | **Last Amended**: 2026-09-19

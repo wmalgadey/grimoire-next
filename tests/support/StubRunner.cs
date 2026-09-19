@@ -2,13 +2,16 @@ namespace Grimoire.Tests.Support;
 
 /// <summary>
 /// A stand-in for the agent runner that speaks the real hub↔runner protocol and then misbehaves in
-/// one scripted way — crashes, reports a wider grant, reports success and then exits non-zero.
+/// one scripted way — reports a wider grant, breaks the protocol mid-run, or reports success and
+/// then exits non-zero.
 /// </summary>
 /// <remarks>
 /// Not a double of the LLM, and not a mock of anything the hub owns: it exercises the hub's side of
 /// a process boundary against a peer the real runner never becomes on its own, so the hub's
-/// handling of that peer is tested rather than assumed. The hub is pointed at it through
-/// <c>GRIMOIRE_ROOT</c>, the variable it resolves <c>src/agentrun/dist/main.js</c> from.
+/// handling of that peer is tested rather than assumed. Permitted only for a failure mode the real
+/// runner cannot be made to produce — a plain crash or process kill, the real runner already is, so
+/// those are tested against it directly instead (constitution III.2). The hub is pointed at this
+/// stub through <c>GRIMOIRE_ROOT</c>, the variable it resolves <c>src/agentrun/dist/main.js</c> from.
 /// </remarks>
 public sealed class StubRunner : IDisposable
 {
@@ -47,15 +50,6 @@ public sealed class StubRunner : IDisposable
     /// <summary>The environment that points a hub at this stub.</summary>
     public IReadOnlyDictionary<string, string?> Environment =>
         new Dictionary<string, string?> { ["GRIMOIRE_ROOT"] = Root };
-
-    /// <summary>Announces the configured grant, is told to proceed, and dies with no <c>run_end</c>.</summary>
-    public static StubRunner CrashesAfterProceed(int exitCode) => Create($$"""
-        (async () => {
-          announce();
-          await next("proceed");
-          process.exit({{exitCode}});
-        })();
-        """);
 
     /// <summary>
     /// Writes into the wiki, reports a completed run, and then exits non-zero — a crash on the way
@@ -101,31 +95,6 @@ public sealed class StubRunner : IDisposable
           setTimeout(() => process.exit(0), 30000);
         })();
         """);
-
-    /// <summary>
-    /// Leaves state in the per-run home directory it was given, as the SDK does, says where that
-    /// directory is, and then either completes or crashes.
-    /// </summary>
-    /// <param name="crashes">Exits 3 with no <c>run_end</c> instead of completing.</param>
-    public static StubRunner LeavesStateInItsHome(bool crashes) => Create($$"""
-        (async () => {
-          const path = require("node:path");
-          fs.writeFileSync(path.join(process.env.HOME, "sdk-state.json"), "{}");
-          fs.writeFileSync(path.resolve(__dirname, "../../..", "home-path.txt"), process.env.HOME);
-          announce();
-          await next("proceed");
-          if ({{(crashes ? "true" : "false")}}) process.exit(3);
-          emit({ type: "run_end", outcome: "completed", failureReason: null,
-                 commitMessage: "stub", toolCallCount: 0, modelEndpointStatus: null });
-          exitAfterFlush(0);
-        })();
-        """);
-
-    /// <summary>The home directory the stub reported, once it has run.</summary>
-    public string? ReportedHome =>
-        File.Exists(System.IO.Path.Combine(Root, "home-path.txt"))
-            ? File.ReadAllText(System.IO.Path.Combine(Root, "home-path.txt"))
-            : null;
 
     /// <inheritdoc />
     public void Dispose()
