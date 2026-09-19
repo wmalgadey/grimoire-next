@@ -422,18 +422,20 @@ removes the overshoot without losing any guarantee an existing test proved, one 
   `WikiMutation` and `RunOutcomeHandler`; restored single-step `GitCli.CommitAll` and `GitCli.Revert`.
   Replaced with `StartupRecovery.ReconcileHead`, run before the running→failed pass: read HEAD, and
   if it is a commit no task recorded, attribute it as a revert, as a run commit, or leave it to the
-  running→failed pass. Git history is the only journal. Net **-211 lines** (156 insertions, 367
+  running→failed pass. A revert is told by the author address `GitCli.Revert` gives it, never by
+  the message, which for a run commit is the model's own text. Git history is the only journal. Net **-211 lines** (156 insertions, 367
   deletions across 13 files).
 - [X] R2 StubRunner → only what the real runner cannot produce. Deleted
   `StubRunner.CrashesAfterProceed` and `StubRunner.LeavesStateInItsHome`; rewrote
   `FailureContainmentTests` and `RunHomeTests` against the real runner, killed by the hub's own
-  elapsed-ceiling path. Amended constitution III.2 (PATCH, 1.0.0 → 1.0.1): a scripted peer at a
-  process protocol boundary is permitted only for a failure mode the real peer cannot be made to
-  produce. Net **-4 lines** (68 insertions, 72 deletions across 4 files).
+  elapsed-ceiling path. The matching constitution III.2 wording — a scripted peer at a process
+  protocol boundary is permitted only for a failure mode the real peer cannot be made to produce — is
+  proposed on its own, as the amendment procedure requires. Run homes are named for their task, so
+  `RunHomeTests` observes its own run's directory and never a concurrent one's. Net **-4 lines** (68 insertions, 72 deletions across 4 files).
 - [X] R3 FR-029 back to what a harness can honestly do. Deleted `promptTooLong` detection in
   `src/agentrun/src/model/adapter.ts` and the byte-count failure reason in
-  `src/agentrun/src/run/main.ts`, the "too large" scripted turn and its vitest case, and the 30 MB
-  upload test (keeping the Kestrel body-limit lift and charset decoding). Ran `/speckit-clarify` on
+  `src/agentrun/src/run/main.ts`, and the "too large" scripted turn and its vitest case, keeping the
+  Kestrel body-limit lift, charset decoding, and the 31 MB upload test that proves the lift. Ran `/speckit-clarify` on
   spec.md with three pre-decided answers: FR-029 drops "identifying the source size", SC-001 drops
   "within 2 seconds", FR-012 is narrowed to the surfaces the harness shows. Net **-58 lines** (15
   insertions, 73 deletions across 6 files).
@@ -441,7 +443,8 @@ removes the overshoot without losing any guarantee an existing test proved, one 
   `tests/architecture/SliceStructureTests.cs` — `ExpectedSlices`, the `tests/` directory list, the
   project-per-slice list — keeping the forbidden-name rule and the `deploy/`-has-no-code rule. Net
   **-30 lines** (1 insertion, 31 deletions).
-- [X] R5 Governance: convergence and review findings. Added to the constitution's Governance
-  section (MINOR, 1.0.1 → 1.1.0): `/speckit-converge` output is a proposal classified before any task
-  is written, and a review finding is answered with the smallest change that resolves it, a new
-  mechanism being an owner decision rather than a fix. This Phase 9 entry.
+- [X] R5 Governance: convergence and review findings. Proposed as a constitution-only amendment,
+  separate from this phase, as the amendment procedure requires: `/speckit-converge` output is a
+  proposal classified before any task is written, and a review finding is answered with the smallest
+  change that resolves it, a new mechanism being an owner decision rather than a fix. This Phase 9
+  entry.
