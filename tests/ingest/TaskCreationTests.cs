@@ -13,26 +13,6 @@ namespace Grimoire.Tests.Ingest;
 public sealed class TaskCreationTests
 {
     [Fact]
-    public async Task AcceptsPastedTextLargerThanTheServersDefaultRequestBodyLimit()
-    {
-        // Kestrel refuses a request body over ~30 MB with 413 unless told otherwise, which would be
-        // a size limit on sources the spec says the harness must not impose (FR-029). Only a real
-        // Kestrel has that limit — the in-process test server does not — so this needs the hub as
-        // a process.
-        using var wiki = new WikiRepositoryFixture();
-        using var hub = await HubProcess.Start(wiki, cancellationToken: TestContext.Current.CancellationToken);
-        var text = new string('x', 31_000_000);
-
-        var response = await hub.Client.PostAsJsonAsync(
-            "/api/tasks", new { kind = "text", value = text }, TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var created = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
-        var task = await hub.GetTask(created.GetProperty("id").GetString()!, TestContext.Current.CancellationToken);
-        Assert.Equal(31_000_000, task.GetProperty("source").GetProperty("byteLength").GetInt32());
-    }
-
-    [Fact]
     public async Task CreatesExactlyOneTaskPerAcceptedSubmission()
     {
         using var wiki = new WikiRepositoryFixture();

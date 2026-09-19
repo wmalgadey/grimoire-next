@@ -208,23 +208,6 @@ export const readLocked: Script = {
 };
 
 /**
- * The model endpoint refuses the prompt as too large for it — the one way a source's size
- * surfaces, since the harness imposes no limit of its own (FR-029).
- */
-export const promptTooLong: Script = {
-  name: "prompt-too-long",
-  turns: [
-    {
-      error: {
-        status: 400,
-        type: "invalid_request_error",
-        message: "prompt is too long: 250000 tokens > 200000 maximum",
-      },
-    },
-  ],
-};
-
-/**
  * The egress proxy answers, but with an error of its own — the path exists and is broken, which
  * a TCP probe cannot see (plan IV, grimoire.run.model_endpoint_unreachable). A status the SDK does
  * not retry, so the run ends promptly.
@@ -304,7 +287,6 @@ export const scripts: ReadonlyMap<string, Script> = new Map<string, Script>([
   [escapeTowardCanaries.name, escapeTowardCanaries],
   [parallelToolUses.name, parallelToolUses],
   [readLocked.name, readLocked],
-  [promptTooLong.name, promptTooLong],
   [endpointRefuses.name, endpointRefuses],
   [writesIgnoredOnly.name, writesIgnoredOnly],
   [writesGitignoreAndIgnored.name, writesGitignoreAndIgnored],

@@ -77,8 +77,6 @@ export interface ModelRunResult {
    * `no-response`. Null when the run ended on its own account (plan IV).
    */
   readonly modelEndpointStatus: string | null;
-  /** Whether the model refused the prompt as too large to take in (FR-029). */
-  readonly promptTooLong: boolean;
 }
 
 /** What the model port needs to run one ingest. */
@@ -183,7 +181,6 @@ class RunObservation {
   private failureReason: string | null = null;
   private apiError: { status: string; detail: string } | null = null;
   private lastRetryStatus: string | null = null;
-  private promptTooLong = false;
 
   constructor(private readonly guard: ToolGuard) {}
 
@@ -208,8 +205,7 @@ class RunObservation {
   }
 
   result(): ModelRunResult {
-    const modelEndpointStatus =
-      this.apiError !== null && !this.promptTooLong ? this.apiError.status : null;
+    const modelEndpointStatus = this.apiError !== null ? this.apiError.status : null;
     const failureReason =
       modelEndpointStatus === null
         ? this.failureReason
@@ -220,7 +216,6 @@ class RunObservation {
       finalMessage: this.finalMessage,
       failureReason,
       modelEndpointStatus,
-      promptTooLong: this.promptTooLong,
     };
   }
 
@@ -257,16 +252,11 @@ class RunObservation {
   }
 
   private observeResult(message: SDKResultMessage): void {
-    if (message.terminal_reason === "prompt_too_long") {
-      this.promptTooLong = true;
-    }
-
     if (message.subtype !== "success") {
       this.failureReason = `The run ended without completing: ${message.subtype}.`;
     } else if (message.is_error) {
       // A turn that ended on an API error reports `success` with `is_error` set; left there, it
       // would read as an agent that judged nothing needed changing.
-      this.promptTooLong ||= /prompt is too long/i.test(message.result);
       const status =
         message.api_error_status === null || message.api_error_status === undefined
           ? this.lastRetryStatus ?? "no-response"

@@ -169,11 +169,7 @@ async function main(): Promise<void> {
     ? `The run reached its ceiling of ${dispatched.maxToolCalls} tool calls and was stopped; `
       + `${guard.count - dispatched.maxToolCalls} further call(s) were refused. `
       + "Raise GRIMOIRE_RUN_MAX_TOOL_CALLS if the ceiling is too tight."
-    : result.promptTooLong
-      ? `The source is ${Buffer.byteLength(dispatched.sourceText, "utf8").toLocaleString("en-US")} bytes, `
-        + "more than the model can take in at once, so the run could not proceed. The source was "
-        + "passed whole; splitting it and submitting the parts is left to you."
-      : result.failureReason;
+    : result.failureReason;
 
   await emit({
     type: "run_end",

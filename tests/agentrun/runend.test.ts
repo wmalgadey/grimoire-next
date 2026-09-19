@@ -5,9 +5,9 @@ import { createWiki, runAgent, type WikiRepository } from "./harness.js";
 
 /**
  * How a run ends when something other than the agent's own decision ends it: the tool-call
- * ceiling (FR-009), a source too large for the model (FR-029), a model endpoint that answers with
- * an error (plan IV), and a read that fails (FR-021). Each one ends with a reason an operator can
- * act on, and none of them leaves a call unrecorded.
+ * ceiling (FR-009), a model endpoint that answers with an error (plan IV), and a read that fails
+ * (FR-021). Each one ends with a reason an operator can act on, and none of them leaves a call
+ * unrecorded.
  */
 describe("how a run ends", () => {
   let wiki: WikiRepository;
@@ -50,18 +50,6 @@ describe("how a run ends", () => {
     } finally {
       chmodSync(join(wiki.path, "locked.md"), 0o644);
     }
-  });
-
-  it("names the source's size when the model refuses it as too large", async () => {
-    const sourceText = "x".repeat(123_456);
-    const result = await runAgent({ wiki, script: "prompt-too-long", sourceText });
-
-    const runEnd = result.events.find((event) => event.type === "run_end");
-    expect(runEnd?.type === "run_end" && runEnd.outcome).toBe("failed");
-    // The byte length, as a number an operator can compare against the next attempt (FR-029).
-    expect(runEnd?.type === "run_end" && runEnd.failureReason).toMatch(/123,?456 bytes/);
-    // Too large is the source's size, not the egress path.
-    expect(runEnd?.type === "run_end" && runEnd.modelEndpointStatus).toBeNull();
   });
 
   it("reports the status the model endpoint answered with when it ends the run", async () => {

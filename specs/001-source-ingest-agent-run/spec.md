@@ -18,6 +18,12 @@
 - Q: What happens when a submitted source is far larger than the agent can take in? → A: No size limit; the source is accepted and passed to the run whole, and if the run cannot proceed the run ends failed with the reason recorded.
 - Q: How does the user get back to a task submitted earlier — a task list, or only the task handed back at submission? → A: The frontend provides a task list showing every task newest first with its state, from which any task can be opened.
 
+### Session 2026-09-19
+
+- Q: FR-029 requires the harness to name the source's size as the cause when a run cannot proceed because the source is too large — but the harness imposes no size limit and never inspects the source, so where would that reason come from? → A: The harness makes no size determination at all. A run that cannot proceed ends failed with that run's own reason, recorded verbatim; the harness never inspects or reasons about a source's size.
+- Q: SC-001 requires a task to be visible within 2 seconds of submitting — is that timing requirement load-bearing, or is "openable from the moment it is created" (already required by FR-002) the actual guarantee? → A: Drop the timing clause. A task is openable from the moment it is created; there is no separate latency target.
+- Q: FR-012 says a run's write "MUST NOT be visible in the wiki before that run's commit" — does that reach the working tree itself (which the agent necessarily writes into before the commit), or only the surfaces the harness shows? → A: Only the surfaces. FR-012 governs the task view's diff, the task list, and revert — none of them show a run's writes before its commit. The working tree itself is not claimed to be hidden.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Ingest a source and inspect what the agent did (Priority: P1)
@@ -86,7 +92,7 @@ The user opens the task the moment they get it — before the agent has done any
 - **Revert immediately after a revert**: because the revert itself commits, no task's commit is the wiki's latest afterwards, so no revert action is offered until the next ingest commits. Undo reaches one ingest back, not further.
 - **Revert of a task whose commit is no longer the latest wiki commit**: no revert action is offered; the task view shows that the task has been superseded by a later wiki commit. The wiki is unchanged, and the task stays completed. Correcting a superseded ingest means editing the ingest instruction and submitting the source again.
 - **Empty or whitespace-only submission**: rejected at submission; no task is created.
-- **Source far larger than the agent can take in**: the submission is accepted and the task is created; the source is passed whole; the run ends failed with a reason identifying the source size, and the wiki is untouched. Splitting an oversized source is left to the user.
+- **Source far larger than the agent can take in**: the submission is accepted and the task is created; the source is passed whole; if the run cannot proceed, it ends failed with that run's own reason recorded verbatim, and the wiki is untouched. Splitting an oversized source is left to the user.
 - **Second submission arrives while a run is executing**: queued; exactly one run executes at a time.
 
 ## Requirements *(mandatory)*
@@ -134,7 +140,7 @@ Per Constitution I.1, every behaviour in this feature is classified below. Only 
 - **FR-002**: Each accepted submission MUST produce exactly one task with a stable identifier, and that task MUST be openable from the moment it is created.
 - **FR-003**: For a URL submission, the harness MUST retrieve the source content before dispatching a run and store the retrieved text with the task. If retrieval fails, the harness MUST NOT dispatch a run, the task MUST end in state failed with a recorded human-readable reason, and the wiki MUST be unchanged.
 - **FR-004**: The task MUST retain the source text it was created from for as long as the task is retained.
-- **FR-029**: The harness MUST NOT impose a maximum size on a source and MUST NOT truncate, summarise, or otherwise reduce the source text it passes to the run. If the run cannot proceed because the source is too large for it, the run MUST end failed with a recorded reason identifying the source size as the cause, and MUST produce no commit.
+- **FR-029**: The harness MUST NOT impose a maximum size on a source and MUST NOT truncate, summarise, or otherwise reduce the source text it passes to the run, and MUST NOT itself inspect or reason about a source's size. If a run cannot proceed, it MUST end failed with that run's own reason recorded verbatim, and MUST produce no commit.
 
 **Dispatch and the agent loop**
 
@@ -148,7 +154,7 @@ Per Constitution I.1, every behaviour in this feature is classified below. Only 
 
 - **FR-010**: The harness MUST grant the run exactly two tools: one that reads wiki content and one that writes wiki content. Every other tool MUST be denied, including any means of network access, command execution, or filesystem access outside the wiki.
 - **FR-011**: The write tool MUST refuse any target outside the wiki, and the refusal MUST be recorded as a tool call with a refused outcome.
-- **FR-012**: A write performed by the run MUST NOT be visible in the wiki before that run's commit.
+- **FR-012**: A write performed by the run MUST appear on no user-facing surface, in no diff, and in no revert before that run's commit. This governs what the harness shows, not the working tree itself, which is not claimed to be hidden.
 - **FR-013**: The harness MUST record the granted tool set on the task at dispatch, before the first model call of the run.
 - **FR-014**: The harness MUST record on the task the version of the instruction file that was loaded for the run, at dispatch, before the first model call.
 
@@ -208,7 +214,7 @@ No test in this feature asserts that a run produced particular wiki content, par
 
 ### Control Outcomes *(deterministic and measurable)*
 
-- **SC-001**: 100% of accepted submissions produce exactly one task that the user can open, and the task is visible to the user within 2 seconds of submitting.
+- **SC-001**: 100% of accepted submissions produce exactly one task that the user can open, openable from the moment it is created.
 - **SC-002**: Across all runs that changed wiki content, the ratio of commits to runs is exactly 1:1 — never zero, never more than one.
 - **SC-003**: After any run that failed, aborted, crashed, or hit its limit, the wiki content is byte-identical to the commit that was current before the run started, in 100% of cases, and no commit exists for that task.
 - **SC-004**: Every run's task records the instruction-file version and the granted tool set, and the granted set is exactly the two wiki tools in 100% of runs. No run performs an effective action outside that set.
