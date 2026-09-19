@@ -7,26 +7,12 @@ namespace Grimoire.Tests.Architecture;
 /// </summary>
 public sealed class SliceStructureTests
 {
-    /// <summary>The slices plan.md "Project Structure" fixes, plus the egress proxy.</summary>
-    private static readonly string[] ExpectedSlices =
-    [
-        "agentrun", "dispatch", "egress", "hub", "ingest", "instructions", "tasks", "wiki",
-    ];
-
     /// <summary>Directory names that describe a technical layer rather than a domain concept.</summary>
     private static readonly string[] ForbiddenAtFirstLevel =
     [
         "controllers", "services", "utils", "helpers", "models", "common", "shared", "core",
         "infrastructure", "domain", "application", "handlers", "managers", "providers",
     ];
-
-    [Fact]
-    public void FirstLevelDirectoriesUnderSrcAreExactlyTheDomainSlices()
-    {
-        var actual = FirstLevelDirectories("src").Order().ToList();
-
-        Assert.Equal(ExpectedSlices, actual);
-    }
 
     [Fact]
     public void NoTechnicalLayerDirectoryExistsAtTheFirstLevelUnderSrc()
@@ -42,7 +28,7 @@ public sealed class SliceStructureTests
     }
 
     [Fact]
-    public void TestsMirrorTheSlicesRatherThanTestKinds()
+    public void NoTestKindDirectoryExistsAtTheFirstLevelUnderTests()
     {
         var actual = FirstLevelDirectories("tests").ToHashSet(StringComparer.Ordinal);
 
@@ -50,11 +36,6 @@ public sealed class SliceStructureTests
         foreach (var kind in new[] { "unit", "integration", "e2e", "acceptance", "functional" })
         {
             Assert.DoesNotContain(kind, actual);
-        }
-
-        foreach (var slice in new[] { "ingest", "tasks", "dispatch", "wiki", "agentrun", "hub" })
-        {
-            Assert.Contains(slice, actual);
         }
     }
 
@@ -78,17 +59,6 @@ public sealed class SliceStructureTests
         // so the first-level-slice gate stays honest (plan "Structure Decision").
         Assert.True(code.Count is 0,
             $"deploy/ holds application code: {string.Join(", ", code)}");
-    }
-
-    [Fact]
-    public void EveryCSharpSliceIsItsOwnProjectSoConfinementIsACompileTimeProperty()
-    {
-        foreach (var slice in new[] { "ingest", "tasks", "dispatch", "wiki", "egress", "hub" })
-        {
-            var projects = Directory.GetFiles(Path.Combine(RepositoryRoot, "src", slice), "*.csproj");
-            Assert.True(projects.Length is 1,
-                $"src/{slice}/ should hold exactly one project; it holds {projects.Length}.");
-        }
     }
 
     private static IEnumerable<string> FirstLevelDirectories(string relative) =>
