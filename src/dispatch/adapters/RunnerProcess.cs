@@ -67,8 +67,8 @@ public sealed class RunnerProcess(string repositoryRoot, Func<string, RunnerEnvi
         CancellationToken cancellationToken)
     {
         // A home directory of the run's own, so nothing the SDK keeps there outlives the run or
-        // reaches the next one.
-        var home = Path.Combine(Path.GetTempPath(), $"grimoire-run-{Guid.NewGuid():N}");
+        // reaches the next one. Named for its task, so whose it is can be read off the disk.
+        var home = Path.Combine(Path.GetTempPath(), $"grimoire-run-{dispatch.TaskId}-{Guid.NewGuid():N}");
         Directory.CreateDirectory(home);
 
         try
