@@ -164,6 +164,12 @@ public sealed class WikiMutation(GitCli git, ILogger<WikiMutation> logger)
     public WikiCommit CommitAt(string sha) => git.CommitAt(sha);
 
     /// <summary>
+    /// Whether the hub's revert made this commit, rather than a run — decided by what the hub
+    /// alone sets, never by the message a run's model wrote (FR-028).
+    /// </summary>
+    public bool IsRevert(string sha) => git.IsRevert(sha);
+
+    /// <summary>
     /// The per-file diff of a commit, derived from history on read and never stored, so the
     /// artifact cannot drift from what the wiki actually contains (FR-022).
     /// </summary>

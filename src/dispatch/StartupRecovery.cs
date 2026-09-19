@@ -99,13 +99,25 @@ public sealed class StartupRecovery(
             return;
         }
 
-        // (a) A revert: HEAD's parent is a commit some task's run recorded, and HEAD says so.
-        if (commit.Message.StartsWith("Revert", StringComparison.Ordinal)
-            && store.FindTaskByRunCommit(commit.ParentSha) is { } revertedTask)
+        // (a) A revert: the hub made HEAD as one, and its parent is the commit some task's run
+        // recorded. Told by the author identity the hub gives a revert, never by the message — a
+        // run's message is the model's text and may well begin "Revert".
+        if (wiki.IsRevert(head))
         {
-            store.RecordRevert(revertedTask.Id, new RevertRecord(head, commit.CommittedAt));
-            logger.LogInformation("grimoire.wiki.reverted {TaskId} {RevertCommitSha}", revertedTask.Id, head);
-            logger.LogInformation("grimoire.task.state_changed {TaskId} {State}", revertedTask.Id, "reverted");
+            if (store.FindTaskByRunCommit(commit.ParentSha) is { } revertedTask
+                && store.RecordRevert(revertedTask.Id, new RevertRecord(head, commit.CommittedAt)))
+            {
+                logger.LogInformation("grimoire.wiki.reverted {TaskId} {RevertCommitSha}", revertedTask.Id, head);
+                logger.LogInformation("grimoire.task.state_changed {TaskId} {State}", revertedTask.Id, "reverted");
+                return;
+            }
+
+            // A revert of a commit no completed task holds. Nothing here can say which undo this
+            // was, so nothing is claimed; it is never a run commit either, whatever is running.
+            logger.LogCritical(
+                "HEAD {Sha} is a revert no task recorded, of {ParentSha}, which no completed task's run "
+                + "made. An operator needs to reconcile it with the task store by hand.",
+                head, commit.ParentSha);
             return;
         }
 

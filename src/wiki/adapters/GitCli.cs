@@ -82,7 +82,7 @@ public sealed class GitCli(string repositoryPath)
     {
         Execute("-c", $"user.name={CommitterName}", "-c", $"user.email={CommitterEmail}",
             "revert", "--no-edit", "--no-commit", sha);
-        var commit = CommitTree(RevParseHead(), $"Revert \"{MessageOf(sha)}\"");
+        var commit = CommitTree(RevParseHead(), $"Revert \"{MessageOf(sha)}\"", RevertAuthorEmail);
         Execute("update-ref", "-m", "commit", "HEAD", commit.Sha, commit.ParentSha);
         // Forgets the in-progress state `revert --no-commit` leaves (REVERT_HEAD, MERGE_MSG) now
         // that its commit is published, so the next commit does not pick it up.
@@ -91,8 +91,8 @@ public sealed class GitCli(string repositoryPath)
     }
 
     /// <summary>
-    /// The commit exactly as it already exists in history — its parent, subject, and date read
-    /// back rather than built. Used only by startup HEAD reconciliation, which never makes a
+    /// The commit exactly as it already exists in history — its parent, full message, and date
+    /// read back rather than built. Used only by startup HEAD reconciliation, which never makes a
     /// commit, only attributes one it finds already there (FR-028).
     /// </summary>
     public WikiCommit CommitAt(string sha)
@@ -100,10 +100,19 @@ public sealed class GitCli(string repositoryPath)
         var parents = Execute("rev-list", "--parents", "-n", "1", sha)
             .Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var parent = parents.Length > 1 ? parents[1] : string.Empty;
-        var fields = Execute("show", "--no-patch", "--format=%s%x1f%cI", sha).Split('\x1f');
-        var committedAt = DateTimeOffset.Parse(fields[1].Trim(), CultureInfo.InvariantCulture);
-        return new WikiCommit(sha, parent, fields[0], committedAt);
+        // The message last and split once: it is the model's text, and may hold anything.
+        var fields = Execute("show", "--no-patch", "--format=%cI%x1f%B", sha).Split('\x1f', 2);
+        var committedAt = DateTimeOffset.Parse(fields[0].Trim(), CultureInfo.InvariantCulture);
+        return new WikiCommit(sha, parent, fields[1].TrimEnd('\n'), committedAt);
     }
+
+    /// <summary>
+    /// Whether <see cref="Revert"/> made this commit. Read from the author identity, which the hub
+    /// sets and nothing the model writes can — a run commit's message is the model's own text, so
+    /// a message that reads like a revert says nothing about what the commit is (FR-028).
+    /// </summary>
+    public bool IsRevert(string sha) =>
+        Execute("show", "--no-patch", "--format=%ae", sha).Trim() == RevertAuthorEmail;
 
     /// <summary>
     /// The per-file share of a commit, derived from the commit on read and never stored, so the
@@ -147,13 +156,18 @@ public sealed class GitCli(string repositoryPath)
     public IReadOnlyList<string> CommitShas() =>
         Execute("rev-list", "HEAD").Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-    private WikiCommit CommitTree(string parent, string message)
+    private WikiCommit CommitTree(string parent, string message, string authorEmail = CommitterEmail)
     {
         var tree = Execute("write-tree").Trim();
         var committedAt = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         var date = $"@{committedAt.ToUnixTimeSeconds()} +0000";
         var sha = Execute(
-            new Dictionary<string, string> { ["GIT_AUTHOR_DATE"] = date, ["GIT_COMMITTER_DATE"] = date },
+            new Dictionary<string, string>
+            {
+                ["GIT_AUTHOR_DATE"] = date,
+                ["GIT_COMMITTER_DATE"] = date,
+                ["GIT_AUTHOR_EMAIL"] = authorEmail,
+            },
             "-c", $"user.name={CommitterName}", "-c", $"user.email={CommitterEmail}",
             "commit-tree", tree, "-p", parent, "-m", message).Trim();
         return new WikiCommit(sha, parent, message, committedAt);
@@ -165,6 +179,10 @@ public sealed class GitCli(string repositoryPath)
     // per invocation so the deployment needs no git configuration on a read-only root filesystem.
     private const string CommitterName = "Grimoire";
     private const string CommitterEmail = "grimoire@localhost";
+
+    // A revert is authored under an address of its own: the one mark on a commit that says the hub
+    // restored content rather than a run wrote it (IsRevert).
+    private const string RevertAuthorEmail = "grimoire-revert@localhost";
 
     private string Execute(params string[] args) => Execute(new Dictionary<string, string>(), args);
 
