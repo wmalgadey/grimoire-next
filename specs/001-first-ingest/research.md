@@ -534,6 +534,41 @@ one, and III.8 means the provider itself is not what we test. No Fast test waits
 
 ---
 
+## R-13 — How tests are named
+
+**Decision**: a test class is `<Subject>Tests`, where the subject is an entity from the spec's
+vocabulary — `Submission`, `Run`, `GenerationRecord`, `ToolGrant`, `Ceiling` — never a class or a
+method of the implementation. A test method is `<Action>_<Result>[_<Scenario>]`: each part
+PascalCase, exactly one underscore between parts, and the scenario present wherever the result
+depends on a condition. Requirement ids live in the `req` trait and never in a name. Written down
+once, beside the trait conventions, in `tests/README.md`.
+
+```
+SubmissionTests.Submit_IsRefused_WhileRunInProgress
+GenerationRecordTests.WritePage_ReplacesAgentValues
+RunTests.AgentStops_NudgesOnce_WhenLogEntryMissing
+```
+
+**Rationale**: a test name is read in two places where nobody has the source at hand — the tests
+column of `docs/trace.md`, and the failure output of a CI run. In both, one glance has to show
+which behaviour broke and under which condition, which is what the three parts are for. Taking the
+subject from the spec rather than from a class or a method means a rename in the code cannot make
+a test name wrong: III.1 has tests verify requirements rather than code, and a name pointing at an
+implementation type quietly ties them to the code instead. Putting the requirement id in the trait
+rather than the name keeps one reader for it — `trace-check` — instead of two.
+
+**CA1707, observed**: the rule "identifiers should not contain underscores" **does** fire under
+the current settings, and as an *error*, not a warning — `Directory.Build.props` sets
+`AnalysisMode=Recommended` with `TreatWarningsAsErrors`, and a test method is a publicly visible
+member. A probe method `Check_Fails_WhenCa1707Probe` failed the build with
+`error CA1707: Remove the underscores from member name …`. It is therefore switched off for the
+test projects alone, in `tests/.editorconfig`, which layers on the root file; a probe under `src/`
+confirmed it still fails the build there. This is not analysis tooling of our own (II.3) — it is
+the SDK's own rule, narrowed where it contradicts a decision recorded in the plan. The rule is
+about identifiers an API exposes, and a test method is called by the runner and by nobody else.
+
+---
+
 ## Open items carried into the plan
 
 None. The two items the earlier draft carried are closed: the refusal during a run is now

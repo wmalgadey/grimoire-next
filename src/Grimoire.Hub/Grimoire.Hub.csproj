@@ -1,3 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <!-- The composition root: the only project that knows every context (plan.md, Structure
+       Decision). Grimoire.Wiki joins these with user story 2. -->
+  <ItemGroup>
+    <ProjectReference Include="../Grimoire.Agent/Grimoire.Agent.csproj" />
+    <ProjectReference Include="../Grimoire.Runs/Grimoire.Runs.csproj" />
+  </ItemGroup>
+
+  <!-- The page travels with the built hub, so the server finds it under its own base directory
+       whether it was started from the command line or by the E2E suite. -->
+  <ItemGroup>
+    <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

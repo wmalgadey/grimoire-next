@@ -17,7 +17,7 @@ public sealed class TraceCheckTests
         new("Grimoire.Fast.Tests", "Suite", name, level, requirementIds);
 
     [Fact]
-    public void ATestRequirementWithNoTestFailsTheCompleteCheck()
+    public void Check_Fails_WhenATestRequirementHasNoTestAndCompleteIsAsked()
     {
         var violations = TraceCheck.Run([Registered("INGEST-001")], [], complete: true);
 
@@ -25,7 +25,7 @@ public sealed class TraceCheckTests
     }
 
     [Fact]
-    public void ATestRequirementWithNoTestPassesTheCheckEveryPushMakes()
+    public void Check_Passes_WhenATestRequirementHasNoTestAndCompleteIsNotAsked()
     {
         // Red by construction while a feature is in flight: IV.2 registers the requirement before
         // its test is written, so this condition runs where the feature lands on main and nowhere
@@ -34,13 +34,13 @@ public sealed class TraceCheckTests
     }
 
     [Fact]
-    public void AReviewRequirementNeedsNoTest()
+    public void Check_Passes_WhenAReviewRequirementHasNoTest()
     {
         Assert.Empty(TraceCheck.Run([Registered("WIKI-001", ProofKind.Review)], [], complete: true));
     }
 
     [Fact]
-    public void ATestCarryingAnUnknownRetiredOrReservedIdIsAViolation()
+    public void Check_Fails_WhenATestCarriesAnUnknownRetiredOrReservedId()
     {
         IReadOnlyList<Requirement> requirements = [Registered("WIKI-002"), Registered("WIKI-003", retired: true)];
 
@@ -62,7 +62,7 @@ public sealed class TraceCheckTests
     }
 
     [Fact]
-    public void ATestWithNoLevelIsAViolation()
+    public void Check_Fails_WhenATestCarriesNoLevel()
     {
         var violations = TraceCheck.Run([Registered("RUNS-001")], [Test("NoLevel", null, "RUNS-001")], complete: true);
 
@@ -72,7 +72,7 @@ public sealed class TraceCheckTests
     }
 
     [Fact]
-    public void AnE2EOrDeployTestWithNoRequirementIdIsAViolation()
+    public void Check_Fails_WhenAnE2EOrDeployTestCarriesNoRequirementId()
     {
         IReadOnlyList<TestMethod> tests = [Test("Browser", "e2e"), Test("Deployed", "deploy"), Test("InProcess", "fast")];
 
@@ -85,7 +85,7 @@ public sealed class TraceCheckTests
     }
 
     [Fact]
-    public void ARegistryAndASuiteThatAgreeYieldNothing()
+    public void Check_Passes_WhenTheRegistryAndTheSuiteAgree()
     {
         IReadOnlyList<Requirement> requirements = [Registered("ACCESS-001"), Registered("WIKI-001", ProofKind.Review)];
         IReadOnlyList<TestMethod> tests = [Test("Submits", "e2e", "ACCESS-001")];

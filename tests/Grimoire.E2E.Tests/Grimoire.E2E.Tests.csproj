@@ -1,3 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <ItemGroup>
+    <ProjectReference Include="../../src/Grimoire.Hub/Grimoire.Hub.csproj" />
+  </ItemGroup>
+
+  <!-- A real browser against the running hub. Keeping the E2E suite in .NET like the other two
+       leaves trace-check one test format to read rather than two (research.md R-05, R-10). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright.Xunit.v3" />
+  </ItemGroup>
+
 </Project>

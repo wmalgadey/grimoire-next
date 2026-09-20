@@ -1,0 +1,62 @@
+using Grimoire.Agent;
+using Grimoire.Runs;
+
+namespace Grimoire.Hub;
+
+/// <summary>
+/// What happens when a text is submitted: the board decides, and an accepted submission is
+/// dispatched as a run before the call returns (INGEST-001).
+/// </summary>
+/// <remarks>
+/// This is where the two contexts meet, which is why it sits in the hub — the composition root is
+/// the only project that knows all three (plan.md, Structure Decision). RUNS decides whether a
+/// text is accepted and holds its state; GUARD runs it.
+/// </remarks>
+public sealed class SubmissionIntake(SubmissionBoard board, IAgentHarness harness)
+{
+    /// <summary>
+    /// Accept a text and put its run under way, or refuse it.
+    /// </summary>
+    /// <remarks>
+    /// There is deliberately no cancellation token. A run outlives the request that started it —
+    /// that is what INGEST-001 means by accepting a submission without the user waiting for the
+    /// run to end — so tying the dispatch to the caller's token would let a closed browser tab
+    /// kill the run.
+    /// </remarks>
+    public async Task<SubmissionResult> SubmitAsync(string text, StartUpInputs inputs)
+    {
+        var result = board.Accept(text, inputs);
+
+        if (result.Accepted is not { } submission)
+        {
+            // A refused submission is stored nowhere, carries no state, and starts no run.
+            return result;
+        }
+
+        // A fresh identifier per run, distinct from the submission's: one submission has one run
+        // here, but a run is its own thing — it names itself in the wiki's log and addresses its
+        // own tool endpoint (data-model.md §Run).
+        var dispatch = new AgentDispatch(Guid.NewGuid(), submission.Id, submission.Text);
+
+        try
+        {
+            await harness.DispatchAsync(dispatch, Report(), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // A run that never began must not leave its submission reading Submitted: the board
+            // counts that as a run in progress, so every later text would be refused for as long
+            // as the process lives (INGEST-001, INGEST-005). It ended, and it ended failed.
+            submission.Ended(SubmissionState.Failed);
+            throw;
+        }
+
+        // The run is under way and the call returns; the user waits for none of it.
+        return result;
+    }
+
+    private RunReport Report() => new(
+        AgentReportedIn: submissionId => board.Find(submissionId)?.AgentReportedIn(),
+        RunEnded: (submissionId, outcome) => board.Find(submissionId)?.Ended(
+            outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed));
+}
