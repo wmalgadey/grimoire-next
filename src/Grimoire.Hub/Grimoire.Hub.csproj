@@ -1,10 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <!-- The composition root: the only project that knows every context (plan.md, Structure
-       Decision). Grimoire.Wiki joins these with user story 2. -->
+       Decision). -->
   <ItemGroup>
     <ProjectReference Include="../Grimoire.Agent/Grimoire.Agent.csproj" />
     <ProjectReference Include="../Grimoire.Runs/Grimoire.Runs.csproj" />
+    <ProjectReference Include="../Grimoire.Wiki/Grimoire.Wiki.csproj" />
+  </ItemGroup>
+
+  <!-- The five wiki tools are served over MCP from the hub itself, at a per-run endpoint. The
+       library is referenced here and nowhere else (research.md R-02). -->
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 
   <!-- The page travels with the built hub, so the server finds it under its own base directory

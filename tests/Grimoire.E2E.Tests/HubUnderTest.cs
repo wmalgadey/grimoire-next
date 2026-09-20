@@ -1,5 +1,6 @@
 using Grimoire.Agent;
 using Grimoire.Hub;
+using Grimoire.Wiki.Adapters;
 using Microsoft.AspNetCore.Builder;
 
 namespace Grimoire.E2E.Tests;
@@ -17,6 +18,7 @@ internal sealed class DispatchOnlyHarness : IAgentHarness
 {
     public Task DispatchAsync(AgentDispatch dispatch, RunReport report, CancellationToken cancellationToken) =>
         Task.CompletedTask;
+
 
     public Task NudgeAsync(Guid runId, CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -53,8 +55,9 @@ internal sealed class HubUnderTest : IAsyncDisposable
 
         var app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, purpose),
+            new HubOptions(instruction, purpose, WikiRoot: directory, Model: "claude-opus-4-5-20251101"),
             new DispatchOnlyHarness(),
+            new FileSystemWikiStore(directory),
             TimeProvider.System);
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);

@@ -13,17 +13,9 @@ namespace Grimoire.Fast.Tests;
 [Trait("level", "fast")]
 public sealed class SubmissionStateTests
 {
-    private readonly InMemoryAgentHarness harness = new();
-    private readonly SubmissionBoard board = new(FastSuite.Clock());
-    private readonly SubmissionIntake intake;
+    private readonly FastHub hub = new();
 
-    public SubmissionStateTests() => intake = new SubmissionIntake(board, harness);
-
-    private async Task<Submission> Accepted(string text = "A text.")
-    {
-        var result = await intake.SubmitAsync(text, StartUpInputs.BothPresent);
-        return result.Accepted!;
-    }
+    private Task<Submission> Accepted(string text = "A text.") => hub.AcceptedAsync(text);
 
     [Fact]
     [Trait("req", "RUNS-001")]
@@ -40,7 +32,7 @@ public sealed class SubmissionStateTests
 
         Assert.Equal(SubmissionState.Submitted, submission.State);
 
-        harness.ReportIn(submission.Id);
+        hub.Harness.ReportIn(submission.Id);
 
         Assert.Equal(SubmissionState.Running, submission.State);
     }
@@ -52,9 +44,9 @@ public sealed class SubmissionStateTests
     public async Task RunEnds_LeavesTheSubmissionDoneOrFailed(RunOutcome outcome, SubmissionState state)
     {
         var submission = await Accepted();
-        harness.ReportIn(submission.Id);
+        hub.Harness.ReportIn(submission.Id);
 
-        harness.End(submission.Id, outcome);
+        hub.Harness.End(submission.Id, outcome);
 
         Assert.Equal(state, submission.State);
     }
@@ -67,7 +59,7 @@ public sealed class SubmissionStateTests
         // surface that is not the grant ends the run failed there (data-model.md §SubmissionState).
         var submission = await Accepted();
 
-        harness.End(submission.Id, RunOutcome.Failed);
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
 
         Assert.Equal(SubmissionState.Failed, submission.State);
     }
@@ -79,7 +71,7 @@ public sealed class SubmissionStateTests
     public async Task Transition_IsRefused_WhenTheSubmissionIsAlreadyDoneOrFailed(RunOutcome outcome)
     {
         var submission = await Accepted();
-        harness.End(submission.Id, outcome);
+        hub.Harness.End(submission.Id, outcome);
         var terminal = submission.State;
 
         // There is no transition out of either in this feature — acknowledgement is RUNS-003,
@@ -102,13 +94,36 @@ public sealed class SubmissionStateTests
 
             if (reached == SubmissionState.Submitted)
             {
-                harness.ReportIn(submission.Id);
+                hub.Harness.ReportIn(submission.Id);
             }
             else if (reached == SubmissionState.Running)
             {
-                harness.End(submission.Id, RunOutcome.Done);
+                hub.Harness.End(submission.Id, RunOutcome.Done);
             }
         }
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-001")]
+    public async Task RunEnds_IsIgnored_WhenTheRunHasAlreadyEnded()
+    {
+        var submission = await Accepted();
+        hub.Harness.ReportIn(submission.Id);
+
+        // The log names the run, so the stop ends it done rather than nudging it. Without that
+        // the run would still be under way and the second report below would be no second report
+        // at all.
+        var run = hub.Conductor.Of(submission.Id)!;
+        await hub.Wiki.AppendLogAsync($"Run {run.Id} wrote a page.\n", TestContext.Current.CancellationToken);
+        await hub.Harness.StoppedAsync(submission.Id);
+        Assert.Equal(SubmissionState.Done, submission.State);
+
+        // Now a harness whose process died after the hub had already ended the run reports again.
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        // Unmoved: done is terminal, and the second report is a no-op rather than an attempt to
+        // leave it.
+        Assert.Equal(SubmissionState.Done, submission.State);
     }
 
     [Fact]
@@ -116,7 +131,7 @@ public sealed class SubmissionStateTests
     public async Task Report_CarriesNothingBeyondTheState()
     {
         var submission = await Accepted();
-        harness.ReportIn(submission.Id);
+        hub.Harness.ReportIn(submission.Id);
 
         var json = JsonSerializer.SerializeToElement(SubmissionView.Of(submission));
 

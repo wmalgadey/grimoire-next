@@ -10,11 +10,7 @@ namespace Grimoire.Fast.Tests;
 [Trait("level", "fast")]
 public sealed class SubmissionRefusalTests
 {
-    private readonly InMemoryAgentHarness harness = new();
-    private readonly SubmissionBoard board = new(FastSuite.Clock());
-    private readonly SubmissionIntake intake;
-
-    public SubmissionRefusalTests() => intake = new SubmissionIntake(board, harness);
+    private readonly FastHub hub = new();
 
     private static readonly StartUpInputs NoInstruction =
         new(InstructionPresent: false, PurposeDescriptionPresent: true);
@@ -26,7 +22,7 @@ public sealed class SubmissionRefusalTests
     [Trait("req", "INGEST-003")]
     public async Task Submit_IsRefused_WhenTheInstructionIsMissing()
     {
-        var result = await intake.SubmitAsync("A text.", NoInstruction);
+        var result = await hub.SubmitAsync("A text.", NoInstruction);
 
         Assert.Equal(Refusal.InstructionMissing, result.Refused);
     }
@@ -35,7 +31,7 @@ public sealed class SubmissionRefusalTests
     [Trait("req", "INGEST-003")]
     public async Task Submit_IsRefused_WhenThePurposeDescriptionIsMissing()
     {
-        var result = await intake.SubmitAsync("A text.", NoPurposeDescription);
+        var result = await hub.SubmitAsync("A text.", NoPurposeDescription);
 
         // The refusal names which of the two is missing; that is what INGEST-003 asks for.
         Assert.Equal(Refusal.PurposeDescriptionMissing, result.Refused);
@@ -48,7 +44,7 @@ public sealed class SubmissionRefusalTests
     [Trait("req", "INGEST-004")]
     public async Task Submit_IsRefused_WhenTheTextIsEmptyOrWhitespace(string text)
     {
-        var result = await intake.SubmitAsync(text, StartUpInputs.BothPresent);
+        var result = await hub.SubmitAsync(text, StartUpInputs.BothPresent);
 
         Assert.Equal(Refusal.TextEmpty, result.Refused);
     }
@@ -64,9 +60,9 @@ public sealed class SubmissionRefusalTests
         // a Submission and carries no state.
         foreach (var inputs in Refusing(text))
         {
-            await intake.SubmitAsync(text, inputs);
+            await hub.SubmitAsync(text, inputs);
 
-            Assert.Empty(board.All);
+            Assert.Empty(hub.Board.All);
         }
     }
 
@@ -79,9 +75,9 @@ public sealed class SubmissionRefusalTests
     {
         foreach (var inputs in Refusing(text))
         {
-            await intake.SubmitAsync(text, inputs);
+            await hub.SubmitAsync(text, inputs);
 
-            Assert.Empty(harness.Dispatched);
+            Assert.Empty(hub.Harness.Dispatched);
         }
     }
 
@@ -102,8 +98,8 @@ public sealed class SubmissionRefusalTests
         // start-up inputs come before the text, and the instruction before the purpose
         // description, so each refusal names exactly one missing file
         // (contracts/hub-http-api.md).
-        Assert.Equal(Refusal.InstructionMissing, (await intake.SubmitAsync("", neither)).Refused);
-        Assert.Equal(Refusal.InstructionMissing, (await intake.SubmitAsync("A text.", neither)).Refused);
-        Assert.Equal(Refusal.PurposeDescriptionMissing, (await intake.SubmitAsync("", NoPurposeDescription)).Refused);
+        Assert.Equal(Refusal.InstructionMissing, (await hub.SubmitAsync("", neither)).Refused);
+        Assert.Equal(Refusal.InstructionMissing, (await hub.SubmitAsync("A text.", neither)).Refused);
+        Assert.Equal(Refusal.PurposeDescriptionMissing, (await hub.SubmitAsync("", NoPurposeDescription)).Refused);
     }
 }
