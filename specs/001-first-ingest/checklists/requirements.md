@@ -48,9 +48,12 @@
   only matches are references to the document `docs/product.md`, the words "URL" and "file" inside
   the Out of scope list (naming what is excluded), and "commit" in the sense `docs/product.md` uses
   it. None is a technology choice.
-- Requirement count is 20 across five capabilities: 19 `test`, 1 `review`. Eight WIKI IDs were
-  dropped during clarification and are not reused; all are recorded under "Dropped before close".
-  The spec's "Budget note" says that an over-budget plan is split rather than cut (I.7).
+- Requirement count is 20 across five capabilities: 19 `test`, 1 `review` — the sixteen this
+  feature registers plus the four the split moved to the follow-up feature. The WIKI requirements
+  were renumbered to WIKI-001..003 during clarification and the "Dropped before close" table was
+  removed with them: nothing was registered in `docs/capabilities/` at that point, so no ID was
+  ever permanent and none is retired. The spec's "Budget note" says that an over-budget plan is
+  split rather than cut (I.7).
 - All items pass; re-validated after the 2026-09-20 clarification session.
 - Nothing is open with the owner. The earlier question - whether Grimoire may place the submitted
   text into the source page - was withdrawn: the agent writes the source page, so Constitution V.1,
@@ -58,6 +61,6 @@
 - The wiki's shape is one requirement, WIKI-001, on the instruction every run receives, proven by
   `review` against review-checklist item 3. It is not tested: a test could only match words in a
   versioned file's static content, which III.8 excludes, and it would break on every rewording.
-- Grimoire touches the wiki in three places only: it writes the provenance block (WIKI-005,
-  WIKI-012), reads the log entry RUNS-005 consumes, and leaves a failed run's writes alone
-  (WIKI-010). Everything else in the wiki is the agent's.
+- Grimoire touches the wiki in three places only: it writes the generation record (WIKI-002),
+  reads the log entry RUNS-005 consumes, and leaves a failed run's writes alone (WIKI-003).
+  Everything else in the wiki is the agent's.

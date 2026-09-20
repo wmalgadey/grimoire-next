@@ -6,9 +6,10 @@ This file resolves every NEEDS CLARIFICATION in the plan's Technical Context. Th
 blocking open question; everything below is a technology question the constitution puts in this
 plan (II.6), plus the findings that changed the design.
 
-`docs/decisions.md` was read first. **DEC-001** — models are reached through the Claude Agent SDK
-with the owner's subscription sign-in, API-token billing is not acceptable, and the fallback is an
-API-key adapter behind the same port — is in force and is not re-decided here. R-11 works inside it.
+`docs/decisions.md` was read first. **DEC-001** — every model call goes through Claude Code's
+subscription sign-in, per-token API billing is not acceptable, no API key reaches the agent process,
+and the fallback is an API-key adapter behind the same port — is in force and is not re-decided
+here. R-11 works inside it.
 
 ---
 
@@ -56,7 +57,10 @@ an auto-approval list: `claude --help` (2.1.240) reads "Specify the list of avai
 built-in set. Use `""` to disable all tools, `default` to use all tools, or specify tool names". The
 CLI reference says the same from the other side — of `--allowedTools`: "To restrict which tools are
 available, use `--tools` instead"
-([cli-reference](https://code.claude.com/docs/en/cli-reference)). MCP tools are a separate namespace
+([cli-reference](https://code.claude.com/docs/en/cli-reference)). The CLI reference spells these
+flags in camelCase and the argv we pass spells them in kebab-case — `--allowedTools` there,
+`--allowed-tools` in `contracts/agent-cli-protocol.md`; the CLI accepts both and this document
+quotes each source as it writes them. MCP tools are a separate namespace
 that `--tools` does not cover, which `--disallowedTools`'s documented `"mcp__*"` form confirms, so
 `--mcp-config` + `--strict-mcp-config` ("Only use MCP servers from `--mcp-config`, ignoring all
 other MCP configurations") decides the MCP half by itself.
@@ -181,8 +185,9 @@ subscription or does not start at all. The probe above was run that way.
   this same CLI; the harness it required "decided nothing" (R-02) and therefore had nothing to test
   (III.8). Removing it removes a process, a language and a package manager without removing a
   decision.
-- **DEC-001 holds**, in its letter as the owner has since reworded it — "through the Claude Code
-  Cli or Claude Agent SDK with the owner's subscription sign-in" — so this plan departs from nothing.
+- **DEC-001 holds**, in its letter as the owner has since reworded it — "every model call goes
+  through Claude Code's subscription sign-in", with `ANTHROPIC_API_KEY` removed from the agent
+  process's environment — so this plan departs from nothing.
   The CLI is the subscription path: the probe ran with `apiKeySource: "none"` in
   `system/init` and no `ANTHROPIC_API_KEY` in the environment, the adapter having removed it. DEC-001's reason names "Claude Code
   and the Agent SDK" as the two places subscription authentication is available, and this is the

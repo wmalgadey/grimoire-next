@@ -170,7 +170,7 @@ The user returns to the browser and sees, for every text they submitted, whether
 
 | ID | Why neither a test nor an eval can prove it |
 | --- | --- |
-| WIKI-001 | The requirement is about what a text says. A test could only match its wording, which is static content the constitution does not test (III.8). Whether the agent follows it is agent judgment, out of scope here and the business of OUT-07. |
+| WIKI-001 | The requirement is about what a text says. A test could only match its wording, which is static content the constitution does not test (III.8). Whether the agent follows it is agent judgment, out of scope here and the business of OUT-07. Proven by item 3 of `docs/review-checklist.md`. |
 
 ### Moved to the follow-up feature
 
