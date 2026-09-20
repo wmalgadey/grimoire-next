@@ -15,8 +15,9 @@ requirements are **not** modelled here — they arrive with the follow-up featur
 
 There is no store, no port and no database. `SubmissionBoard` is a plain object holding the
 submissions and their states for as long as the process runs; the Fast tests use the real object
-(research.md R-08). A stop loses everything below — the spec says so, and the owner accepted it
-until RUNS-004.
+(research.md R-08). A stop loses everything below — the submissions, their states, and everything
+recorded with a run, the tools it was granted (GUARD-003) and the tokens it spent (GUARD-004)
+included. The spec says so, and the owner accepted it until RUNS-004.
 
 ### Submission
 
@@ -50,8 +51,13 @@ Submitted ──dispatch──▶ Running ──┬── agent stopped, both ce
 ```
 
 `Done` and `Failed` are terminal. There is no transition out of `Failed` in this feature —
-acknowledgement is RUNS-003, held back by the split. `Submitted` is momentary: a submission is
-accepted only when no run is in progress (INGEST-005), so it is dispatched at once.
+acknowledgement is RUNS-003, held back by the split.
+
+The boundaries are the spec's, under Key Entities: `Submitted` from acceptance until the agent
+reports in — the `system/init` event of `contracts/agent-cli-protocol.md` — and `Running` from then
+on. Starting the process, connecting the MCP endpoint and checking the reported tool surface against
+the grant all happen inside that window, and a surface that is not the grant ends the run failed
+there, before any model call (GUARD-001).
 
 ### Run
 
@@ -63,9 +69,9 @@ One attempt to work one submission into the wiki.
 | `SubmissionId` | GUID | Exactly one submission per run |
 | `StartedAt` | UTC instant | Read from `TimeProvider`; start of the elapsed-time ceiling (research.md R-12) |
 | `Grant` | `ToolGrant` | Recorded for every run (GUARD-003) |
-| `ElapsedCeiling` | duration | Fixed value, not a setting (GUARD-004) |
-| `TokenCeiling` | token count | Fixed value; cost counted in model tokens, not currency (GUARD-004) |
-| `TokensUsed` | token count | Running total during the run, from the streamed `usage`; the `result` message's authoritative count at the end (R-04) |
+| `ElapsedCeiling` | duration | Fixed value, not a setting; 15 minutes initially (GUARD-004, R-04) |
+| `TokenCeiling` | token count | Fixed value; cost counted in model tokens, not currency; 2 000 000 initially (GUARD-004, R-04) |
+| `TokensUsed` | token count | Every token the run causes: a running floor from the streamed `usage` during the run, reconciled at the end against the sum of `inputTokens`, `outputTokens`, `cacheReadInputTokens` and `cacheCreationInputTokens` over every entry of the `result` message's `modelUsage` — all models, the CLI's own background calls included (R-04) |
 | `Outcome` | `Done` \| `Failed` | How it ended |
 | `LogEntryNudged` | bool | Whether Grimoire has already told the agent once that the log entry is missing — the "once" in RUNS-005 |
 

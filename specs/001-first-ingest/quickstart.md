@@ -16,13 +16,15 @@ For what each interface looks like, see [`contracts/`](contracts/); for the enti
 | | |
 | --- | --- |
 | .NET SDK | 10.x — builds the hub, `trace-check` and all three test suites. It is the only build toolchain: there is no `npm`, no bundler and no TypeScript (research.md R-01, R-10, R-11) |
-| `claude` CLI | On `PATH`, **signed in with the owner's subscription** (`claude auth`). This is the external system the agent adapter wraps. Verified against 2.1.240; `--permission-prompts` is not used, so no newer build is required |
+| `claude` CLI | **2.1.240 or newer**, on `PATH`, **signed in with the owner's subscription** (`claude auth`). This is the external system the agent adapter wraps. 2.1.240 is the build every finding in research.md R-11 was observed on; an older one may lack `--tools`, `--setting-sources` or the `interrupt` control request, and `-p` is documented to ignore settings it cannot validate *silently*, so such a build would fail open rather than loudly. `HarnessProcess` therefore refuses to start a run whose `system/init` does not report the grant as its tool list and `interrupt_receipt_v1` among its capabilities. `--permission-prompts` (2.1.259 or newer) is not used and not required |
 | Browsers | `pwsh tests/Grimoire.E2E.Tests/bin/…/playwright.ps1 install` once, for the E2E suite |
 | A wiki | A git repository the owner controls. May be empty — the instruction states the shape the first run is to create |
 | A purpose description | Hand-written, at the path the hub is configured with. Without it every submission is refused (INGEST-003) |
 
 No `ANTHROPIC_API_KEY`. DEC-001 puts this project on subscription sign-in, and the CLI is that path;
-an API-key adapter behind the same port is DEC-001's fallback, not this feature's wiring.
+an API-key adapter behind the same port is DEC-001's fallback, not this feature's wiring. If the
+variable happens to be set on your machine it does no harm: `HarnessProcess` removes it from the
+child's environment, so a run is on the subscription or does not start (research.md R-11).
 
 ---
 

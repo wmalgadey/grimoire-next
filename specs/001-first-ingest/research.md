@@ -27,11 +27,11 @@ API-key adapter behind the same port — is in force and is not re-decided here.
 
 **Question**: the earlier draft put a TypeScript harness on `@anthropic-ai/claude-agent-sdk` between
 the hub and the model. Can the hub's own adapter drive the `claude` CLI in headless mode instead?
-It must support all five of: deny-by-default for every tool outside the grant; no settings picked up
+It must support all six of: deny-by-default for every tool outside the grant; no settings picked up
 from the machine; streamed token counts for the cost ceiling; a second message to the running agent
-for the nudge; and a stop.
+for the nudge; a stop; and an explicit, pinned model ID served under the subscription sign-in.
 
-**Answer: yes, all five.** The TypeScript harness and the `npm` toolchain are dropped.
+**Answer: yes, all six.** The TypeScript harness and the `npm` toolchain are dropped.
 `Grimoire.Agent/Adapters/HarnessProcess.cs` spawns `claude` directly and speaks newline-delimited
 JSON to it.
 
@@ -47,6 +47,7 @@ linked with it.
 | Streamed token counts | `--include-partial-messages` | Three `stream_event` / `message_delta` events carried a growing `usage`; the final `result` carried the authoritative totals and a `modelUsage` breakdown |
 | A second message to the running agent | another user message written on stdin | Same `session_id`, and the agent answered about the turn before it |
 | A stop | `control_request` / `interrupt` on stdin | A response in flight ended in ~0.9 s with `terminal_reason: "aborted_streaming"`; the process stayed alive and served a further message |
+| A pinned model | `--model <full id>` | `modelUsage` came back keyed by the exact ID asked for, with `apiKeySource: "none"` — a pinned model *and* the subscription sign-in, in the same run |
 
 ### The five findings in detail
 
@@ -141,6 +142,36 @@ writes one more user message, and the agent continues inside the ceilings.
   Code exits with code 143 … leaves the turn that was in progress unfinished". The hub uses the
   interrupt first and the signal only if the process does not end.
 
+**6. A pinned model ID under the subscription sign-in (DEC-001, GUARD-004).** A run must be
+reproducible and its cost attributable, and neither survives an alias: `opus` and `sonnet` follow
+whatever Anthropic points them at, and the default follows the owner's own `model` setting, which is
+a machine setting of exactly the kind `--setting-sources ""` exists to keep out. So **the model is
+passed by pinned ID and never by alias or default** — `--model claude-haiku-4-5-20251001`, not
+`--model haiku`.
+
+Observed, with `ANTHROPIC_API_KEY` removed from the child's environment:
+
+```
+env -u ANTHROPIC_API_KEY claude -p --output-format json --tools "" --setting-sources "" \
+  --strict-mcp-config --no-session-persistence --model claude-haiku-4-5-20251001 "Reply with exactly: PINNED"
+
+→ result       "PINNED"
+  apiKeySource  null                       ← the subscription sign-in, not an API key
+  modelUsage    { "claude-haiku-4-5-20251001": {
+                    "inputTokens": 10, "outputTokens": 42, "thinkingTokens": 33,
+                    "cacheReadInputTokens": 0, "cacheCreationInputTokens": 6612,
+                    "canonicalModel": "claude-haiku-4-5", "provider": "firstParty" } }
+```
+
+The key of the `modelUsage` entry is the ID that was asked for, so the served model is verifiable
+after the fact and at the `result` of every run — which is the assertion the Contract test makes.
+
+**`HarnessProcess` removes `ANTHROPIC_API_KEY` from the child's environment.** If the variable is set
+on the machine — and it may be, for reasons that have nothing to do with Grimoire — the CLI would
+bill the owner per token through an API key instead of the subscription, which is the one thing
+DEC-001 rules out. Unsetting it for the child is a one-line guarantee that the run is on the
+subscription or does not start at all. The probe above was run that way.
+
 ### What this changes
 
 - **The TypeScript harness is dropped**, and with it `@anthropic-ai/claude-agent-sdk` and the `npm`
@@ -150,8 +181,10 @@ writes one more user message, and the agent continues inside the ceilings.
   this same CLI; the harness it required "decided nothing" (R-02) and therefore had nothing to test
   (III.8). Removing it removes a process, a language and a package manager without removing a
   decision.
-- **DEC-001 holds.** The CLI is the subscription path: the probe ran with `apiKeySource: "none"` in
-  `system/init` and no `ANTHROPIC_API_KEY` in the environment. DEC-001's reason names "Claude Code
+- **DEC-001 holds**, in its letter as the owner has since reworded it — "through the Claude Code
+  Cli or Claude Agent SDK with the owner's subscription sign-in" — so this plan departs from nothing.
+  The CLI is the subscription path: the probe ran with `apiKeySource: "none"` in
+  `system/init` and no `ANTHROPIC_API_KEY` in the environment, the adapter having removed it. DEC-001's reason names "Claude Code
   and the Agent SDK" as the two places subscription authentication is available, and this is the
   first of them. The fallback DEC-001 names — an API-key adapter behind the same port — stays
   available: `IAgentHarness` is that port, and an API-key adapter would sit beside `HarnessProcess`.
@@ -250,14 +283,70 @@ we made, not framework behaviour, so III.8 does not exclude it.
 
 - **Cost**: token counts read from the CLI's own stream. `--include-partial-messages` gives
   `message_delta` events with a growing `usage` during a response (R-11); the `result` message
-  carries the authoritative totals, which the hub records as the run's final counts. When the total
-  crosses the ceiling the hub stops the run before the next model call.
-- **Elapsed time**: measured by the hub against `TimeProvider` (R-12). At the ceiling the hub sends
-  the `interrupt` control request, which stops a call in flight (R-11), and falls back to killing the
-  process.
+  carries the authoritative totals.
+- **Elapsed time**: measured by the hub against `TimeProvider` (R-12).
+- **At either ceiling the hub sends the `interrupt` control request**, which stops the run at once,
+  a model call in flight included (R-11), and falls back to killing the process. The run ends failed.
 
-Either way the run ends failed. This matches GUARD-004 exactly: a call in flight is stopped only at
-the *elapsed-time* ceiling; the cost ceiling only has to prevent the next call.
+**Why one mechanism for both.** Inside a single turn the agent loops model call → tool call → model
+call by itself. A caller watches the usage grow but has no way to veto the next call short of ending
+the turn, so "prevent the next call without touching the one in flight" is not something the CLI
+offers. The alternative — wait for the turn's `result` and send nothing further — would let a ceiling
+overrun by a whole turn's worth of calls. GUARD-004 was rewritten to say what is actually done: at
+either ceiling the run stops at once, a call in flight included, and ends failed. What the run had
+already written through the tools stays in the wiki (WIKI-003); what it loses is the partial response
+it was producing.
+
+### What the cost ceiling counts
+
+**OWNER DECISION — every token the run causes.** Not only the main model's, and not only the
+assistant's visible response: the CLI spends tokens on background calls of its own, and those are the
+run's doing too. The authority is the `result` message's **`modelUsage`** map, which is keyed by
+model ID and covers every model the run touched.
+
+Per entry in `modelUsage`, the four fields that are counted:
+
+| Field | What it is |
+| --- | --- |
+| `inputTokens` | prompt tokens neither read from nor written to the cache |
+| `outputTokens` | everything generated, **thinking included** — `thinkingTokens` is a breakdown of this number, not an addition to it |
+| `cacheReadInputTokens` | context re-read on each call; on a many-turn run this is the largest of the four by far |
+| `cacheCreationInputTokens` | context written into the cache |
+
+**The run's cost is the sum of those four across every entry in `modelUsage`.** The same quantities
+appear on the top-level `usage` object as `input_tokens`, `output_tokens` (with
+`output_tokens_details.thinking_tokens` as its breakdown), `cache_read_input_tokens` and
+`cache_creation_input_tokens` (with `cache_creation.ephemeral_5m_input_tokens` and
+`cache_creation.ephemeral_1h_input_tokens` as its split, not as extra tokens) — but that object
+covers the main model's stream alone. So `usage` is what the *live* counter adds up during the run,
+and `modelUsage` is what the hub reconciles against when the `result` arrives. The remaining fields
+on `usage` — `server_tool_use`, `service_tier`, `inference_geo`, `speed`, `iterations` — carry no
+tokens and are not counted.
+
+**Background calls are real, and observed.** A probe whose main model was Opus came back with two
+entries in `modelUsage`: `claude-opus-5[1m]` at 2 input / 4 output / 3 514 cache-creation tokens, and
+`claude-haiku-4-5-20251001` at 897 input / 12 output — a call the run never asked for, and one a hub
+counting only the main model would have missed entirely.
+
+**The live counter under-counts, by design.** `message_delta` events cover the streamed response and
+nothing else, so a background call appears only in the `result`. The hub therefore treats the live
+total as a floor: it interrupts as soon as that floor crosses the ceiling, and records the reconciled
+`modelUsage` total at the end, which may exceed the ceiling by whatever the last turn's background
+calls cost. A ceiling whose job is to stop a runaway run does not have to be exact to the token.
+
+### The initial ceiling values
+
+Fixed values, not settings (`docs/product.md` §4). **The owner revises both after the acceptance run**,
+against what one real ingest actually costs — that run is the first honest measurement, and until it
+happens these are reasoned estimates.
+
+| Ceiling | Initial value | Reasoning |
+| --- | --- | --- |
+| Cost | **2 000 000 tokens** | The floor is measured: a trivial one-turn run cost 6 664 tokens, nearly all of it the one-off cache creation of the system prompt. A real ingest reads a few pages and writes a few more — call it 20 to 40 model calls over a context of a few tens of thousands of tokens — and `cacheReadInputTokens` then dominates at roughly 30 k × 30 ≈ 900 k, with output a rounding error beside it. Two million is about double the expected run, and still stops a loop that has stopped making progress |
+| Elapsed time | **15 minutes** | Those same 20 to 40 calls take single-digit minutes once tool round trips are counted. Nobody waits on a run (INGEST-001), so this ceiling exists to bound a stuck run, not to hurry a working one |
+
+Both are constants in `Grimoire.Agent/Ceilings.cs`. Changing them is an owner decision and a code
+change, which is what "fixed, not configurable" means here.
 
 **Alternatives considered**: `--max-budget-usd` and `--max-turns`, both rejected in R-11 — currency
 and client-side estimates in the first case, the wrong quantity in the second.

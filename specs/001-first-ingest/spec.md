@@ -65,6 +65,14 @@
 - Story 3 keeps only the scenario that shows the four states; the three scenarios about the acknowledgement gate and about surviving a restart left with RUNS-003, ACCESS-003 and RUNS-004. SC-006 (RUNS-002) and SC-008 (RUNS-003) are dropped for restating moved requirements; SC-005 and SC-007 stand as written. The dropped numbers are not reused.
 - The Submission entity no longer says it is "ordered against other submissions by when it was made": ordering existed for the queue. It still carries when it was made, which is what the browser lists.
 
+### Session 2026-09-20 — remediation of the cross-artifact analysis
+
+- Q: The plan drives the agent through the Claude Code CLI, where a turn is a loop of model call → tool call → model call that the agent runs by itself. Nothing lets Grimoire veto the *next* call without ending the one in flight, so GUARD-004's old split — "start no further model call" at either ceiling, "stop a call in flight" only at the elapsed-time one — was not implementable. Which half gives way? → A: The distinction goes. GUARD-004 now reads: "A run MUST have a fixed ceiling on elapsed time and a fixed ceiling on cost counted in model tokens. When either ceiling is reached, Grimoire MUST stop the run at once, a model call in flight included, and the run MUST end failed." Its edge case says the same. The cost of the choice is that a run stopped on cost loses the partial response it was producing; what it had already written through the tools stays, as WIKI-003 says.
+- Q: The agent announces its tool surface when it starts, before any model call. If that surface is not the grant, is the run still allowed to begin? → A: No. GUARD-001 gains: "A run whose agent reports any tool outside the grant MUST end failed before its first model call." This is the earliest point at which GUARD-001 is observable, and it costs nothing to check. Added as an edge case.
+- Q: With the queue gone, `submitted` became a state nothing held for any length of time, which left ACCESS-002 with nothing to show and no test able to drive a submission to it. Where is the boundary? → A: Written down once, under Key Entities: submitted = accepted, the agent has not yet reported in; running = the agent has reported in; done and failed as RUNS-005 and GUARD-004 say. No new behaviour — RUNS-001 already demanded exactly one state at a time, and this says where each one begins.
+- Story 2's Independent Test said "with a scripted agent", which read as the scripted model endpoint the plan rejected. It now says "with the in-memory agent adapter" — the double at the agent port, which is what III.9 allows.
+- The assumption about in-memory state now names everything a stop loses, not only the submissions and their states: the tools a run was granted (GUARD-003) and the tokens it spent (GUARD-004) go with them. The follow-up feature inherits the full list with RUNS-004.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Submit a text without waiting (Priority: P1)
@@ -91,7 +99,7 @@ Later, the user opens the wiki and finds what the run made of the submission: a 
 
 What the wiki ends up looking like is the agent's doing, not Grimoire's. Grimoire's part is to hand every run an instruction that demands this shape, to stamp who generated each page and when, and to keep its hands off what a failed run left behind. Whether the agent delivered is judged by the owner reading the wiki, and systematically by lint later (OUT-07).
 
-**Independent Test**: Drive a run from a known text with a scripted agent and inspect what Grimoire does: it hands over the instruction, the purpose description, the submitted text and the run's identifier; it stamps the generation record over whatever the agent supplied; it adds a missing place for that record and fails a write whose place for it cannot be read; and it leaves a failed run's writes untouched. Needs no browser.
+**Independent Test**: Drive a run from a known text with the in-memory agent adapter and inspect what Grimoire does: it hands over the instruction, the purpose description, the submitted text and the run's identifier; it stamps the generation record over whatever the agent supplied; it adds a missing place for that record and fails a write whose place for it cannot be read; and it leaves a failed run's writes untouched. Needs no browser.
 
 **Acceptance Scenarios**:
 
@@ -123,7 +131,7 @@ The user returns to the browser and sees, for every text they submitted, whether
 | The purpose description is missing when a text is submitted | The submission is refused, the user is told the purpose description is missing, and no run starts. | INGEST-003 |
 | The submitted text is empty or only whitespace | The submission is refused and causes no run. | INGEST-004 |
 | A submission arrives while a run is in progress | The submission is refused, no run starts, and the user is told that a run is in progress. | INGEST-005 |
-| A run reaches its elapsed-time ceiling or its cost ceiling | No further model call starts, a call in flight is stopped at the elapsed-time ceiling, and the run ends failed. | GUARD-004 |
+| A run reaches its elapsed-time ceiling or its cost ceiling | The run is stopped at once — a model call in flight included — and ends failed. What it had already written stays. | GUARD-004 |
 | A run fails or is stopped at a ceiling | Everything it had already written stays in the wiki; Grimoire removes, reverts and commits nothing. | WIKI-003 |
 | The agent stops on its own inside both ceilings but left no log entry for the run | Grimoire tells the agent once that the entry is missing and lets it continue within the ceilings; if it then stops with the entry there, the run ends done. A second stop without the entry, or a ceiling reached meanwhile, ends the run failed and what it wrote stays. | RUNS-005 |
 | The agent writes a page without a type, links nothing, or leaves an index stale | The run is unaffected: nothing in the wiki but the log entry is read to decide how it ends. | RUNS-005 |
@@ -133,6 +141,7 @@ The user returns to the browser and sees, for every text they submitted, whether
 | A page arrives with a place for the generation record that cannot be read | The write fails and the agent is told why; nothing else about the page is judged. | WIKI-002 |
 | The wiki is empty when the first run starts | The instruction states the shape the wiki is to have, the first run's section index, root index and log entry included. | WIKI-001 |
 | The agent attempts to read or write outside the wiki | The attempt does not succeed, because no granted tool reaches there. | GUARD-001 |
+| The agent reports a tool outside the grant when it starts | The run ends failed before its first model call; nothing is dispatched to a model. | GUARD-001 |
 
 ## Requirements *(mandatory)*
 
@@ -148,10 +157,10 @@ The user returns to the browser and sees, for every text they submitted, whether
 | WIKI-001 | The instruction MUST state the shape the wiki is to have: a source page for the submitted text; a type on every page; named sources, referenced where a statement relies on them; links between pages; every page in exactly one section, sections one level deep; a current index per section; a current root index declaring the version of the format standard pinned in `docs/product.md` and listing the sections; a log entry per run that identifies the run and says what changed and why. | review |
 | WIKI-002 | Every page a run writes MUST record who generated it and when. Grimoire MUST write both, and MUST replace any value the agent supplies for either. When a run updates a page, the record MUST name that run. When a page arrives without a place for the record, Grimoire MUST add it; when that place cannot be read, the write MUST fail and the agent MUST be told why. Grimoire MUST judge nothing else about the page. | test |
 | WIKI-003 | A run that ends failed MUST leave everything it had already written in the wiki in place; Grimoire MUST NOT remove, revert or commit any of it. | test |
-| GUARD-001 | A run MUST receive only the tools granted for that run, and MUST NOT be able to use any other. | test |
+| GUARD-001 | A run MUST receive only the tools granted for that run, and MUST NOT be able to use any other. A run whose agent reports any tool outside the grant MUST end failed before its first model call. | test |
 | GUARD-002 | The grant for an ingest run MUST allow reading anything inside the wiki and creating and changing pages, indexes and the log, and nothing else. Deleting and moving MUST NOT be granted. | test |
 | GUARD-003 | The tools granted MUST be recorded for every run. | test |
-| GUARD-004 | A run MUST have a fixed ceiling on elapsed time and a fixed ceiling on cost counted in model tokens, MUST start no further model call once either ceiling is reached, MUST stop a call in flight when the elapsed-time ceiling is reached, and MUST end failed when a ceiling is reached. | test |
+| GUARD-004 | A run MUST have a fixed ceiling on elapsed time and a fixed ceiling on cost counted in model tokens. When either ceiling is reached, Grimoire MUST stop the run at once, a model call in flight included, and the run MUST end failed. | test |
 | ACCESS-001 | Users MUST be able to enter a text and submit it from a page in the browser. | test |
 | ACCESS-002 | The browser MUST show, for every submission, exactly one of submitted, running, done or failed, and no further detail about the run. | test |
 | RUNS-001 | Every submission MUST carry exactly one state at a time, drawn from submitted, running, done, failed. | test |
@@ -177,6 +186,7 @@ Still wanted, still advancing OUT-01, not built here. Wording unchanged, IDs kep
 ### Key Entities
 
 - **Submission**: a text the user handed to Grimoire, together with its state and when it was made.
+- **The four states**, and where each begins and ends (RUNS-001 names them; ACCESS-002 shows them): **submitted** — the submission has been accepted and the agent has not yet reported in; **running** — the agent has reported in; **done** and **failed** — as RUNS-005 and GUARD-004 say. Done and failed are final.
 - **Run**: one attempt to work one submission into the wiki. Carries its own identifier, the tools it was granted, its two ceilings, and how it ended.
 - **Purpose description**: the hand-written description of what the wiki is for. Belongs to Grimoire, not to the wiki; every run receives it; Grimoire neither creates nor changes it.
 - **Instruction**: the versioned text every run receives alongside the purpose description. It is where the wiki's shape is demanded of the agent. It belongs to Grimoire and is not a wiki page.
@@ -234,7 +244,7 @@ SC-006 and SC-008 restated RUNS-002 and RUNS-003 and left with them. The numbers
 - Who generated a page and when are facts about the run, so Grimoire writes them; everything else a page carries comes from the agent, the submitted text of the source page included (`docs/product.md` §4, Constitution V.1). — **Requirement:** WIKI-002
 - The instruction is a versioned text belonging to Grimoire, distinct from the user-written purpose description. Both go to every run; the instruction is where the wiki's shape is demanded (Constitution V.1). — **Requirement:** INGEST-002, WIKI-001
 - The ceilings are fixed values, not settings, and cost is counted in model tokens rather than currency. — **Requirement:** GUARD-004
-- Submissions and their states are held in memory in this feature. A stop loses them; the owner accepts that until RUNS-004 arrives with the follow-up feature. — **Requirement:** none; this is what makes the "Stopping and starting again" lifecycle answer "not applicable" rather than a behaviour.
+- Submissions and their states are held in memory in this feature, and so is everything recorded with a run — the tools it was granted (GUARD-003) and the tokens it spent (GUARD-004). A stop loses all of it; the owner accepts that until RUNS-004 arrives with the follow-up feature. — **Requirement:** none; this is what makes the "Stopping and starting again" lifecycle answer "not applicable" rather than a behaviour.
 - Without the acknowledgement gate of RUNS-003, a run may start after a failed one and work on what the failed run left behind in the wiki. The owner accepts this until the follow-up feature; it adds no behaviour here. — **Requirement:** none; WIKI-003 already says the failed run's writes stay.
 - `trace-check` and `time-budget` are built in this feature because the constitution establishes them (II.2, IV.3). They are not product requirements: they carry no requirement ID and appear in no user story. The plan owns them.
 - Whether OUT-01 is reached is not decided by any check in Grimoire. The feature closes only after the owner has run one ingest of a known text with a real model and read the resulting wiki; the plan's quickstart describes that run. — **Requirement:** none; this is how the feature closes (Constitution I.9), not behaviour of the system.
