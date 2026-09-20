@@ -8,6 +8,12 @@
     <ProjectReference Include="../Grimoire.Wiki/Grimoire.Wiki.csproj" />
   </ItemGroup>
 
+  <!-- The five wiki tools are served over MCP from the hub itself, at a per-run endpoint. The
+       library is referenced here and nowhere else (research.md R-02). -->
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+  </ItemGroup>
+
   <!-- The page travels with the built hub, so the server finds it under its own base directory
        whether it was started from the command line or by the E2E suite. -->
   <ItemGroup>

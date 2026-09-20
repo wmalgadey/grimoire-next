@@ -47,9 +47,7 @@ public static class SubmissionsEndpoints
 {
     /// <summary>
     /// Reads whether the two start-up inputs are in place, against the paths the hub was started
-    /// with. T033's <c>InstructionLoader</c> is what answers this once it exists; the check is
-    /// made per submission rather than once at start-up, because INGEST-003 is about the state of
-    /// those paths when a text is submitted.
+    /// with. <see cref="InstructionLoader.Read"/> is what answers it.
     /// </summary>
     public delegate StartUpInputs StartUpInputsCheck();
 

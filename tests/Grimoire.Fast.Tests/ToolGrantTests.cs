@@ -1,4 +1,6 @@
 using Grimoire.Agent;
+using Grimoire.Hub.Mcp;
+using Grimoire.Runs;
 
 namespace Grimoire.Fast.Tests;
 
@@ -32,6 +34,23 @@ public sealed class ToolGrantTests
         Assert.DoesNotContain(name, grant.ToolNames);
 
     [Fact]
+    [Trait("req", "GUARD-002")]
+    public void Endpoint_ServesExactlyTheGrantedNames() =>
+        // The tool list the per-run endpoint serves IS the grant: a name outside it has no
+        // handler there, and with every built-in tool switched off it exists nowhere else.
+        Assert.Equal(
+            grant.ToolNames.Order(StringComparer.Ordinal),
+            WikiToolsServer.ServedNames.Order(StringComparer.Ordinal));
+
+    [Theory]
+    [InlineData("delete_page")]
+    [InlineData("move_page")]
+    [InlineData("bash")]
+    [Trait("req", "GUARD-002")]
+    public void Endpoint_HasNoHandler_ForANameOutsideTheGrant(string name) =>
+        Assert.DoesNotContain(name, WikiToolsServer.ServedNames);
+
+    [Fact]
     [Trait("req", "GUARD-003")]
     public void Grant_IsRecordedWithTheRun() =>
         Assert.Equal(FastSuite.Start, grant.RecordedAt);
@@ -50,4 +69,30 @@ public sealed class ToolGrantTests
     [Trait("req", "GUARD-001")]
     public void Surface_IsNotTheGrant_WithoutOneOfTheGrantedNames() =>
         Assert.False(grant.IsTheSurface(grant.ToolNames.Take(4)));
+
+    [Fact]
+    [Trait("req", "GUARD-001")]
+    public async Task AgentReportsASurfaceOutsideTheGrant_EndsTheRunFailed()
+    {
+        var hub = new FastHub();
+        hub.Harness.ReportedSurface = [.. ToolGrant.ForIngest, "bash"];
+
+        var submission = await hub.AcceptedAsync();
+
+        Assert.Equal(SubmissionState.Failed, submission.State);
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-001")]
+    public async Task AgentReportsASurfaceOutsideTheGrant_EndsTheRunBeforeItsFirstModelCall()
+    {
+        var hub = new FastHub();
+        hub.Harness.ReportedSurface = [.. ToolGrant.ForIngest, "bash"];
+
+        await hub.AcceptedAsync();
+
+        // The agent never reports in, so the submission never reads running: the run is over in
+        // the window between acceptance and system/init, which is where the grant is checked.
+        Assert.False(hub.Harness.ReportedIn);
+    }
 }

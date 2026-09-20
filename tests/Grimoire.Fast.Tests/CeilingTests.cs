@@ -1,4 +1,5 @@
 using Grimoire.Agent;
+using Grimoire.Runs;
 
 namespace Grimoire.Fast.Tests;
 
@@ -66,4 +67,57 @@ public sealed class CeilingTests
     [Fact]
     public void Cost_CountsNothing_WithoutAModelUsage() =>
         Assert.Equal(0, Ceilings.CostOf([]));
+
+    [Fact]
+    public async Task Run_IsStoppedThroughThePort_WhenTheCostCeilingIsReached()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.Spend(submission.Id, Ceilings.Fixed.Tokens);
+
+        // At once, a model call in flight included: the stop goes out rather than the hub waiting
+        // for the turn to finish on its own (research.md R-04).
+        Assert.Equal([run.Id], hub.Harness.Stopped);
+    }
+
+    [Fact]
+    public async Task Run_IsStoppedThroughThePort_WhenTheElapsedCeilingIsReached()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Clock.Advance(Ceilings.Fixed.Elapsed);
+        hub.Harness.Spend(submission.Id, tokensUsed: 1);
+
+        Assert.Equal([run.Id], hub.Harness.Stopped);
+    }
+
+    [Fact]
+    public async Task Run_IsLeftAlone_WhileBothCeilingsAreClear()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+
+        hub.Clock.Advance(TimeSpan.FromMinutes(14));
+        hub.Harness.Spend(submission.Id, Ceilings.Fixed.Tokens - 1);
+
+        Assert.Empty(hub.Harness.Stopped);
+    }
+
+    [Fact]
+    public async Task Run_EndsFailed_AfterACeilingStopsIt()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+
+        hub.Clock.Advance(Ceilings.Fixed.Elapsed);
+        hub.Harness.Spend(submission.Id, tokensUsed: 1);
+        await hub.Harness.StoppedAsync(submission.Id, endedAbnormally: true);
+
+        Assert.Equal(SubmissionState.Failed, submission.State);
+    }
 }

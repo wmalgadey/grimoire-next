@@ -8,12 +8,24 @@ namespace Grimoire.Hub;
 /// dispatched as a run before the call returns (INGEST-001).
 /// </summary>
 /// <remarks>
-/// This is where the two contexts meet, which is why it sits in the hub — the composition root is
-/// the only project that knows all three (plan.md, Structure Decision). RUNS decides whether a
-/// text is accepted and holds its state; GUARD runs it.
+/// This is where the contexts meet, which is why it sits in the hub — the composition root is the
+/// only project that knows all three (plan.md, Structure Decision). RUNS decides whether a text is
+/// accepted and holds its state; GUARD runs it; WIKI is reached only through the granted tools.
 /// </remarks>
-public sealed class SubmissionIntake(SubmissionBoard board, IAgentHarness harness)
+public sealed class SubmissionIntake(
+    SubmissionBoard board,
+    IAgentHarness harness,
+    RunConductor conductor,
+    SubmissionIntake.PromptAssembly assemblePrompt,
+    string model)
 {
+    /// <summary>
+    /// What a run is given, assembled from the instruction and the purpose description. The hub's
+    /// <see cref="InstructionLoader"/> is what does this; nothing else puts text into the prompt
+    /// (Constitution V.1).
+    /// </summary>
+    public delegate string PromptAssembly(string text, Guid runId);
+
     /// <summary>
     /// Accept a text and put its run under way, or refuse it.
     /// </summary>
@@ -33,30 +45,29 @@ public sealed class SubmissionIntake(SubmissionBoard board, IAgentHarness harnes
             return result;
         }
 
-        // A fresh identifier per run, distinct from the submission's: one submission has one run
-        // here, but a run is its own thing — it names itself in the wiki's log and addresses its
-        // own tool endpoint (data-model.md §Run).
-        var dispatch = new AgentDispatch(Guid.NewGuid(), submission.Id, submission.Text);
+        var run = conductor.Begin(submission.Id);
+
+        var dispatch = new AgentDispatch(
+            run.Id,
+            submission.Id,
+            assemblePrompt(submission.Text, run.Id),
+            run.Grant,
+            model);
 
         try
         {
-            await harness.DispatchAsync(dispatch, Report(), CancellationToken.None).ConfigureAwait(false);
+            await harness.DispatchAsync(dispatch, conductor.Report(), CancellationToken.None).ConfigureAwait(false);
         }
         catch
         {
             // A run that never began must not leave its submission reading Submitted: the board
             // counts that as a run in progress, so every later text would be refused for as long
             // as the process lives (INGEST-001, INGEST-005). It ended, and it ended failed.
-            submission.Ended(SubmissionState.Failed);
+            conductor.Report().RunEnded(submission.Id, RunOutcome.Failed);
             throw;
         }
 
         // The run is under way and the call returns; the user waits for none of it.
         return result;
     }
-
-    private RunReport Report() => new(
-        AgentReportedIn: submissionId => board.Find(submissionId)?.AgentReportedIn(),
-        RunEnded: (submissionId, outcome) => board.Find(submissionId)?.Ended(
-            outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed));
 }

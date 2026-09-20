@@ -13,17 +13,9 @@ namespace Grimoire.Fast.Tests;
 [Trait("level", "fast")]
 public sealed class SubmissionStateTests
 {
-    private readonly InMemoryAgentHarness harness = new();
-    private readonly SubmissionBoard board = new(FastSuite.Clock());
-    private readonly SubmissionIntake intake;
+    private readonly FastHub hub = new();
 
-    public SubmissionStateTests() => intake = new SubmissionIntake(board, harness);
-
-    private async Task<Submission> Accepted(string text = "A text.")
-    {
-        var result = await intake.SubmitAsync(text, StartUpInputs.BothPresent);
-        return result.Accepted!;
-    }
+    private Task<Submission> Accepted(string text = "A text.") => hub.AcceptedAsync(text);
 
     [Fact]
     [Trait("req", "RUNS-001")]
@@ -40,7 +32,7 @@ public sealed class SubmissionStateTests
 
         Assert.Equal(SubmissionState.Submitted, submission.State);
 
-        harness.ReportIn(submission.Id);
+        hub.Harness.ReportIn(submission.Id);
 
         Assert.Equal(SubmissionState.Running, submission.State);
     }
@@ -52,9 +44,9 @@ public sealed class SubmissionStateTests
     public async Task RunEnds_LeavesTheSubmissionDoneOrFailed(RunOutcome outcome, SubmissionState state)
     {
         var submission = await Accepted();
-        harness.ReportIn(submission.Id);
+        hub.Harness.ReportIn(submission.Id);
 
-        harness.End(submission.Id, outcome);
+        hub.Harness.End(submission.Id, outcome);
 
         Assert.Equal(state, submission.State);
     }
@@ -67,7 +59,7 @@ public sealed class SubmissionStateTests
         // surface that is not the grant ends the run failed there (data-model.md §SubmissionState).
         var submission = await Accepted();
 
-        harness.End(submission.Id, RunOutcome.Failed);
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
 
         Assert.Equal(SubmissionState.Failed, submission.State);
     }
@@ -79,7 +71,7 @@ public sealed class SubmissionStateTests
     public async Task Transition_IsRefused_WhenTheSubmissionIsAlreadyDoneOrFailed(RunOutcome outcome)
     {
         var submission = await Accepted();
-        harness.End(submission.Id, outcome);
+        hub.Harness.End(submission.Id, outcome);
         var terminal = submission.State;
 
         // There is no transition out of either in this feature — acknowledgement is RUNS-003,
@@ -102,11 +94,11 @@ public sealed class SubmissionStateTests
 
             if (reached == SubmissionState.Submitted)
             {
-                harness.ReportIn(submission.Id);
+                hub.Harness.ReportIn(submission.Id);
             }
             else if (reached == SubmissionState.Running)
             {
-                harness.End(submission.Id, RunOutcome.Done);
+                hub.Harness.End(submission.Id, RunOutcome.Done);
             }
         }
     }
@@ -116,7 +108,7 @@ public sealed class SubmissionStateTests
     public async Task Report_CarriesNothingBeyondTheState()
     {
         var submission = await Accepted();
-        harness.ReportIn(submission.Id);
+        hub.Harness.ReportIn(submission.Id);
 
         var json = JsonSerializer.SerializeToElement(SubmissionView.Of(submission));
 

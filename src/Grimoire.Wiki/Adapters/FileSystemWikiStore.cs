@@ -11,8 +11,6 @@ namespace Grimoire.Wiki.Adapters;
 /// </remarks>
 public sealed class FileSystemWikiStore : IWikiStore
 {
-    private const string LogPath = "log.md";
-
     private readonly string root;
 
     public FileSystemWikiStore(string root)
@@ -57,7 +55,7 @@ public sealed class FileSystemWikiStore : IWikiStore
 
     public async Task AppendLogAsync(string entry, CancellationToken cancellationToken)
     {
-        var file = Resolve(LogPath);
+        var file = Resolve(WikiFile.Log);
 
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         await File.AppendAllTextAsync(file, entry, cancellationToken).ConfigureAwait(false);

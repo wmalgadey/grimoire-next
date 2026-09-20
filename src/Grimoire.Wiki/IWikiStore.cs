@@ -10,6 +10,16 @@ public sealed class OutsideWikiException(string path)
     public string Path { get; } = path;
 }
 
+/// <summary>The files the wiki reserves by name. Neither is a page (data-model.md).</summary>
+public static class WikiFile
+{
+    /// <summary>The wiki's record of what each run changed and why.</summary>
+    public const string Log = "log.md";
+
+    /// <summary>The name a section index and the root index both carry.</summary>
+    public const string Index = "index.md";
+}
+
 /// <summary>
 /// The only way into the wiki. Its one adapter is <c>FileSystemWikiStore</c>, which is the only
 /// place the filesystem is touched (Constitution V.2).
