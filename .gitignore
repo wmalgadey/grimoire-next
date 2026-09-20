@@ -1,0 +1,32 @@
+# Build output
+bin/
+obj/
+artifacts/
+
+# Test and tool output
+TestResults/
+*.trx
+*.coverage
+coverage/
+
+# Playwright browsers and generated drivers (E2E suite)
+.playwright/
+playwright-report/
+
+# IDE
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local environment
+*.tmp
+*.swp
+.env
+.env.*
