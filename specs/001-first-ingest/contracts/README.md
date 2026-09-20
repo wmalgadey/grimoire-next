@@ -7,7 +7,7 @@ acknowledgement endpoint and no run store: ACCESS-003 and RUNS-004 belong to the
 | --- | --- | --- |
 | [`hub-http-api.md`](hub-http-api.md) | browser ↔ hub | ACCESS-001, ACCESS-002, INGEST-001/003/004/005 |
 | [`mcp-wiki-tools.md`](mcp-wiki-tools.md) | agent ↔ hub | GUARD-001/002/003, WIKI-002 |
-| [`harness-protocol.md`](harness-protocol.md) | hub ↔ the `claude` CLI | INGEST-002, GUARD-001/004, RUNS-005 |
+| [`agent-cli-protocol.md`](agent-cli-protocol.md) | hub ↔ the `claude` CLI | INGEST-002, GUARD-001/004, RUNS-005 |
 
 The wiki itself is not an interface contract — it is a filesystem artifact, described in
 [`../data-model.md`](../data-model.md).
