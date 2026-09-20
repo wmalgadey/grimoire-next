@@ -9,3 +9,8 @@
 # scans in CI output. The rule is about identifiers an API exposes; a test method is called by the
 # runner and by nobody else, so it is switched off here and stays on everywhere else in the tree.
 dotnet_diagnostic.CA1707.severity = none
+
+# The complexity ceiling is for the code that ships, not for the suites. A test that is long is
+# read top to bottom once and is not maintained the way a method on a hot path is; a ceiling here
+# would push setup into helpers that hide what the test actually does.
+dotnet_diagnostic.CA1502.severity = none

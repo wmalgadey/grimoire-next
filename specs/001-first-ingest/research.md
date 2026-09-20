@@ -578,6 +578,55 @@ about identifiers an API exposes, and a test method is called by the runner and 
 
 ---
 
+## R-14 — The complexity ceiling
+
+**Decision**: **CA1502, "Avoid excessive complexity"**, at a threshold of **15**, as an error for
+everything under `src/` and `tools/`. Nothing of ours is written to measure it.
+
+**The rule and how it is configured**, from Microsoft's documentation
+([CA1502](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1502),
+[Generate code metrics data](https://learn.microsoft.com/visualstudio/code-quality/how-to-generate-code-metrics-data)):
+
+- CA1502 measures **cyclomatic complexity per method**. Category Maintainability; **disabled by
+  default in .NET 10**; **default threshold 25**.
+- The threshold is set in a text file named **`CodeMetricsConfig.txt`**, one entry per line as
+  `CA1502: 15`, and the rule fires when a method's complexity is **greater than** that number.
+- The file has to reach the compiler as an **`AdditionalFiles`** item. The documentation is
+  explicit that when this is declared in `Directory.Build.props` rather than a project file, the
+  include must be prefixed with `$(MSBuildThisFileDirectory)` for MSBuild to resolve it.
+- Severity is set separately, in `.editorconfig`: `dotnet_diagnostic.CA1502.severity = error`.
+  `tests/.editorconfig` sets it back to `none` for the three suites.
+
+**Why an absolute ceiling rather than a delta**: a delta needs a baseline of what is already over
+the line, and a baseline is a file something has to write and keep — tooling of our own, which II.3
+does not allow where the SDK's analyzer does the job. An absolute ceiling set while the code is
+small never accumulates an exception list, because nothing is over it yet.
+
+**Only CA1502.** The three other code-metrics rules — CA1501 inheritance depth, CA1505
+maintainability index, CA1506 class coupling — are left off: no requirement and no review question
+in this project asks after those numbers, so enabling them would be a mechanism with no consumer
+(II.1).
+
+**Not a gate** in the constitution's sense (II.2), and it gets no CI job of its own: the build
+already fails on analyzer errors, which T002 established, and CI already builds.
+
+**Shown failing, observed**: a throwaway method with seventeen branches — cyclomatic complexity 18,
+which is above our 15 and **below the rule's own default of 25**, so that the build failing proves
+`CodeMetricsConfig.txt` is genuinely being read rather than the default applying:
+
+```
+error CA1502: "Branchy" weist eine zyklomatische Komplexität von "18" auf. Schreiben Sie den Code
+neu, oder gestalten Sie ihn um, um die Komplexität auf einen Wert unter "16" zu senken.
+```
+
+("below 16" is the rule's way of saying the ceiling is 15.) The same method placed under `tests/`
+built clean, which is the exclusion working. No commit contains the probe.
+
+**No existing method is over the ceiling.** The tree built clean the moment the rule was switched
+on, so nothing had to be refactored and nothing is suppressed.
+
+---
+
 ## Open items carried into the plan
 
 None. The two items the earlier draft carried are closed: the refusal during a run is now

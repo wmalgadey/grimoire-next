@@ -22,6 +22,12 @@ indent_size = 2
 indent_size = 4
 max_line_length = 120
 
+# The complexity ceiling (Constitution II.3: the analysis the SDK already ships, nothing of our
+# own). CA1502 is off by default in .NET 10 and its default threshold is 25; CodeMetricsConfig.txt
+# sets ours to 15. It is an error rather than a warning for the same reason everything else here
+# is: a warning that is only a warning is a rule nobody keeps.
+dotnet_diagnostic.CA1502.severity = error
+
 # Language conventions
 csharp_using_directive_placement = outside_namespace:warning
 csharp_style_namespace_declarations = file_scoped:warning
