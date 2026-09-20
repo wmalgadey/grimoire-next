@@ -386,6 +386,13 @@ a real browser against the running hub. This is what keeps `trace-check` to a si
 a test carrying an unknown, retired or reserved id (`OUT-*` is reserved by I.2); a test with no
 level; an E2E or Deploy test with no requirement id.
 
+**Where each runs.** IV.3 puts the first rule where a feature lands on main and the other three on
+every push, so the tool has one call for each: `check` and `check --complete`. The reason is IV.2 —
+a requirement is registered in `docs/capabilities/` before its test is written, so "a `test`
+requirement with no test" is red by construction for as long as a feature is in flight, and green
+only where the feature is done. The other three are about the tests themselves and hold at any
+moment.
+
 **Shown failing** (II.2): the gate counts only after a real violation. The PR adds a run of each —
 `trace-check` against a test whose `req` trait names a nonexistent id, `time-budget` against a Fast
 suite pushed over 15 s.

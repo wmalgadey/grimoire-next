@@ -41,6 +41,7 @@ stores nothing: a refused submission is not a Submission and carries no state.
 
 | Status | `reason` | When | Requirement |
 | --- | --- | --- | --- |
+| `422 Unprocessable Content` | `instruction-missing` | Grimoire's instruction file is absent. No run starts | INGEST-003 |
 | `422 Unprocessable Content` | `purpose-description-missing` | Grimoire's purpose description file is absent. No run starts | INGEST-003 |
 | `422 Unprocessable Content` | `text-empty` | The text is empty or only whitespace. No run starts | INGEST-004 |
 | `409 Conflict` | `run-in-progress` | A run is in progress. The submission causes no run, and the user is told a run is in progress | INGEST-005 |
@@ -48,8 +49,9 @@ stores nothing: a refused submission is not a Submission and carries no state.
 `409` rather than `422` for the last one: nothing is wrong with the request, only with the moment.
 The same text submitted again after the run ends is accepted.
 
-The purpose description is checked before the text, so a submission that is both empty and made
-without a purpose description is refused with `purpose-description-missing`.
+Both start-up inputs are checked before the text and the instruction before the purpose
+description, so each refusal names exactly one missing file: a submission that is empty and made
+with neither file in place is refused with `instruction-missing`.
 
 ---
 

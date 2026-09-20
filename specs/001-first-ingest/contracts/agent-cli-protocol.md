@@ -56,7 +56,9 @@ quantity). GUARD-004 counts model tokens and elapsed time, and the hub counts bo
 ### `dispatch` — the first user message, exactly once
 
 What a run is given (INGEST-002). Instruction, purpose description, submitted text and the run's
-identifier all arrive here; nothing else puts text into the prompt (Constitution V.1).
+identifier all arrive here; nothing else puts text into the prompt (Constitution V.1). The pinned
+id after `--model` above is the one the hub was started with — the model is a start-up input, not a
+per-submission choice.
 
 ```json
 { "type": "user",

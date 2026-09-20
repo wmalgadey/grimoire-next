@@ -20,6 +20,7 @@ For what each interface looks like, see [`contracts/`](contracts/); for the enti
 | Browsers | `pwsh tests/Grimoire.E2E.Tests/bin/…/playwright.ps1 install` once, for the E2E suite |
 | A wiki | A git repository the owner controls. May be empty — the instruction states the shape the first run is to create |
 | A purpose description | Hand-written, at the path the hub is configured with. Without it every submission is refused (INGEST-003) |
+| A model id | A pinned id, given to the hub at start-up. Every run is dispatched on it; an alias or the CLI's default is not used (INGEST-002, plan Technology decisions) |
 
 No `ANTHROPIC_API_KEY`. DEC-001 puts this project on subscription sign-in, and the CLI is that path;
 an API-key adapter behind the same port is DEC-001's fallback, not this feature's wiring. If the
@@ -43,7 +44,8 @@ wiki repository on disk. No stand-ins, no temporary directory.
    ```
    dotnet run --project src/Grimoire.Hub -- \
      --wiki /path/to/your/wiki \
-     --purpose /path/to/purpose.md
+     --purpose /path/to/purpose.md \
+     --model claude-<model>-<yyyymmdd>
    ```
 
 2. Open the submission page in a browser.
@@ -133,12 +135,18 @@ user story at most (Constitution III.4): submitting a text (ACCESS-001) and read
 
 ```
 dotnet run --project tools/Grimoire.Trace -- check
+dotnet run --project tools/Grimoire.Trace -- check --complete
 ```
 
 Reads requirement ids and proof kinds from `docs/capabilities/`, and level and requirement id off
-the built test assemblies. Writes nothing. Fails on: a `test` requirement with no test; a test
-carrying an unknown, retired or reserved id; a test with no level; an E2E or Deploy test with no
-requirement id.
+the built test assemblies. Writes nothing, and fails on what it cannot read rather than skipping it.
+
+`check` carries the three conditions that hold on every push: a test carrying an unknown, retired or
+reserved id; a test with no level; an E2E or Deploy test with no requirement id. `check --complete`
+adds the fourth — a `test` requirement with no test — which IV.3 applies where a feature lands on
+main, because a requirement is registered before its test is written (IV.2) and the condition is
+therefore red by construction while a feature is in flight. CI calls `check` on every push and
+`check --complete` on a pull request whose base is `main`.
 
 ```
 dotnet run --project tools/Grimoire.Trace -- write
@@ -157,7 +165,8 @@ feature closes.
 
 Not done until all of these hold (Constitution I.9, IV.2, IV.4):
 
-- [ ] Merged to main, no branch stack deeper than one.
+- [ ] Merged to main at the end, with nothing of the feature on main before then; every phase PR
+      merged into the feature branch before the next phase started (I.9, I.10).
 - [ ] `docs/capabilities/{ingest,wiki,guard,access,runs}.md` — registered **before the first test was
       written**, and reconciled here as added, changed or removed. RUNS-002, RUNS-003, RUNS-004 and
       ACCESS-003 are *not* registered: they belong to the follow-up feature.

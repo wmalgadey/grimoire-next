@@ -59,7 +59,8 @@
   text into the source page - was withdrawn: the agent writes the source page, so Constitution V.1,
   `docs/product.md` section 4 and review-checklist item 9 all hold unamended.
 - The wiki's shape is one requirement, WIKI-001, on the instruction every run receives, proven by
-  `review` against review-checklist item 3. It is not tested: a test could only match words in a
+  `review` against review-checklist item 3, which asks whether the instruction states that shape in
+  full. It is not tested: a test could only match words in a
   versioned file's static content, which III.8 excludes, and it would break on every rewording.
 - Grimoire touches the wiki in three places only: it writes the generation record (WIKI-002),
   reads the log entry RUNS-005 consumes, and leaves a failed run's writes alone (WIKI-003).

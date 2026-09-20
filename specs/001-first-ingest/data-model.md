@@ -105,14 +105,16 @@ speaks to the CLI (Constitution V.2), and nowhere else.
 ### Purpose description
 
 The hand-written description of what the wiki is for. Belongs to Grimoire; every run receives it;
-Grimoire neither creates nor changes it (INGEST-002). Its absence refuses every submission
-(INGEST-003).
+Grimoire neither creates nor changes it (INGEST-002). It is read from the path the hub was started
+with, and its absence refuses every submission (INGEST-003).
 
 ### Instruction
 
 The versioned text every run receives alongside the purpose description, shipping with Grimoire in
 its repository. It is where the wiki's shape is demanded of the agent (WIKI-001), and it is not a
-wiki page. Changing it is an owner decision named in the PR (Constitution V.1).
+wiki page. Changing it is an owner decision named in the PR (Constitution V.1). Like the purpose
+description it is read from the path the hub was started with, and its absence refuses every
+submission; the refusal says which of the two is missing (INGEST-003).
 
 Its provisions, from WIKI-001: a source page for the submitted text; a `type` on every page; named
 sources referenced where a statement relies on them; links between pages; every page in exactly one

@@ -50,7 +50,6 @@ All five ★ items are decided here because this is the first feature (Constitut
 | Elapsed time in tests | `TimeProvider`, with `FakeTimeProvider` (`Microsoft.Extensions.TimeProvider.Testing`) in the Fast suite | The Fast budget is 15 s for the whole suite (III.7), and GUARD-004's ceiling is the one requirement that would otherwise make a test wait for real seconds. `TimeProvider` is the framework's own abstraction, so no interface of ours is created for it (II.4) and the provider itself is not tested (III.8) (R-12) | yes | none |
 | Front end | One static HTML page and one script, served by the hub from `wwwroot/`. No Vite, no `npm`, no build step | The browser surface is one form (ACCESS-001) and one list of states (ACCESS-002); a bundler for two files is a mechanism with no consumer (II.1). Static content is not tested (III.8), and both requirements are browser-observable, so the E2E suite proves them (R-10) | yes | none |
 | E2E driver | `Microsoft.Playwright.Xunit.v3` — a real browser against the running hub | Keeps every test in one format, so `trace-check` has one reader rather than two (R-05) | yes | none |
-| How a feature's PR stack is built | The `gh stack` extension of the GitHub CLI: `gh stack init` once, `gh stack submit` per push | I.10 requires a stack whose mapping is named up front and not deepened afterwards. `gh stack` keeps every PR's base correct as branches are rebased, and links them into a stack GitHub renders, so a reviewer sees the order instead of reconstructing it from base branches. Hand-rolled `gh pr create` chains drift the moment a branch below is amended | yes | none |
 | The Contract suite for the agent adapter | The real `claude` CLI with the owner's real sign-in, at most three tests, run locally before the PR and excluded from CI by `[Trait("requires", "signin")]` + `--filter-not-trait "requires=signin"` | III.4 puts a Contract suite against the real external thing, and the real external thing here is the CLI. CI has no subscription sign-in, so it cannot run them; a scripted endpoint would be a component we write and maintain that makes none of R-11's findings more true (II.1, R-09) | yes | none |
 
 A reason names the constraint or evidence. "Owner decision" is not a reason — the owner's constraint
@@ -91,9 +90,9 @@ Completed before design; re-checked after Phase 1.
 
 | Principle | Touched? | How this plan satisfies it / why it is not touched |
 | --- | --- | --- |
-| I. Purpose and Focus | touched | One outcome (OUT-01), no blocking open question, one vertical slice adding one operation. I.7 is met: three stories and ~36 tasks after the owner's split (see Budget and split decision). I.8: only the six OKF parts R-07 names. I.9 and I.10: the stack is named under PR stack before implementation continues, six branches for six phases, and only `001-first-ingest` reaches main, at close. |
+| I. Purpose and Focus | touched | One outcome (OUT-01), no blocking open question, one vertical slice adding one operation. I.7 is met: three stories and ~36 tasks after the owner's split (see Budget and split decision). I.8: only the six OKF parts R-07 names. I.9 and I.10: the phases and their PRs are named under Phase PRs before implementation starts, one branch per phase off the feature branch and merged back into it before the next begins, and only `001-first-ingest` reaches main, at close. |
 | II. Simplicity | touched | Both gates are built here because II.2 establishes them and this is the first feature that could violate their rules; each is shown failing once. Nothing is built for later: no storage port (II.4 — no second implementation and no outside system), no TypeScript harness, no bundler, no second test runner, no token on the per-run endpoint. `trace-check` is mandated by IV.3, not purpose-built measurement (II.3). Interfaces sit only at ports to something outside the process: the wiki filesystem and the `claude` CLI (II.4). Deployment, hardening and network containment are untouched — OUT-10 and OUT-04 own them (II.5). |
-| III. Testing | touched | Fifteen `test` requirements and one `review`. Levels, budgets and the four-rule gate are decided above; each test sits at the lowest level that can prove its requirement, which `/speckit-tasks` records per task (III.6). The instruction's wording is not tested (III.8) — WIKI-001 is proven by review-checklist item 3; neither is the static front-end content, whose requirements are proven at E2E. GUARD-001 and GUARD-002 are proven twice: Fast in the hub, and Contract against the real CLI, because the deny configuration is a decision we made rather than wiring. Doubles are in-memory adapters at owned ports only (III.9): `IWikiStore` and `IAgentHarness`. No evals: the spec commits to none. **Caveat**: three Contract tests need the owner's sign-in and cannot run in CI, so their execution time is not measured there — Complexity Tracking. |
+| III. Testing | touched | Fifteen `test` requirements and one `review`. Levels, budgets and the four-rule gate are decided above — three of the four rules run on every push and the fourth where the feature lands on main (IV.3); each test sits at the lowest level that can prove its requirement, which `/speckit-tasks` records per task (III.6). The instruction's wording is not tested (III.8) — WIKI-001 is proven by review-checklist item 3; neither is the static front-end content, whose requirements are proven at E2E. GUARD-001 and GUARD-002 are proven twice: Fast in the hub, and Contract against the real CLI, because the deny configuration is a decision we made rather than wiring. Doubles are in-memory adapters at owned ports only (III.9): `IWikiStore` and `IAgentHarness`. No evals: the spec commits to none. **Caveat**: three Contract tests need the owner's sign-in and cannot run in CI, so their execution time is not measured there — Complexity Tracking. |
 | IV. Visibility | touched | Requirement IDs are capability-scoped. They are registered in `docs/capabilities/` **before the first test is written** and reconciled at close as added, changed or removed (IV.2). `trace-check` and the `docs/trace.md` writer are both built here; the check writes nothing and is code, never an agent's answer (IV.3). The three status places and no fourth (IV.4). Every behaviour the spec commits to carries an ID again now that INGEST-005 exists (IV.6). |
 | V. Design Invariants | touched | V.1: only the instruction file and the user's purpose description put text into the agent's prompt — `--setting-sources ""` and a working directory Grimoire owns keep the machine's `CLAUDE.md`, settings and hooks out — and the only thing Grimoire writes into the wiki is `generated: { by, at }`. V.2: each context owns its adapters and the tree below makes that visible — the `claude` process only in `HarnessProcess`, the filesystem only in `FileSystemWikiStore`. V.3: the grant is the tool surface itself (`--tools ""` plus the hub's MCP server), deny-by-default by construction, recorded with every run (GUARD-003), and checked against what the agent reports before its first model call — a run that reports any tool outside the grant ends failed there (GUARD-001). |
 | Governance | not touched | No amendment is needed — no rule blocked this plan. `/speckit-converge` runs later in the feature. |
@@ -133,34 +132,27 @@ endpoint.
 | ACCESS: the static page, two E2E scenarios | 3 |
 | Close: reconcile capability files, `docs/trace.md`, `docs/product.md` status, acceptance run | 1 |
 
-## PR stack *(mandatory)*
+## Phase PRs *(mandatory)*
 
-Named here before implementation continues, and not deepened afterwards (Constitution I.10). Only
-`001-first-ingest` merges to `main`, and only when the feature is done (I.9) — every task complete,
-both gates green, `docs/trace.md` regenerated and the owner's acceptance run behind it.
+Named here before implementation starts (Constitution I.10). One feature branch off `main`; each
+phase of `tasks.md` is a branch off it, and each phase PR is merged back into the feature branch
+once it is reviewed and green, before the next phase starts. No PR is based on another open PR.
+Only `001-first-ingest` merges to `main`, and only when the feature is done (I.9) — every task
+complete, both gates green, `docs/trace.md` regenerated and the owner's acceptance run behind it.
 
-| Branch | Phases of `tasks.md` | Based on | Merges into |
+| Phase | Tasks | Branch | PR |
 | --- | --- | --- | --- |
-| `001-first-ingest` | none — the spec, plan and tasks themselves | `main` | `main`, at close only |
-| `001-first-ingest-phase-1-setup` | 1 Setup (T001–T003) | `001-first-ingest` | `001-first-ingest` |
-| `001-first-ingest-phase-2-foundation` | 2 Foundational (T004–T007) | phase 1 | phase 1 |
-| `001-first-ingest-phase-3-submit` | 3 User Story 1 (T008–T017) | phase 2 | phase 2 |
-| `001-first-ingest-phase-4-wiki` | 4 User Story 2 (T018–T034) | phase 3 | phase 3 |
-| `001-first-ingest-phase-5-states` | 5 User Story 3 (T035–T036) | phase 4 | phase 4 |
-| `001-first-ingest-phase-6-close` | 6 Closing the feature (T037–T042) | phase 5 | phase 5 |
+| 1 Setup | T001–T003 | `001-first-ingest-phase-1-setup` | #20 |
+| 2 Foundational | T004–T007 | `001-first-ingest-phase-2-foundation` | #23 |
+| 3 User Story 1 | T008–T017 | `001-first-ingest-phase-3-submit` | not opened yet |
+| 4 User Story 2 | T018–T034 | `001-first-ingest-phase-4-wiki` | not opened yet |
+| 5 User Story 3 | T035–T036 | `001-first-ingest-phase-5-states` | not opened yet |
+| 6 Closing the feature | T037–T042 | `001-first-ingest-phase-6-close` | not opened yet |
 
-**Depth**: 6 of at most 6 · **Phases sharing a branch**: none — this feature uses all six, which is
-what I.7's budget allows and no more.
-
-Every PR in the stack is a draft until its phase is complete, and leaves the build and the test
-suites green on its own branch. A step that cannot pass yet belongs in the PR that makes it pass:
-T003's `trace-check` step is in phase 2 with the tool that runs it, not in phase 1 where the task
-is listed.
-
-**How the stack is built**: the `gh stack` extension — `gh stack init --base main <bottom> … <top>`
-once, then `gh stack submit` per push. It is the one tool that keeps the bases right and links the
-PRs into a stack GitHub itself understands, so a reviewer sees the order rather than having to
-reconstruct it. Binds later features; goes to `docs/decisions.md` at close as its own `DEC-NNN`.
+Every PR targets `001-first-ingest`. It stays a draft until its phase is complete and leaves the
+build and the test suites green on the feature branch. A step that cannot pass yet belongs in the
+PR that makes it pass: T003's `trace-check` steps are in phase 2 with the tool that runs them, not
+in phase 1 where the task is listed.
 
 ## Project Structure
 
@@ -238,7 +230,7 @@ reaching a real model, and a real wiki repository on disk. No stand-ins, no temp
 These are the only external systems the outcome touches.
 
 **Steps the owner runs**: start the hub against the real wiki and the real purpose description
-(`dotnet run --project src/Grimoire.Hub -- --wiki … --purpose …`), open the submission page, paste
+(`dotnet run --project src/Grimoire.Hub -- --wiki … --purpose … --model …`), open the submission page, paste
 one text they actually want in the wiki, submit it, and leave. Later, read the wiki.
 
 **What the owner must see**: the submission reads `done`, and the wiki holds a source page for that
