@@ -52,7 +52,7 @@ as such. **No evals**: the spec commits to none.
 feature (Constitution II.1).
 
 - [X] T004 Register this feature's sixteen requirements in `docs/capabilities/{ingest,wiki,guard,access,runs}.md` with their proof kinds. **This is the first implementation task: it comes before any test is written.** The four requirements the split moved are not registered here — they belong to the follow-up feature — **Req:** Principle IV.2
-- [ ] T005 Build `tools/Grimoire.Trace` with two verbs: `check` reads requirement IDs and proof kinds from `docs/capabilities/` and the `level`/`req` traits off the built test assemblies via `System.Reflection.MetadataLoadContext`, writes nothing, and fails on the four rules of IV.3; `write` produces `docs/trace.md` — **Req:** Principle IV.3
+- [X] T005 Build `tools/Grimoire.Trace` with two verbs: `check` reads requirement IDs and proof kinds from `docs/capabilities/` and the `level`/`req` traits off the built test assemblies via `System.Reflection.MetadataLoadContext`, writes nothing, and fails on the four rules of IV.3; `write` produces `docs/trace.md` — **Req:** Principle IV.3
 - [ ] T006 Show both gates failing once on a real violation and link the runs in the PR: `trace-check` against a test whose `req` trait names an id that does not exist, and `time-budget` against a Fast suite pushed past 15 s. A gate counts only after this — **Req:** Principle II.2
 - [ ] T007 [P] Add the Fast suite's shared fixture in `tests/Grimoire.Fast.Tests/`: `FakeTimeProvider` from `Microsoft.Extensions.TimeProvider.Testing`, and the `[Trait("level", …)]` / `[Trait("req", …)]` conventions `trace-check` reads. No Fast test waits for real time — **Req:** Principle III.3
 
