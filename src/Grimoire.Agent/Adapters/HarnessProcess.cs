@@ -297,8 +297,10 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
         }
         catch (Exception)
         {
+            // Nothing awaits this reader, so rethrowing would only surface later as an
+            // unobserved task exception. The run has been ended, which is the part that matters
+            // to the hub; the reader stops here.
             report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
-            throw;
         }
         finally
         {

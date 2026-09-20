@@ -109,13 +109,21 @@ public sealed class SubmissionStateTests
     {
         var submission = await Accepted();
         hub.Harness.ReportIn(submission.Id);
-        await hub.Harness.StoppedAsync(submission.Id);
 
-        // A harness whose process dies after the hub has already ended the run reports again.
-        // The second report is a no-op rather than an attempt to move a terminal submission.
+        // The log names the run, so the stop ends it done rather than nudging it. Without that
+        // the run would still be under way and the second report below would be no second report
+        // at all.
+        var run = hub.Conductor.Of(submission.Id)!;
+        await hub.Wiki.AppendLogAsync($"Run {run.Id} wrote a page.\n", TestContext.Current.CancellationToken);
+        await hub.Harness.StoppedAsync(submission.Id);
+        Assert.Equal(SubmissionState.Done, submission.State);
+
+        // Now a harness whose process died after the hub had already ended the run reports again.
         hub.Harness.End(submission.Id, RunOutcome.Failed);
 
-        Assert.Equal(SubmissionState.Failed, submission.State);
+        // Unmoved: done is terminal, and the second report is a no-op rather than an attempt to
+        // leave it.
+        Assert.Equal(SubmissionState.Done, submission.State);
     }
 
     [Fact]
