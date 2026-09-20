@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build Grimoire.slnx --configuration Release
+
+      # time-budget (Constitution III.7): the default test run is Fast alone, and it fails when
+      # Fast exceeds 15 s. --timeout is Microsoft.Testing.Platform's own session timeout; no
+      # tooling of our own measures this.
+      #
+      # --ignore-exit-code 8 is "no tests ran is not a failure", and it is here only while the
+      # suites are still empty. It comes out of the Fast line with T008 and out of the Contract
+      # line with T024, the tasks that write each suite's first test.
+      - name: Fast suite — time-budget 15 s
+        run: dotnet test tests/Grimoire.Fast.Tests --no-build --configuration Release -- --timeout 15s --ignore-exit-code 8
+
+      # The sign-in marker is named once, here: CI has no subscription sign-in, so the three
+      # HarnessProcess tests are excluded. They run locally before the PR (research.md R-09).
+      - name: Contract suite — time-budget 90 s
+        run: dotnet test tests/Grimoire.Contract.Tests --no-build --configuration Release -- --timeout 90s --filter-not-trait "requires=signin" --ignore-exit-code 8
