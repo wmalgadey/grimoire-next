@@ -1,0 +1,10 @@
+# The complexity ceiling, read by the SDK's own code-metrics analyzer (CA1502). The rule fires
+# when a method's cyclomatic complexity is GREATER than this number.
+#
+# 15 is an absolute ceiling, not a delta against a baseline: there is no baseline file and no
+# tooling of ours to keep one (Constitution II.3). Set while the code is small, it never needs an
+# exception list — a method that would exceed it is refactored, not excused.
+#
+# Only CA1502 is configured here. CA1501, CA1505 and CA1506 — inheritance depth, maintainability
+# index, class coupling — have no consumer in this project (II.1).
+CA1502: 15

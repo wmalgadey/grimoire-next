@@ -22,4 +22,12 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <!-- The complexity ceiling. CA1502 reads its threshold from CodeMetricsConfig.txt, which the
+       compiler has to be handed as an additional file; $(MSBuildThisFileDirectory) is required
+       here because this is Directory.Build.props rather than a project file. The severity is set
+       in .editorconfig, and tests/.editorconfig turns it off for the suites. -->
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)CodeMetricsConfig.txt" />
+  </ItemGroup>
+
 </Project>
