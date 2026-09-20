@@ -34,7 +34,14 @@ public static class HubApplication
 {
     public static WebApplication Build(string[] args, HubOptions options, IAgentHarness harness, TimeProvider clock)
     {
-        var app = WebApplication.CreateBuilder(args).Build();
+        // The content root is the hub's own base directory rather than whatever directory it was
+        // launched from, so the page under wwwroot/ is found the same way whether the hub was
+        // started from the command line or built by a test.
+        var app = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            Args = args,
+            ContentRootPath = AppContext.BaseDirectory,
+        }).Build();
 
         // The page is static content served from wwwroot/ — one HTML file and one script, no
         // build step (research.md R-10).
