@@ -77,6 +77,15 @@ internal sealed record StartUp(HubOptions Options, Uri Address)
             return null;
         }
 
+        if (address.Port == 0)
+        {
+            // Port 0 asks the operating system to pick, and it picks while the server starts —
+            // after the agent has already been told where its run's tools are served. The run
+            // would come up unable to reach a single one of them.
+            Console.Error.WriteLine("The hub needs a port of its own: the agent is told where its tools are before the server starts.");
+            return null;
+        }
+
         return new StartUp(new HubOptions(instruction, purpose, wiki, model), address);
     }
 
@@ -91,7 +100,11 @@ internal sealed record StartUp(HubOptions Options, Uri Address)
 
         for (var i = 0; i + 1 < arguments.Length; i++)
         {
-            if (arguments[i].StartsWith("--", StringComparison.Ordinal))
+            // A blank value is no value: `--wiki ""` is the input missing, not a wiki at the empty
+            // path, and it is refused below with the usage rather than crashing the host on its
+            // way up.
+            if (arguments[i].StartsWith("--", StringComparison.Ordinal)
+                && !string.IsNullOrWhiteSpace(arguments[i + 1]))
             {
                 named[arguments[i][2..]] = arguments[i + 1];
             }

@@ -141,7 +141,7 @@ where Fast tests prove them, and leaves `trace-check` one test format to read ra
 **Reason**: `docs/product.md` §2 puts Grimoire inside a network the user trusts and gives it no
 access control of its own. A per-run token would be half an access-control story with no consumer
 (II.1); the run identifier in the path is addressing, not authorisation. The first feature that
-puts Grimoire on an untrusted network (OUT-11, OUT-12) must revisit this.
+puts Grimoire on an untrusted network (OUT-10, OUT-12) must revisit this.
 **Made by**: plan `001-first-ingest`.
 
 ## DEC-015 — Two ceilings, one stop, and cost means every token the run causes
