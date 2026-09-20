@@ -17,7 +17,7 @@ public sealed class TraceCheckTests
         new("Grimoire.Fast.Tests", "Suite", name, level, requirementIds);
 
     [Fact]
-    public void Check_Fails_WhenATestRequirementHasNoTestAndCompleteIsAsked()
+    public void CompleteCheck_Fails_WhenATestRequirementHasNoTest()
     {
         var violations = TraceCheck.Run([Registered("INGEST-001")], [], complete: true);
 
@@ -25,7 +25,7 @@ public sealed class TraceCheckTests
     }
 
     [Fact]
-    public void Check_Passes_WhenATestRequirementHasNoTestAndCompleteIsNotAsked()
+    public void Check_Passes_WhenATestRequirementHasNoTest()
     {
         // Red by construction while a feature is in flight: IV.2 registers the requirement before
         // its test is written, so this condition runs where the feature lands on main and nowhere
@@ -34,7 +34,7 @@ public sealed class TraceCheckTests
     }
 
     [Fact]
-    public void Check_Passes_WhenAReviewRequirementHasNoTest()
+    public void CompleteCheck_Passes_WhenAReviewRequirementHasNoTest()
     {
         Assert.Empty(TraceCheck.Run([Registered("WIKI-001", ProofKind.Review)], [], complete: true));
     }
@@ -85,7 +85,7 @@ public sealed class TraceCheckTests
     }
 
     [Fact]
-    public void Check_Passes_WhenTheRegistryAndTheSuiteAgree()
+    public void Check_Passes_WhenEveryTestMatchesTheRegistry()
     {
         IReadOnlyList<Requirement> requirements = [Registered("ACCESS-001"), Registered("WIKI-001", ProofKind.Review)];
         IReadOnlyList<TestMethod> tests = [Test("Submits", "e2e", "ACCESS-001")];

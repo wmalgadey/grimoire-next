@@ -27,7 +27,7 @@ public sealed class SubmissionStateTests
 
     [Fact]
     [Trait("req", "RUNS-001")]
-    public void States_AreExactlyTheFourTheSpecNames() =>
+    public void States_AreTheFourTheSpecNames() =>
         Assert.Equal(
             [SubmissionState.Submitted, SubmissionState.Running, SubmissionState.Done, SubmissionState.Failed],
             Enum.GetValues<SubmissionState>());
@@ -49,7 +49,7 @@ public sealed class SubmissionStateTests
     [InlineData(RunOutcome.Done, SubmissionState.Done)]
     [InlineData(RunOutcome.Failed, SubmissionState.Failed)]
     [Trait("req", "RUNS-001")]
-    public async Task RunEnds_LeavesTheSubmissionInThatTerminalState(RunOutcome outcome, SubmissionState state)
+    public async Task RunEnds_LeavesTheSubmissionDoneOrFailed(RunOutcome outcome, SubmissionState state)
     {
         var submission = await Accepted();
         harness.ReportIn(submission.Id);
@@ -61,7 +61,7 @@ public sealed class SubmissionStateTests
 
     [Fact]
     [Trait("req", "RUNS-001")]
-    public async Task RunEnds_ReachesTheTerminalState_BeforeTheAgentReportsIn()
+    public async Task RunEnds_LeavesTheSubmissionFailed_WithoutTheAgentReportingIn()
     {
         // The window between acceptance and system/init is where the grant is checked, and a
         // surface that is not the grant ends the run failed there (data-model.md §SubmissionState).
@@ -76,7 +76,7 @@ public sealed class SubmissionStateTests
     [InlineData(RunOutcome.Done)]
     [InlineData(RunOutcome.Failed)]
     [Trait("req", "RUNS-001")]
-    public async Task Transition_IsRefused_WhenTheStateIsAlreadyTerminal(RunOutcome outcome)
+    public async Task Transition_IsRefused_WhenTheSubmissionIsAlreadyDoneOrFailed(RunOutcome outcome)
     {
         var submission = await Accepted();
         harness.End(submission.Id, outcome);
@@ -113,7 +113,7 @@ public sealed class SubmissionStateTests
 
     [Fact]
     [Trait("req", "ACCESS-002")]
-    public async Task Render_CarriesTheStateAndNothingElseAboutTheRun()
+    public async Task Report_CarriesNothingBeyondTheState()
     {
         var submission = await Accepted();
         harness.ReportIn(submission.Id);
@@ -135,6 +135,6 @@ public sealed class SubmissionStateTests
     [InlineData(SubmissionState.Done, "done")]
     [InlineData(SubmissionState.Failed, "failed")]
     [Trait("req", "ACCESS-002")]
-    public void Render_ReportsEachStateAsOneOfTheFourWireNames(SubmissionState state, string wire) =>
+    public void Report_NamesEachStateAsOneOfTheFour(SubmissionState state, string wire) =>
         Assert.Equal(wire, SubmissionView.WireNameOf(state));
 }

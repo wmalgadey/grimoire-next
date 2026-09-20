@@ -540,8 +540,17 @@ one, and III.8 means the provider itself is not what we test. No Fast test waits
 vocabulary — `Submission`, `Run`, `GenerationRecord`, `ToolGrant`, `Ceiling` — never a class or a
 method of the implementation. A test method is `<Action>_<Result>[_<Scenario>]`: each part
 PascalCase, exactly one underscore between parts, and the scenario present wherever the result
-depends on a condition. Requirement ids live in the `req` trait and never in a name. Written down
-once, beside the trait conventions, in `tests/README.md`.
+depends on a condition. Four further rules keep the names readable rather than merely well-formed:
+
+- the scenario opens with a condition word — **When**, **While**, **With**, **Without**, **After**;
+- names use the spec's vocabulary and never the implementation's — "refused", not `422`; "a run is
+  in progress", not a property name;
+- the result is an observable outcome, never `Works`, `Succeeds` or `Correctly`, which tell a
+  reader of a failure line nothing;
+- a name that needs `And` is two tests.
+
+Requirement ids live in the `req` trait and never in a name. Written down once, beside the trait
+conventions, in `tests/README.md`.
 
 ```
 SubmissionTests.Submit_IsRefused_WhileRunInProgress

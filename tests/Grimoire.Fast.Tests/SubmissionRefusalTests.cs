@@ -58,21 +58,38 @@ public sealed class SubmissionRefusalTests
     [InlineData("A text.")]
     [Trait("req", "INGEST-003")]
     [Trait("req", "INGEST-004")]
-    public async Task Submit_StoresNothingAndStartsNoRun_WhenRefused(string text)
+    public async Task Submit_IsNotStored_WhenRefused(string text)
     {
-        foreach (var inputs in new[] { NoInstruction, NoPurposeDescription, StartUpInputs.BothPresent })
+        // Whether it was refused for the text or for a missing file, a refused submission is not
+        // a Submission and carries no state.
+        foreach (var inputs in Refusing(text))
         {
-            var result = await intake.SubmitAsync(text, inputs);
+            await intake.SubmitAsync(text, inputs);
 
-            // Whether it was refused for the text or for a missing file, nothing is kept and no
-            // run begins: a refused submission is not a Submission and carries no state.
-            if (result.Refused is not null)
-            {
-                Assert.Empty(board.All);
-                Assert.Empty(harness.Dispatched);
-            }
+            Assert.Empty(board.All);
         }
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("A text.")]
+    [Trait("req", "INGEST-003")]
+    [Trait("req", "INGEST-004")]
+    public async Task Submit_StartsNoRun_WhenRefused(string text)
+    {
+        foreach (var inputs in Refusing(text))
+        {
+            await intake.SubmitAsync(text, inputs);
+
+            Assert.Empty(harness.Dispatched);
+        }
+    }
+
+    /// <summary>The start-up inputs under which this text is refused, whatever else is in place.</summary>
+    private static IEnumerable<StartUpInputs> Refusing(string text) =>
+        text.Length == 0
+            ? [NoInstruction, NoPurposeDescription, StartUpInputs.BothPresent]
+            : [NoInstruction, NoPurposeDescription];
 
     [Fact]
     [Trait("req", "INGEST-003")]
