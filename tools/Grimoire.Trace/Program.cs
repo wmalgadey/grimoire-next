@@ -8,23 +8,53 @@ using Grimoire.Trace;
 //   check --complete  those three and the fourth, a `test` requirement with no test. IV.3 applies
 //                     it where a feature lands on main; CI calls this on a PR whose base is main
 //   write             the single documented command of Constitution IV.4 — produces docs/trace.md
+const string Usage = "usage: Grimoire.Trace <check [--complete]|write> [--configuration <Debug|Release>]";
+
 try
 {
     var verb = args.Length > 0 ? args[0] : null;
-    var configuration = ConfigurationOption(args);
-    var complete = args.Contains("--complete", StringComparer.Ordinal);
 
     if (verb is not ("check" or "write"))
     {
-        Console.Error.WriteLine("usage: Grimoire.Trace <check [--complete]|write> [--configuration <Debug|Release>]");
+        Console.Error.WriteLine(Usage);
         return 2;
     }
 
-    if (Unrecognised(args) is { } unrecognised)
+    // Every argument is read against the verb that was given, and anything that does not fit it
+    // ends the run. A gate that quietly runs a different command shape than the caller asked for
+    // is the one failure a gate must not have (Constitution IV.3: what the check cannot read, it
+    // fails on rather than skips) — a mistyped `--complet`, a `--complete` handed to `write`, and
+    // a `--configuration` with nothing after it are all that failure.
+    string? configuration = null;
+    var complete = false;
+
+    for (var at = 1; at < args.Length; at++)
     {
-        Console.Error.WriteLine($"trace-check: unrecognised argument \"{unrecognised}\"");
-        Console.Error.WriteLine("usage: Grimoire.Trace <check [--complete]|write> [--configuration <Debug|Release>]");
-        return 2;
+        switch (args[at])
+        {
+            case "--complete" when verb == "check":
+                complete = true;
+                break;
+
+            case "--complete":
+                Console.Error.WriteLine("trace-check: --complete belongs to `check`; `write` has no such call");
+                Console.Error.WriteLine(Usage);
+                return 2;
+
+            case "--configuration" when at + 1 < args.Length && !args[at + 1].StartsWith("--", StringComparison.Ordinal):
+                configuration = args[++at];
+                break;
+
+            case "--configuration":
+                Console.Error.WriteLine("trace-check: --configuration needs a value, Debug or Release");
+                Console.Error.WriteLine(Usage);
+                return 2;
+
+            default:
+                Console.Error.WriteLine($"trace-check: unrecognised argument \"{args[at]}\"");
+                Console.Error.WriteLine(Usage);
+                return 2;
+        }
     }
 
     var layout = RepositoryLayout.Discover();
@@ -58,32 +88,4 @@ catch (TraceInputException failure)
 {
     Console.Error.WriteLine($"trace-check: {failure.Message}");
     return 2;
-}
-
-static string? ConfigurationOption(string[] arguments)
-{
-    var at = Array.IndexOf(arguments, "--configuration");
-    return at >= 0 && at + 1 < arguments.Length ? arguments[at + 1] : null;
-}
-
-/// <summary>
-/// The first argument the tool does not understand, or null. A mistyped <c>--complete</c> would
-/// otherwise run the weaker check and report success, which is the one failure a gate must not
-/// have (Constitution IV.3: what the check cannot read, it fails on rather than skips).
-/// </summary>
-static string? Unrecognised(string[] arguments)
-{
-    var configurationValue = Array.IndexOf(arguments, "--configuration") + 1;
-
-    for (var at = 1; at < arguments.Length; at++)
-    {
-        if (arguments[at] is "--complete" or "--configuration" || at == configurationValue)
-        {
-            continue;
-        }
-
-        return arguments[at];
-    }
-
-    return null;
 }
