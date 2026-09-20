@@ -32,6 +32,12 @@ public sealed record SubmissionView(
     };
 }
 
+/// <summary>
+/// Every submission the user made, with its current state, newest first (ACCESS-002).
+/// </summary>
+public sealed record SubmissionListView(
+    [property: JsonPropertyName("submissions")] IReadOnlyList<SubmissionView> Submissions);
+
 /// <summary>The text the browser posts.</summary>
 public sealed record SubmissionRequest([property: JsonPropertyName("text")] string? Text);
 
@@ -54,8 +60,11 @@ public static class SubmissionsEndpoints
     public static IEndpointRouteBuilder MapSubmissions(
         this IEndpointRouteBuilder endpoints,
         SubmissionIntake intake,
+        SubmissionBoard board,
         StartUpInputsCheck startUpInputs)
     {
+        ArgumentNullException.ThrowIfNull(board);
+
         endpoints.MapPost("/api/submissions", async (SubmissionRequest? request) =>
         {
             // No request token reaches the run: it outlives the request that started it.
@@ -66,6 +75,12 @@ public static class SubmissionsEndpoints
                 ? Results.Accepted($"/api/submissions/{accepted.Id}", SubmissionView.Of(accepted))
                 : Refused(result.Refused!.Value);
         });
+
+        // The browser polls this; there is no push channel. Nothing is exposed here beyond the
+        // three fields of a SubmissionView — a fourth would be a mechanism with no consumer
+        // (Constitution II.1), and everything more about a run is OUT-02's.
+        endpoints.MapGet("/api/submissions", () =>
+            new SubmissionListView([.. board.All.Select(SubmissionView.Of)]));
 
         return endpoints;
     }

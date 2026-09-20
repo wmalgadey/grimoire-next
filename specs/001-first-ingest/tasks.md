@@ -136,8 +136,8 @@ real run.
 **Independent Test**: drive submissions to each of the four states and confirm the browser reports
 exactly that state and nothing else.
 
-- [ ] T035 [US3] In `tests/Grimoire.E2E.Tests/SubmissionStatesTests.cs`: with submissions in different states, a real browser **renders** each one as exactly one of submitted, running, done, failed, and renders nothing further about the run — **Req:** ACCESS-002 | **Level:** E2E — **Why not lower:** Contract cannot prove what a browser puts on the screen. The response shape behind it is proven a level down, in T010
-- [ ] T036 [US3] `GET /api/submissions` in `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs` and the polling list in `wwwroot/app.js`, exactly the shape of `contracts/hub-http-api.md` — `id`, `state`, `submittedAt`, and no further field about the run — **Req:** ACCESS-002
+- [X] T035 [US3] In `tests/Grimoire.E2E.Tests/SubmissionStatesTests.cs`: with submissions in different states, a real browser **renders** each one as exactly one of submitted, running, done, failed, and renders nothing further about the run — **Req:** ACCESS-002 | **Level:** E2E — **Why not lower:** Contract cannot prove what a browser puts on the screen. The response shape behind it is proven a level down, in T010
+- [X] T036 [US3] `GET /api/submissions` in `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs` and the polling list in `wwwroot/app.js`, exactly the shape of `contracts/hub-http-api.md` — `id`, `state`, `submittedAt`, and no further field about the run — **Req:** ACCESS-002
 
 **Checkpoint**: all user stories are independently functional.
 
