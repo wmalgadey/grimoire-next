@@ -10,6 +10,7 @@
     <PackageVersion Include="Microsoft.Playwright.Xunit.v3" Version="1.62.0" />
     <PackageVersion Include="System.Reflection.MetadataLoadContext" Version="10.0.12" />
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
 </Project>
