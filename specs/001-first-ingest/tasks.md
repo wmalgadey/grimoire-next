@@ -40,7 +40,7 @@ as such. **No evals**: the spec commits to none.
 
 ## Phase 1: Setup (shared)
 
-- [ ] T001 Create the solution and the project layout of plan.md — `src/Grimoire.{Wiki,Runs,Agent,Hub}`, `tools/Grimoire.Trace`, `tests/Grimoire.{Fast,Contract,E2E}.Tests`, `instructions/` — on .NET 10, with xunit v3 in every test project — **Req:** Principle II.6
+- [X] T001 Create the solution and the project layout of plan.md — `src/Grimoire.{Wiki,Runs,Agent,Hub}`, `tools/Grimoire.Trace`, `tests/Grimoire.{Fast,Contract,E2E}.Tests`, `instructions/` — on .NET 10, with xunit v3 in every test project — **Req:** Principle II.6
 - [ ] T002 [P] Turn on the analyzer the SDK already ships, in `Directory.Build.props` (`TreatWarningsAsErrors`, `.editorconfig`); write no analysis tooling of our own — **Req:** Principle II.3
 - [ ] T003 [P] Add the CI workflow in `.github/workflows/ci.yml`: build; `dotnet test tests/Grimoire.Fast.Tests -- --timeout 15s`; `dotnet test tests/Grimoire.Contract.Tests -- --timeout 90s --filter-not-trait "requires=signin"`; then `trace-check` in two calls — `check` on every push, for the three conditions that always hold, and `check --complete` only on a pull request whose base is `main`, which adds the condition "a `test` requirement with no test" (IV.3). The sign-in marker is named once, here — **Req:** Principle III.7
 

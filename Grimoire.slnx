@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Grimoire.Agent/Grimoire.Agent.csproj" />
+    <Project Path="src/Grimoire.Hub/Grimoire.Hub.csproj" />
+    <Project Path="src/Grimoire.Runs/Grimoire.Runs.csproj" />
+    <Project Path="src/Grimoire.Wiki/Grimoire.Wiki.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Grimoire.Contract.Tests/Grimoire.Contract.Tests.csproj" />
+    <Project Path="tests/Grimoire.E2E.Tests/Grimoire.E2E.Tests.csproj" />
+    <Project Path="tests/Grimoire.Fast.Tests/Grimoire.Fast.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Grimoire.Trace/Grimoire.Trace.csproj" />
+  </Folder>
+</Solution>

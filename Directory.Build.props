@@ -1,0 +1,13 @@
+<Project>
+
+  <!-- Shared by every project in the tree. The test suites add their own settings in
+       tests/Directory.Build.props, which imports this file. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>
