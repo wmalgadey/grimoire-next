@@ -19,7 +19,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-001")]
-    public async Task ATextSubmittedWithNoRunInProgressIsAccepted()
+    public async Task Submit_IsAccepted_WhenNoRunIsInProgress()
     {
         var result = await intake.SubmitAsync("Ada Lovelace wrote the first program.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
 
@@ -33,7 +33,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-001")]
-    public async Task AcceptanceReturnsWithoutWaitingForTheRunToEnd()
+    public async Task Submit_ReturnsWithoutWaitingForTheRunToEnd()
     {
         var result = await intake.SubmitAsync("A text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
 
@@ -47,7 +47,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-001")]
-    public async Task AnAcceptedSubmissionIsDispatchedWithItsOwnRunIdentifier()
+    public async Task Submit_DispatchesARunWithItsOwnIdentifier()
     {
         var first = await intake.SubmitAsync("First.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
         harness.End(first.Accepted!.Id, RunOutcome.Done);
@@ -65,7 +65,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-005")]
-    public async Task ATextSubmittedWhileARunIsInProgressIsRefused()
+    public async Task Submit_IsRefused_WhileRunInProgress()
     {
         var accepted = await intake.SubmitAsync("The first text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
         harness.ReportIn(accepted.Accepted!.Id);
@@ -78,7 +78,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-005")]
-    public async Task ARefusedSubmissionStoresNothingAndStartsNoRun()
+    public async Task Submit_StoresNothingAndStartsNoRun_WhenRefused()
     {
         var accepted = await intake.SubmitAsync("The first text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
 
@@ -91,7 +91,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-005")]
-    public async Task TheSameTextIsAcceptedOnceTheRunHasEnded()
+    public async Task Submit_IsAccepted_OnceTheRunHasEnded()
     {
         var first = await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
         Assert.Equal(Refusal.RunInProgress, (await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken)).Refused);

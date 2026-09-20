@@ -24,7 +24,7 @@ public sealed class SubmissionRefusalTests
 
     [Fact]
     [Trait("req", "INGEST-003")]
-    public async Task AMissingInstructionRefusesAndSaysSo()
+    public async Task Submit_IsRefused_WhenTheInstructionIsMissing()
     {
         var result = await intake.SubmitAsync("A text.", NoInstruction, TestContext.Current.CancellationToken);
 
@@ -33,7 +33,7 @@ public sealed class SubmissionRefusalTests
 
     [Fact]
     [Trait("req", "INGEST-003")]
-    public async Task AMissingPurposeDescriptionRefusesAndSaysSo()
+    public async Task Submit_IsRefused_WhenThePurposeDescriptionIsMissing()
     {
         var result = await intake.SubmitAsync("A text.", NoPurposeDescription, TestContext.Current.CancellationToken);
 
@@ -46,7 +46,7 @@ public sealed class SubmissionRefusalTests
     [InlineData("   ")]
     [InlineData("\t\r\n  ")]
     [Trait("req", "INGEST-004")]
-    public async Task ATextThatIsEmptyOrOnlyWhitespaceRefuses(string text)
+    public async Task Submit_IsRefused_WhenTheTextIsEmptyOrWhitespace(string text)
     {
         var result = await intake.SubmitAsync(text, StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
 
@@ -58,7 +58,7 @@ public sealed class SubmissionRefusalTests
     [InlineData("A text.")]
     [Trait("req", "INGEST-003")]
     [Trait("req", "INGEST-004")]
-    public async Task ARefusedSubmissionStoresNothingAndStartsNoRun(string text)
+    public async Task Submit_StoresNothingAndStartsNoRun_WhenRefused(string text)
     {
         foreach (var inputs in new[] { NoInstruction, NoPurposeDescription, StartUpInputs.BothPresent })
         {
@@ -77,7 +77,7 @@ public sealed class SubmissionRefusalTests
     [Fact]
     [Trait("req", "INGEST-003")]
     [Trait("req", "INGEST-004")]
-    public async Task BothStartUpInputsAreCheckedBeforeTheTextAndTheInstructionFirst()
+    public async Task Submit_NamesTheInstructionFirst_WhenSeveralAreMissing()
     {
         var neither = new StartUpInputs(InstructionPresent: false, PurposeDescriptionPresent: false);
 

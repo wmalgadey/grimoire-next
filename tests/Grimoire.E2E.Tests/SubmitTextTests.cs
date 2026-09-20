@@ -11,7 +11,7 @@ public sealed class SubmitTextTests : PageTest
 {
     [Fact]
     [Trait("req", "ACCESS-001")]
-    public async Task APersonPastesATextSubmitsItAndThePageReportsItAccepted()
+    public async Task Submit_ReportsAccepted_InTheBrowser()
     {
         await using var hub = await HubUnderTest.StartAsync(TestContext.Current.CancellationToken);
 

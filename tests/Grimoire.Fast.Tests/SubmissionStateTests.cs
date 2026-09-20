@@ -27,14 +27,14 @@ public sealed class SubmissionStateTests
 
     [Fact]
     [Trait("req", "RUNS-001")]
-    public void TheStatesAreTheFourTheSpecNamesAndNoMore() =>
+    public void States_AreExactlyTheFourTheSpecNames() =>
         Assert.Equal(
             [SubmissionState.Submitted, SubmissionState.Running, SubmissionState.Done, SubmissionState.Failed],
             Enum.GetValues<SubmissionState>());
 
     [Fact]
     [Trait("req", "RUNS-001")]
-    public async Task ASubmissionReadsSubmittedFromAcceptanceUntilTheAgentReportsIn()
+    public async Task AgentReportsIn_TurnsSubmittedIntoRunning()
     {
         var submission = await Accepted();
 
@@ -49,7 +49,7 @@ public sealed class SubmissionStateTests
     [InlineData(RunOutcome.Done, SubmissionState.Done)]
     [InlineData(RunOutcome.Failed, SubmissionState.Failed)]
     [Trait("req", "RUNS-001")]
-    public async Task ARunThatEndsLeavesItsSubmissionInThatTerminalState(RunOutcome outcome, SubmissionState state)
+    public async Task RunEnds_LeavesTheSubmissionInThatTerminalState(RunOutcome outcome, SubmissionState state)
     {
         var submission = await Accepted();
         harness.ReportIn(submission.Id);
@@ -61,7 +61,7 @@ public sealed class SubmissionStateTests
 
     [Fact]
     [Trait("req", "RUNS-001")]
-    public async Task ARunThatEndsBeforeTheAgentReportsInStillReachesItsTerminalState()
+    public async Task RunEnds_ReachesTheTerminalState_BeforeTheAgentReportsIn()
     {
         // The window between acceptance and system/init is where the grant is checked, and a
         // surface that is not the grant ends the run failed there (data-model.md §SubmissionState).
@@ -76,7 +76,7 @@ public sealed class SubmissionStateTests
     [InlineData(RunOutcome.Done)]
     [InlineData(RunOutcome.Failed)]
     [Trait("req", "RUNS-001")]
-    public async Task DoneAndFailedAreTerminal(RunOutcome outcome)
+    public async Task Transition_IsRefused_WhenTheStateIsAlreadyTerminal(RunOutcome outcome)
     {
         var submission = await Accepted();
         harness.End(submission.Id, outcome);
@@ -91,7 +91,7 @@ public sealed class SubmissionStateTests
 
     [Fact]
     [Trait("req", "RUNS-001")]
-    public async Task ASubmissionCarriesExactlyOneStateAtATime()
+    public async Task Transitions_LeaveExactlyOneStateAtATime()
     {
         var submission = await Accepted();
 
@@ -113,7 +113,7 @@ public sealed class SubmissionStateTests
 
     [Fact]
     [Trait("req", "ACCESS-002")]
-    public async Task TheResponseCarriesTheStateAndNothingElseAboutTheRun()
+    public async Task Render_CarriesTheStateAndNothingElseAboutTheRun()
     {
         var submission = await Accepted();
         harness.ReportIn(submission.Id);
@@ -135,6 +135,6 @@ public sealed class SubmissionStateTests
     [InlineData(SubmissionState.Done, "done")]
     [InlineData(SubmissionState.Failed, "failed")]
     [Trait("req", "ACCESS-002")]
-    public void EachStateIsReportedAsExactlyOneOfTheFourWireNames(SubmissionState state, string wire) =>
+    public void Render_ReportsEachStateAsOneOfTheFourWireNames(SubmissionState state, string wire) =>
         Assert.Equal(wire, SubmissionView.WireNameOf(state));
 }
