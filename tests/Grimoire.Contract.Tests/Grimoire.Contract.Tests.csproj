@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Grimoire.Wiki/Grimoire.Wiki.csproj" />
+    <ProjectReference Include="../../src/Grimoire.Hub/Grimoire.Hub.csproj" />
   </ItemGroup>
 
 </Project>
