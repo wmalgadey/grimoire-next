@@ -36,3 +36,27 @@ jobs:
       # HarnessProcess tests are excluded. They run locally before the PR (research.md R-09).
       - name: Contract suite — time-budget 90 s
         run: dotnet test tests/Grimoire.Contract.Tests --no-build --configuration Release -- --timeout 90s --filter-not-trait "requires=signin" --ignore-exit-code 8
+
+  # trace-check (Constitution IV.3): reads the requirement ids and proof kinds from
+  # docs/capabilities/ and the level/req traits off the built test assemblies. Writes nothing.
+  #
+  # It guards the boundary to main rather than every push. A requirement proven by test is
+  # registered before its test is written (Constitution IV.2), so the check is red by construction
+  # while a feature is in flight and green where the feature lands — which is main, and which is
+  # also where a feature counts as done (Constitution I.9).
+  trace-check:
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build Grimoire.slnx --configuration Release
+
+      - name: trace-check
+        run: dotnet run --project tools/Grimoire.Trace --no-build --configuration Release -- check
