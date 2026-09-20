@@ -26,7 +26,7 @@ public sealed class SubmissionRefusalTests
     [Trait("req", "INGEST-003")]
     public async Task Submit_IsRefused_WhenTheInstructionIsMissing()
     {
-        var result = await intake.SubmitAsync("A text.", NoInstruction, TestContext.Current.CancellationToken);
+        var result = await intake.SubmitAsync("A text.", NoInstruction);
 
         Assert.Equal(Refusal.InstructionMissing, result.Refused);
     }
@@ -35,7 +35,7 @@ public sealed class SubmissionRefusalTests
     [Trait("req", "INGEST-003")]
     public async Task Submit_IsRefused_WhenThePurposeDescriptionIsMissing()
     {
-        var result = await intake.SubmitAsync("A text.", NoPurposeDescription, TestContext.Current.CancellationToken);
+        var result = await intake.SubmitAsync("A text.", NoPurposeDescription);
 
         // The refusal names which of the two is missing; that is what INGEST-003 asks for.
         Assert.Equal(Refusal.PurposeDescriptionMissing, result.Refused);
@@ -48,7 +48,7 @@ public sealed class SubmissionRefusalTests
     [Trait("req", "INGEST-004")]
     public async Task Submit_IsRefused_WhenTheTextIsEmptyOrWhitespace(string text)
     {
-        var result = await intake.SubmitAsync(text, StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        var result = await intake.SubmitAsync(text, StartUpInputs.BothPresent);
 
         Assert.Equal(Refusal.TextEmpty, result.Refused);
     }
@@ -62,7 +62,7 @@ public sealed class SubmissionRefusalTests
     {
         foreach (var inputs in new[] { NoInstruction, NoPurposeDescription, StartUpInputs.BothPresent })
         {
-            var result = await intake.SubmitAsync(text, inputs, TestContext.Current.CancellationToken);
+            var result = await intake.SubmitAsync(text, inputs);
 
             // Whether it was refused for the text or for a missing file, nothing is kept and no
             // run begins: a refused submission is not a Submission and carries no state.
@@ -85,8 +85,8 @@ public sealed class SubmissionRefusalTests
         // start-up inputs come before the text, and the instruction before the purpose
         // description, so each refusal names exactly one missing file
         // (contracts/hub-http-api.md).
-        Assert.Equal(Refusal.InstructionMissing, (await intake.SubmitAsync("", neither, TestContext.Current.CancellationToken)).Refused);
-        Assert.Equal(Refusal.InstructionMissing, (await intake.SubmitAsync("A text.", neither, TestContext.Current.CancellationToken)).Refused);
-        Assert.Equal(Refusal.PurposeDescriptionMissing, (await intake.SubmitAsync("", NoPurposeDescription, TestContext.Current.CancellationToken)).Refused);
+        Assert.Equal(Refusal.InstructionMissing, (await intake.SubmitAsync("", neither)).Refused);
+        Assert.Equal(Refusal.InstructionMissing, (await intake.SubmitAsync("A text.", neither)).Refused);
+        Assert.Equal(Refusal.PurposeDescriptionMissing, (await intake.SubmitAsync("", NoPurposeDescription)).Refused);
     }
 }

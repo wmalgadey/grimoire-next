@@ -14,10 +14,16 @@ namespace Grimoire.Hub;
 /// </remarks>
 public sealed class SubmissionIntake(SubmissionBoard board, IAgentHarness harness)
 {
-    public async Task<SubmissionResult> SubmitAsync(
-        string text,
-        StartUpInputs inputs,
-        CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Accept a text and put its run under way, or refuse it.
+    /// </summary>
+    /// <remarks>
+    /// There is deliberately no cancellation token. A run outlives the request that started it —
+    /// that is what INGEST-001 means by accepting a submission without the user waiting for the
+    /// run to end — so tying the dispatch to the caller's token would let a closed browser tab
+    /// kill the run.
+    /// </remarks>
+    public async Task<SubmissionResult> SubmitAsync(string text, StartUpInputs inputs)
     {
         var result = board.Accept(text, inputs);
 
@@ -32,7 +38,18 @@ public sealed class SubmissionIntake(SubmissionBoard board, IAgentHarness harnes
         // own tool endpoint (data-model.md §Run).
         var dispatch = new AgentDispatch(Guid.NewGuid(), submission.Id, submission.Text);
 
-        await harness.DispatchAsync(dispatch, Report(), cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await harness.DispatchAsync(dispatch, Report(), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // A run that never began must not leave its submission reading Submitted: the board
+            // counts that as a run in progress, so every later text would be refused for as long
+            // as the process lives (INGEST-001, INGEST-005). It ended, and it ended failed.
+            submission.Ended(SubmissionState.Failed);
+            throw;
+        }
 
         // The run is under way and the call returns; the user waits for none of it.
         return result;

@@ -58,9 +58,10 @@ public static class SubmissionsEndpoints
         SubmissionIntake intake,
         StartUpInputsCheck startUpInputs)
     {
-        endpoints.MapPost("/api/submissions", async (SubmissionRequest? request, CancellationToken cancellationToken) =>
+        endpoints.MapPost("/api/submissions", async (SubmissionRequest? request) =>
         {
-            var result = await intake.SubmitAsync(request?.Text ?? string.Empty, startUpInputs(), cancellationToken)
+            // No request token reaches the run: it outlives the request that started it.
+            var result = await intake.SubmitAsync(request?.Text ?? string.Empty, startUpInputs())
                 .ConfigureAwait(false);
 
             return result.Accepted is { } accepted

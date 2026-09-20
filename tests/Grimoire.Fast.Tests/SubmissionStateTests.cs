@@ -21,7 +21,7 @@ public sealed class SubmissionStateTests
 
     private async Task<Submission> Accepted(string text = "A text.")
     {
-        var result = await intake.SubmitAsync(text, StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        var result = await intake.SubmitAsync(text, StartUpInputs.BothPresent);
         return result.Accepted!;
     }
 

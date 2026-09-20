@@ -47,6 +47,11 @@ public sealed record SubmissionResult
 /// </remarks>
 public sealed class SubmissionBoard(TimeProvider clock)
 {
+    /// <summary>
+    /// One lock for the board and every submission on it, so that a state cannot change while the
+    /// single-run rule is being decided from those same states. <see cref="Submission"/> takes
+    /// it at construction.
+    /// </summary>
     private readonly Lock gate = new();
     private readonly List<Submission> submissions = [];
 
@@ -111,7 +116,7 @@ public sealed class SubmissionBoard(TimeProvider clock)
                 return SubmissionResult.RefusedWith(Refusal.RunInProgress);
             }
 
-            var submission = new Submission(Guid.NewGuid(), text, clock.GetUtcNow());
+            var submission = new Submission(Guid.NewGuid(), text, clock.GetUtcNow(), gate);
             submissions.Add(submission);
             return SubmissionResult.Of(submission);
         }

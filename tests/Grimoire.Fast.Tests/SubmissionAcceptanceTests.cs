@@ -21,7 +21,7 @@ public sealed class SubmissionAcceptanceTests
     [Trait("req", "INGEST-001")]
     public async Task Submit_IsAccepted_WhenNoRunIsInProgress()
     {
-        var result = await intake.SubmitAsync("Ada Lovelace wrote the first program.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        var result = await intake.SubmitAsync("Ada Lovelace wrote the first program.", StartUpInputs.BothPresent);
 
         Assert.NotNull(result.Accepted);
         Assert.Null(result.Refused);
@@ -35,7 +35,7 @@ public sealed class SubmissionAcceptanceTests
     [Trait("req", "INGEST-001")]
     public async Task Submit_ReturnsWithoutWaitingForTheRunToEnd()
     {
-        var result = await intake.SubmitAsync("A text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        var result = await intake.SubmitAsync("A text.", StartUpInputs.BothPresent);
 
         // The call has returned, the run was dispatched, and nothing has ended it: the user is
         // free while the agent works. Were acceptance waiting for the run, this line would not
@@ -49,9 +49,9 @@ public sealed class SubmissionAcceptanceTests
     [Trait("req", "INGEST-001")]
     public async Task Submit_DispatchesARunWithItsOwnIdentifier()
     {
-        var first = await intake.SubmitAsync("First.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        var first = await intake.SubmitAsync("First.", StartUpInputs.BothPresent);
         harness.End(first.Accepted!.Id, RunOutcome.Done);
-        var second = await intake.SubmitAsync("Second.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        var second = await intake.SubmitAsync("Second.", StartUpInputs.BothPresent);
 
         Assert.Equal(
             [first.Accepted!.Id, second.Accepted!.Id],
@@ -67,10 +67,10 @@ public sealed class SubmissionAcceptanceTests
     [Trait("req", "INGEST-005")]
     public async Task Submit_IsRefused_WhileRunInProgress()
     {
-        var accepted = await intake.SubmitAsync("The first text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        var accepted = await intake.SubmitAsync("The first text.", StartUpInputs.BothPresent);
         harness.ReportIn(accepted.Accepted!.Id);
 
-        var result = await intake.SubmitAsync("The second text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        var result = await intake.SubmitAsync("The second text.", StartUpInputs.BothPresent);
 
         Assert.Equal(Refusal.RunInProgress, result.Refused);
         Assert.Null(result.Accepted);
@@ -80,9 +80,9 @@ public sealed class SubmissionAcceptanceTests
     [Trait("req", "INGEST-005")]
     public async Task Submit_StoresNothingAndStartsNoRun_WhenRefused()
     {
-        var accepted = await intake.SubmitAsync("The first text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        var accepted = await intake.SubmitAsync("The first text.", StartUpInputs.BothPresent);
 
-        await intake.SubmitAsync("The second text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
+        await intake.SubmitAsync("The second text.", StartUpInputs.BothPresent);
 
         // Nothing about the refused text is kept: it is not a Submission and carries no state.
         Assert.Equal([accepted.Accepted!], board.All);
@@ -90,15 +90,30 @@ public sealed class SubmissionAcceptanceTests
     }
 
     [Fact]
+    [Trait("req", "INGEST-001")]
+    public async Task Submit_IsAccepted_AfterADispatchThatCouldNotStart()
+    {
+        harness.DispatchFailure = new InvalidOperationException("the agent process would not start");
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => intake.SubmitAsync("The first text.", StartUpInputs.BothPresent));
+
+        harness.DispatchFailure = null;
+
+        // A run that never began is not a run in progress. Were the submission left reading
+        // Submitted, it would refuse every later text for as long as the process lives.
+        Assert.NotNull((await intake.SubmitAsync("The second text.", StartUpInputs.BothPresent)).Accepted);
+    }
+
+    [Fact]
     [Trait("req", "INGEST-005")]
     public async Task Submit_IsAccepted_OnceTheRunHasEnded()
     {
-        var first = await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken);
-        Assert.Equal(Refusal.RunInProgress, (await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken)).Refused);
+        var first = await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent);
+        Assert.Equal(Refusal.RunInProgress, (await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent)).Refused);
 
         harness.End(first.Accepted!.Id, RunOutcome.Done);
 
         // Nothing was wrong with the request, only with the moment (contracts/hub-http-api.md).
-        Assert.NotNull((await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent, TestContext.Current.CancellationToken)).Accepted);
+        Assert.NotNull((await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent)).Accepted);
     }
 }

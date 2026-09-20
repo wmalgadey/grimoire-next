@@ -28,8 +28,17 @@ internal sealed class InMemoryAgentHarness : IAgentHarness
     /// <summary>A run is under way once it has been dispatched and has not yet reported an end.</summary>
     public bool RunUnderWay { get; private set; }
 
+    /// <summary>Set to make the next dispatch fail, as a process that will not start does.</summary>
+    public Exception? DispatchFailure { get; set; }
+
     public Task DispatchAsync(AgentDispatch dispatch, RunReport report, CancellationToken cancellationToken)
     {
+        if (DispatchFailure is { } failure)
+        {
+            reports[dispatch.SubmissionId] = report;
+            return Task.FromException(failure);
+        }
+
         dispatched.Add(dispatch);
         reports[dispatch.SubmissionId] = report;
         RunUnderWay = true;
