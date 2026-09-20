@@ -11,6 +11,11 @@ const submissions = document.getElementById("submissions");
 // minutes, so a second is soon enough to feel live and rare enough to be nothing.
 const pollEveryMs = 1000;
 
+// Two refreshes can be in flight at once — the interval's and the one an accepted submission
+// starts — and they can answer out of order. The newest request's answer is the current one; an
+// older answer arriving after it would put a state back that has already moved on.
+let newestRequest = 0;
+
 function show(kind, words) {
   message.dataset.kind = kind;
   message.textContent = words;
@@ -72,9 +77,13 @@ function row(submission) {
 }
 
 async function refresh() {
+  const request = ++newestRequest;
+
   let response;
   try {
-    response = await fetch("/api/submissions");
+    // no-store, because a polled list answered from the browser's cache is a state that has
+    // already moved on.
+    response = await fetch("/api/submissions", { cache: "no-store" });
   } catch {
     // Grimoire could not be reached. The next poll tries again; what is on the screen stays,
     // because a state that has not been contradicted is still the last one known.
@@ -86,7 +95,7 @@ async function refresh() {
   }
 
   const body = await response.json().catch(() => null);
-  if (!body) {
+  if (!body || request !== newestRequest) {
     return;
   }
 

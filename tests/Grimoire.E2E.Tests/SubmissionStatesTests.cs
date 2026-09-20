@@ -10,10 +10,15 @@ namespace Grimoire.E2E.Tests;
 /// nothing further about the run (ACCESS-002).
 /// </summary>
 /// <remarks>
-/// The response shape behind it is proven a level down, in the Fast suite: this is only about what
-/// a real browser renders from it. One run at a time (INGEST-005) is why the submissions below are
-/// driven one after another — a second text is refused while the first is under way, so the states
-/// on the page at any moment are terminal ones plus at most one submission still under way.
+/// Two scenarios, which is what user story 3 is allowed at this level (Constitution III.4). The
+/// response shape behind them is proven a level down, in the Fast suite; this is only about what a
+/// real browser renders from it.
+/// <para>
+/// One run at a time (INGEST-005) is why the submissions below are driven one after another: a
+/// second text is refused while the first is under way, so what can be on the page at any moment
+/// is terminal states plus at most one submission still under way. Reaching <c>running</c>
+/// therefore happens while the page is already open, which is also how the polling shows.
+/// </para>
 /// </remarks>
 [Trait("level", "e2e")]
 [Trait("req", "ACCESS-002")]
@@ -34,30 +39,19 @@ public sealed class SubmissionStatesTests : PageTest
         hub.Agent.End(failed, RunOutcome.Failed);
 
         // Accepted, and the agent has not reported in yet: that is where submitted begins and ends.
-        var submitted = await hub.SubmitAsync("Alan Turing described a universal machine.", token);
+        var underWay = await hub.SubmitAsync("Alan Turing described a universal machine.", token);
 
         await Page.GotoAsync(hub.Address);
 
-        await Expect(State(submitted)).ToHaveTextAsync("submitted");
+        await Expect(State(underWay)).ToHaveTextAsync("submitted");
         await Expect(State(failed)).ToHaveTextAsync("failed");
         await Expect(State(done)).ToHaveTextAsync("done");
-    }
 
-    [Fact]
-    public async Task List_ShowsRunning_AfterTheAgentReportsIn()
-    {
-        var token = TestContext.Current.CancellationToken;
-        await using var hub = await HubUnderTest.StartAsync(token);
+        // The agent reports in while the page is open. The browser polls; nothing is pushed to it
+        // (contracts/hub-http-api.md).
+        hub.Agent.ReportIn(underWay);
 
-        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
-
-        await Page.GotoAsync(hub.Address);
-        await Expect(State(submission)).ToHaveTextAsync("submitted");
-
-        hub.Agent.ReportIn(submission);
-
-        // The browser polls; nothing is pushed to it (contracts/hub-http-api.md).
-        await Expect(State(submission)).ToHaveTextAsync("running");
+        await Expect(State(underWay)).ToHaveTextAsync("running");
     }
 
     [Fact]
