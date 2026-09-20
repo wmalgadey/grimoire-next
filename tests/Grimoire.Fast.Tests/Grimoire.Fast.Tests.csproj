@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="../../src/Grimoire.Hub/Grimoire.Hub.csproj" />
     <ProjectReference Include="../../tools/Grimoire.Trace/Grimoire.Trace.csproj" />
   </ItemGroup>
 

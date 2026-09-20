@@ -1,0 +1,9 @@
+{
+    "recommendations": [
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
+        "yzhang.markdown-all-in-one",
+        "takumii.markdowntable",
+        "davidanson.vscode-markdownlint"
+    ]
+}
