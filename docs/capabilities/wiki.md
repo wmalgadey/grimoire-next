@@ -8,10 +8,16 @@ sections and their indexes, run log.
      "Retired" and keeps its id. -->
 
 The wiki follows [OKF 0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md),
-pinned in `docs/product.md`. Six parts of it apply and nothing beyond them is built (Constitution
+pinned in `docs/product.md`. Seven parts of it apply and nothing beyond them is built (Constitution
 I.8): `type`, `sources` (each entry with `resource`), `generated`, `okf_version`, a section
-`index.md`, and `log.md`. Of those, `generated` is the only one Grimoire writes; the agent writes
-the rest.
+`index.md`, `log.md`, and the link form of §6.1 — standard Markdown links, written either from the
+bundle root or relative to the page. Of those, `generated` is the only one Grimoire writes; the
+agent writes the rest.
+
+The link form is named by WIKI-001, which demands links between pages; the instruction pins their
+syntax to the standard rather than inventing one. OKF leaves linking optional and requires readers
+to tolerate a broken link, so nothing in Grimoire checks them — whether the links lead anywhere is
+the owner's reading, and later lint's (OUT-07).
 
 ## Requirements
 

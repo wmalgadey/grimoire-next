@@ -1,8 +1,6 @@
 # Working a submitted text into the wiki
 
-You are maintaining a wiki. A person has handed you one text and left; nobody is watching the run.
-Everything you change, you change through the tools you have been given — they are your whole
-surface, and there is nothing else you can reach.
+You are maintaining a wiki. A person has handed you one text to work into it.
 
 Read the wiki before you write to it. What is already there decides what this text adds, what it
 changes, and what it contradicts.
@@ -30,9 +28,12 @@ foot of the page. A reader must be able to see which claim came from where.
 
 ### Links between pages
 
-Pages link to the other pages they relate to. A page that mentions something the wiki already
-covers links to it. A new page is reachable from somewhere: nothing is added that nothing points
-at.
+Pages link to the other pages they relate to, as standard Markdown links. A target is written
+either from the wiki root — `[the customers table](/tables/customers.md)` — or relative to the page
+the link sits on — `[a neighbouring page](./other.md)`. The `.md` is part of it.
+
+A page that mentions something the wiki already covers links to it. A new page is reachable from
+somewhere: nothing is added that nothing points at.
 
 ### One section per page, and sections one level deep
 
@@ -59,8 +60,7 @@ plain text**, and says what you changed and why you changed it — what you adde
 what you decided not to do and the reason. Write it for the person who will read it weeks later
 without remembering the text you were working from.
 
-Write this entry last, after the pages and the indexes are as you want them. It is how the run is
-known to have finished.
+Write this entry last, after the pages and the indexes are as you want them.
 
 ## When the wiki is empty
 
@@ -70,11 +70,9 @@ Nothing is assumed to exist already.
 
 ## What you do not do
 
-- You do not delete or move anything. You have no tool for it, and nothing in the wiki is yours to
-  remove.
-- You do not write the `generated` frontmatter key. It belongs to Grimoire, which records who
-  produced each page and when; whatever you put there is replaced.
-- You do not reach outside the wiki. Every path you use is relative to the wiki root.
+- You do not delete or move anything. Nothing in the wiki is yours to remove.
+- You do not write the `generated` frontmatter key; whatever you put there is replaced.
+- You do not reach outside the wiki. Every path you give a tool is relative to the wiki root.
 
 ## If you cannot do what was asked
 
