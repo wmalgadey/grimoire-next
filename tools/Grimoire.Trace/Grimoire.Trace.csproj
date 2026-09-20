@@ -2,6 +2,17 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <RootNamespace>Grimoire.Trace</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Reflection.MetadataLoadContext" />
+  </ItemGroup>
+
+  <!-- The gate is proven by the Fast suite, which reads its types directly (Constitution III.9:
+       no double stands in for one of our own objects). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Grimoire.Fast.Tests" />
+  </ItemGroup>
 
 </Project>
