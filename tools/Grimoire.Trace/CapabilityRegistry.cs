@@ -16,6 +16,16 @@ internal static partial class CapabilityRegistry
     [GeneratedRegex(@"^\|\s*(?<id>[A-Z][A-Z0-9]*-\d{3})\s*\|.*\|\s*(?<proof>[A-Za-z]+)\s*\|\s*$")]
     private static partial Regex RequirementRow { get; }
 
+    /// <summary>
+    /// A row that opens with something shaped like a requirement id. One that then fails
+    /// <see cref="RequirementRow"/> is a registration this reader cannot read — a lower-case or
+    /// mis-numbered id, a missing proof column, text after the last pipe — and it fails the read
+    /// rather than being passed over (Constitution IV.3: what the check cannot read, it fails on
+    /// rather than skips). Skipping it would drop the requirement out of the gate silently.
+    /// </summary>
+    [GeneratedRegex(@"^\|\s*[A-Za-z][A-Za-z0-9]*-\d+[a-z]*\s*\|")]
+    private static partial Regex RequirementRowOpening { get; }
+
     /// <summary>Prefixes Constitution I.2 reserves; they are never capability names.</summary>
     private static readonly string[] ReservedPrefixes = ["OUT", "DEC"];
 
@@ -41,8 +51,12 @@ internal static partial class CapabilityRegistry
         {
             var retiredSection = false;
 
+            var number = 0;
+
             foreach (var line in File.ReadLines(file))
             {
+                number++;
+
                 if (line.StartsWith('#'))
                 {
                     retiredSection = line.TrimStart('#', ' ').StartsWith("Retired", StringComparison.OrdinalIgnoreCase);
@@ -52,6 +66,13 @@ internal static partial class CapabilityRegistry
                 var row = RequirementRow.Match(line);
                 if (!row.Success)
                 {
+                    if (RequirementRowOpening.IsMatch(line))
+                    {
+                        throw new TraceInputException(
+                            $"{Path.GetFileName(file)} line {number} opens like a requirement row and does not read as one: "
+                            + $"\"{line.Trim()}\". A row is | <CAPABILITY>-NNN | text | test, eval or review |");
+                    }
+
                     continue;
                 }
 

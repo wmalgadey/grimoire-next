@@ -25,4 +25,6 @@ the rest.
 
 The requirement is about what a text says. A test could only match its wording, which is static
 content the constitution does not test (III.8). Whether the agent follows it is agent judgment, out
-of scope here and the business of OUT-07. It is proven by item 3 of `docs/review-checklist.md`.
+of scope here and the business of OUT-07. It is proven by item 3 of `docs/review-checklist.md`,
+which asks whether the instruction every run receives states the shape this requirement lists, in
+full.
