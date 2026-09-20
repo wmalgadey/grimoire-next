@@ -72,7 +72,7 @@ public static class HubApplication
         var conductor = new RunConductor(board, harness, wiki, clock);
         var intake = new SubmissionIntake(board, harness, conductor, instructions.Assemble, options.Model);
 
-        app.MapSubmissions(intake, instructions.Read);
+        app.MapSubmissions(intake, board, instructions.Read);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to
         // its run. Unauthenticated and on loopback, per docs/product.md §2.
