@@ -120,7 +120,9 @@ internal sealed class OkfFrontmatter
 
             if (stream.Documents.Count == 0)
             {
-                return [];
+                // Frontmatter with nothing in it is an empty mapping, not a failure: the page has
+                // a place for the record, it simply has nothing else in it yet.
+                return new YamlMappingNode();
             }
 
             if (stream.Documents[0].RootNode is YamlMappingNode mapping)

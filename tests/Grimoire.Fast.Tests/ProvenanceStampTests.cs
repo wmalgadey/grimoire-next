@@ -111,6 +111,20 @@ public sealed class ProvenanceStampTests
     private static int Occurrences(string text, string needle) =>
         text.Split(needle, StringSplitOptions.None).Length - 1;
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void WritePage_AddsTheRecord_WhenTheFrontmatterIsEmpty(string frontmatter)
+    {
+        // Nothing in it is not the same as unreadable: the page has a place for the record and
+        // simply has nothing else in it yet.
+        var result = ProvenanceStamp.Apply(Page(frontmatter), Record);
+
+        Assert.Null(result.Error);
+        Assert.Equal(1, Occurrences(result.Page!, "generated:"));
+        Assert.Contains($"  by: {Record.By}", result.Page, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void WritePage_Fails_WhenThePageHasNoFrontmatterAtAll()
     {
