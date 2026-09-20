@@ -1,0 +1,25 @@
+<Project>
+
+  <!-- Shared by every project in the tree. The test suites add their own settings in
+       tests/Directory.Build.props, which imports this file. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- The analysis the SDK already ships, and nothing of our own (Constitution II.3). The .NET
+       analyzers are on by default; AnalysisMode raises them above the default set, and
+       EnforceCodeStyleInBuild makes the .editorconfig style rules build errors rather than IDE
+       suggestions. A warning that is only a warning is a rule nobody keeps, so they are errors. -->
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>
