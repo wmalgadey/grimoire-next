@@ -242,8 +242,6 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
     /// </summary>
     private async Task ReadAsync(Process process, AgentDispatch dispatch, RunReport report)
     {
-        var reportedIn = false;
-        var ended = false;
         long streamed = 0;
 
         try
@@ -261,13 +259,11 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
                         if (!InitIsAcceptable(message, dispatch.Grant))
                         {
                             // Failed here, before the first model call (GUARD-001).
-                            ended = true;
                             report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
                             await StopAsync(dispatch.RunId, CancellationToken.None).ConfigureAwait(false);
                             return;
                         }
 
-                        reportedIn = true;
                         report.AgentReportedIn(dispatch.SubmissionId);
                         break;
 
@@ -281,9 +277,9 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
                         streamed = Math.Max(streamed, Ceilings.CostOf(ModelUsage(message)));
                         report.CostSoFar(dispatch.SubmissionId, streamed);
 
-                        ended = true;
+                        // The hub decides what a stop means — done, one nudge, or failed. A
+                        // nudged run carries on, so more messages may follow this one.
                         await report.AgentStopped(dispatch.SubmissionId, EndedAbnormally(message)).ConfigureAwait(false);
-                        ended = false;
                         break;
 
                     default:
@@ -293,17 +289,13 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
 
             await process.WaitForExitAsync().ConfigureAwait(false);
 
-            if (!ended && process.ExitCode != 0)
-            {
-                report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
-            }
-            else if (!ended && !reportedIn)
-            {
-                // The process said nothing at all.
-                report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
-            }
+            // The stream is over. Whatever the last message was, a run whose process has gone is
+            // not going to report anything further: if the hub has already ended it this is a
+            // no-op, and if it has not — a nudged run whose process died, say — it ends failed
+            // here rather than reading running for ever.
+            report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
         }
-        catch (Exception) when (!ended)
+        catch (Exception)
         {
             report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
             throw;

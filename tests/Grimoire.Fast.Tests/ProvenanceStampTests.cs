@@ -81,6 +81,37 @@ public sealed class ProvenanceStampTests
     }
 
     [Fact]
+    public void WritePage_ReplacesAgentValues_WhenTheFrontmatterIsIndented()
+    {
+        // The key is found where the parser says it is, not by a search anchored at column 0. A
+        // page whose record was not found would get a second `generated` block, which is two of
+        // them on one page.
+        var supplied = "  type: Recipe\n  generated:\n    by: the agent itself\n    at: 1999-01-01T00:00:00Z";
+
+        var result = ProvenanceStamp.Apply(Page(supplied), Record);
+
+        Assert.Null(result.Error);
+        Assert.Equal(1, Occurrences(result.Page!, "generated:"));
+        Assert.DoesNotContain("the agent itself", result.Page);
+    }
+
+    [Fact]
+    public void WritePage_ReplacesAgentValues_WhenCommentsSitAboveTheRecord()
+    {
+        var supplied = "type: Recipe\n# a comment the agent wrote\ngenerated:\n  by: the agent itself\n  at: 1999-01-01T00:00:00Z\nokf_version: \"0.2\"";
+
+        var result = ProvenanceStamp.Apply(Page(supplied), Record);
+
+        Assert.Null(result.Error);
+        Assert.Equal(1, Occurrences(result.Page!, "generated:"));
+        Assert.Contains("# a comment the agent wrote", result.Page, StringComparison.Ordinal);
+        Assert.Contains("okf_version:", result.Page, StringComparison.Ordinal);
+    }
+
+    private static int Occurrences(string text, string needle) =>
+        text.Split(needle, StringSplitOptions.None).Length - 1;
+
+    [Fact]
     public void WritePage_Fails_WhenThePageHasNoFrontmatterAtAll()
     {
         var result = ProvenanceStamp.Apply("Just a body, no frontmatter.\n", Record);

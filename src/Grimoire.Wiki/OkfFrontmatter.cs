@@ -95,7 +95,16 @@ internal sealed class OkfFrontmatter
             return null;
         }
 
-        var at = Span(frontmatter, out var end);
+        var at = Span(frontmatter, generated.Start, out var end);
+        if (at < 0)
+        {
+            // The parser found the key and the text does not agree. Adding a second `generated`
+            // would leave a page with two of them, which is worse than refusing the write: what
+            // the check cannot read, it fails on rather than skips.
+            error = $"{GeneratedKey} was read from the frontmatter but could not be found in it to be replaced";
+            return null;
+        }
+
         return new OkfFrontmatter(frontmatter, rest, at, end);
     }
 
@@ -130,34 +139,36 @@ internal sealed class OkfFrontmatter
     }
 
     /// <summary>
-    /// Which lines the top-level <c>generated</c> entry occupies: its own, and every line after it
-    /// that is blank or indented, up to the next top-level key.
+    /// Which lines the <c>generated</c> entry occupies: its own, and every line after it that is
+    /// blank or indented further than the key is, up to the next key at the key's own indent.
     /// </summary>
-    private static int Span(string[] lines, out int end)
+    /// <remarks>
+    /// The key's line comes from the parser rather than from a search, so a frontmatter whose
+    /// whole mapping is indented, or that carries comments above the key, is handled the same as
+    /// the ordinary case. Returns -1 where the parser's position does not describe the text,
+    /// which the caller turns into a refused write rather than a second <c>generated</c> block.
+    /// </remarks>
+    private static int Span(string[] lines, Mark key, out int end)
     {
-        var at = -1;
-        for (var i = 0; i < lines.Length; i++)
+        var at = (int)key.Line - 1;
+        end = -1;
+
+        if (at < 0 || at >= lines.Length || !lines[at].TrimStart().StartsWith($"{GeneratedKey}:", StringComparison.Ordinal))
         {
-            var line = lines[i];
-            if (line.StartsWith($"{GeneratedKey}:", StringComparison.Ordinal))
-            {
-                at = i;
-                break;
-            }
+            return -1;
         }
 
-        end = at;
-        if (at < 0)
-        {
-            return at;
-        }
+        var indent = lines[at].Length - lines[at].TrimStart().Length;
 
         end = at + 1;
-        while (end < lines.Length && (lines[end].Length == 0 || char.IsWhiteSpace(lines[end][0])))
+        while (end < lines.Length && IsInsideTheEntry(lines[end], indent))
         {
             end++;
         }
 
         return at;
     }
+
+    private static bool IsInsideTheEntry(string line, int indent) =>
+        line.Trim().Length == 0 || line.Length - line.TrimStart().Length > indent;
 }

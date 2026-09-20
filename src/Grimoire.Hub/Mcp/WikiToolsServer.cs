@@ -14,10 +14,16 @@ namespace Grimoire.Hub.Mcp;
 /// </remarks>
 public sealed class RunAddress(IHttpContextAccessor accessor, string model)
 {
+    /// <summary>
+    /// Which run this call belongs to. A call that arrives without a readable run identifier is
+    /// refused rather than attributed to an empty one: the identifier is what names the run in the
+    /// generation record (WIKI-002) and in the wiki's log (RUNS-005), so a wrong one is worse than
+    /// no write at all.
+    /// </summary>
     public Guid RunId =>
         accessor.HttpContext?.Request.RouteValues["runId"] is string id && Guid.TryParse(id, out var runId)
             ? runId
-            : Guid.Empty;
+            : throw new InvalidOperationException("this tool call carries no readable run identifier");
 
     /// <summary>
     /// Who generated a page: Grimoire, the model the run was served by, and the run itself. This

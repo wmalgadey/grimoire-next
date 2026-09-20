@@ -50,7 +50,11 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
             return;
         }
 
-        if (run.Ceilings.ReachedBy(clock.GetUtcNow() - run.StartedAt, tokensUsed))
+        // Recorded on the run, not only compared: the stop decision below reads it, and so does
+        // the token ceiling when the run is asked how it ended (GUARD-004).
+        run.Spent(tokensUsed);
+
+        if (run.Ceilings.ReachedBy(clock.GetUtcNow() - run.StartedAt, run.TokensUsed))
         {
             _ = harness.StopAsync(run.Id, CancellationToken.None);
         }
@@ -91,11 +95,21 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
         }
     }
 
+    /// <summary>
+    /// A run ends once. Removing it is what makes that true: a harness whose process died after
+    /// the hub had already ended the run reports again, and a submission that is already done or
+    /// failed refuses to be moved. The second report is a no-op rather than a crash.
+    /// </summary>
+    /// <remarks>
+    /// Whatever the run had already written stays in the wiki, in every failed case: nothing here
+    /// reaches back into it (WIKI-003).
+    /// </remarks>
     private void RunEnded(Guid submissionId, RunOutcome outcome)
     {
-        // Whatever the run had already written stays in the wiki, in every failed case: nothing
-        // here reaches back into it (WIKI-003).
-        runs.TryRemove(submissionId, out _);
+        if (!runs.TryRemove(submissionId, out _))
+        {
+            return;
+        }
 
         board.Find(submissionId)?.Ended(
             outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed);

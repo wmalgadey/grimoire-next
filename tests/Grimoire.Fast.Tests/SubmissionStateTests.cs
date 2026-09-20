@@ -104,6 +104,21 @@ public sealed class SubmissionStateTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-001")]
+    public async Task RunEnds_IsIgnored_WhenTheRunHasAlreadyEnded()
+    {
+        var submission = await Accepted();
+        hub.Harness.ReportIn(submission.Id);
+        await hub.Harness.StoppedAsync(submission.Id);
+
+        // A harness whose process dies after the hub has already ended the run reports again.
+        // The second report is a no-op rather than an attempt to move a terminal submission.
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        Assert.Equal(SubmissionState.Failed, submission.State);
+    }
+
+    [Fact]
     [Trait("req", "ACCESS-002")]
     public async Task Report_CarriesNothingBeyondTheState()
     {

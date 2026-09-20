@@ -96,6 +96,33 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    public async Task Run_RecordsWhatItSpends_AsTheCostArrives()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+
+        hub.Harness.Spend(submission.Id, 1_000);
+        hub.Harness.Spend(submission.Id, 7_500);
+
+        // Recorded on the run, not only compared against the ceiling: the decision taken when the
+        // agent stops reads this, and a run that had spent nothing would never reach the ceiling.
+        Assert.Equal(7_500, hub.Conductor.Of(submission.Id)!.TokensUsed);
+    }
+
+    [Fact]
+    public async Task Run_EndsFailed_WhenTheTokensItSpentReachTheCeiling()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+
+        hub.Harness.Spend(submission.Id, Ceilings.Fixed.Tokens);
+        await hub.Harness.StoppedAsync(submission.Id);
+
+        Assert.Equal(SubmissionState.Failed, submission.State);
+    }
+
+    [Fact]
     public async Task Run_IsLeftAlone_WhileBothCeilingsAreClear()
     {
         var hub = new FastHub();

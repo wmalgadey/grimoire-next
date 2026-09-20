@@ -67,6 +67,9 @@ public sealed class Run
     /// </summary>
     public bool LogEntryNudged { get; private set; }
 
+    /// <summary>Record what the run has caused so far. Never goes backwards.</summary>
+    public void Spent(long tokensUsed) => TokensUsed = Math.Max(TokensUsed, tokensUsed);
+
     /// <summary>
     /// Whether the wiki's log holds an entry for this run.
     /// </summary>
@@ -88,7 +91,7 @@ public sealed class Run
     {
         ArgumentNullException.ThrowIfNull(stop);
 
-        TokensUsed = stop.TokensUsed;
+        Spent(stop.TokensUsed);
 
         // A ceiling reached ends the run failed whatever the log says, and so does an ending the
         // agent did not choose (GUARD-004).
