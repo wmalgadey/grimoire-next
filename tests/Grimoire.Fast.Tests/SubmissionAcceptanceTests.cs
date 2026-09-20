@@ -33,7 +33,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-001")]
-    public async Task Submit_ReturnsWithoutWaitingForTheRunToEnd()
+    public async Task Submit_IsAccepted_WithoutWaitingForTheRunToEnd()
     {
         var result = await intake.SubmitAsync("A text.", StartUpInputs.BothPresent);
 
@@ -47,7 +47,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-001")]
-    public async Task Submit_DispatchesARunWithItsOwnIdentifier()
+    public async Task Submit_StartsARun_WithItsOwnIdentifier()
     {
         var first = await intake.SubmitAsync("First.", StartUpInputs.BothPresent);
         harness.End(first.Accepted!.Id, RunOutcome.Done);
@@ -78,7 +78,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-005")]
-    public async Task Submit_StoresNothingAndStartsNoRun_WhenRefused()
+    public async Task Submit_IsNotStored_WhenRefused()
     {
         var accepted = await intake.SubmitAsync("The first text.", StartUpInputs.BothPresent);
 
@@ -86,6 +86,16 @@ public sealed class SubmissionAcceptanceTests
 
         // Nothing about the refused text is kept: it is not a Submission and carries no state.
         Assert.Equal([accepted.Accepted!], board.All);
+    }
+
+    [Fact]
+    [Trait("req", "INGEST-005")]
+    public async Task Submit_StartsNoRun_WhenRefused()
+    {
+        await intake.SubmitAsync("The first text.", StartUpInputs.BothPresent);
+
+        await intake.SubmitAsync("The second text.", StartUpInputs.BothPresent);
+
         Assert.Single(harness.Dispatched);
     }
 
@@ -106,7 +116,7 @@ public sealed class SubmissionAcceptanceTests
 
     [Fact]
     [Trait("req", "INGEST-005")]
-    public async Task Submit_IsAccepted_OnceTheRunHasEnded()
+    public async Task Submit_IsAccepted_AfterTheRunHasEnded()
     {
         var first = await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent);
         Assert.Equal(Refusal.RunInProgress, (await intake.SubmitAsync("The same text.", StartUpInputs.BothPresent)).Refused);

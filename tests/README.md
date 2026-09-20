@@ -39,7 +39,20 @@ which behaviour broke and under which condition.
 implementation. A rename in the code then cannot make a test name wrong.
 
 **A test method is `<Action>_<Result>[_<Scenario>]`.** Each part is PascalCase and exactly one
-underscore separates them. The scenario is present whenever the result depends on a condition.
+underscore separates them. The scenario is present whenever the result depends on a condition, and
+it starts with a condition word: **When**, **While**, **With**, **Without**, **After**.
+
+**Names use the spec's vocabulary, never the implementation's.** No HTTP status codes, no method
+names, no type names — the spec says "refused", not "422"; "a run is in progress", not
+"RunInProgress == true". A name that points at the implementation ties the test to the code
+instead of to the requirement, which is the thing III.1 says tests verify.
+
+**The result is an observable outcome.** Never `Works`, `Succeeds`, `Correctly`, `AsExpected` — a
+reader of a failure line learns nothing from those. Say what was observed: `IsRefused`,
+`LeavesTheSubmissionFailed`, `CarriesNothingBeyondTheState`.
+
+**A name that needs `And` is two tests.** If the result joins two outcomes, split it; if the
+scenario joins two conditions, one of them belongs in the action or in a second test.
 
 Requirement ids live in the `req` trait and never appear in a name.
 

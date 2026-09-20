@@ -36,7 +36,7 @@
 - [x] At most 3 user stories (I.7)
 - [x] Every requirement carries a capability-scoped ID `<CAPABILITY>-NNN` from `docs/product.md` section 5 (IV.1)
 - [x] Every requirement carries exactly one proof kind (III.1)
-- [ ] The one requirement proven by `review` (WIKI-001) has a "Why review" line saying why neither
+- [x] The one requirement proven by `review` (WIKI-001) has a "Why review" line saying why neither
       a test nor an eval can prove it, and names the review-checklist item that does (III.1)
 - [x] No requirement proven by `eval` - none in this feature, by decision
 - [x] Which parts of the pinned external standard apply is stated (I.8)

@@ -46,7 +46,7 @@ public sealed class CapabilityRegistryTests : IDisposable
     [InlineData("| INGEST-002 | No proof column. |")]
     [InlineData("| INGEST-002 | A proof that is not a word. | test? |")]
     [InlineData("| INGEST-002 | Text after the last pipe. | test | and more")]
-    public void Read_Fails_WhenARowOpensLikeARequirementAndDoesNotReadAsOne(string row)
+    public void Read_Fails_WhenARowDoesNotReadAsARequirementInFull(string row)
     {
         var failure = Assert.Throws<TraceInputException>(() => Read(row + "\n"));
 
@@ -55,13 +55,13 @@ public sealed class CapabilityRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Read_PassesOverProseAndSeparatorRows()
+    public void Read_PassesOverARowThatIsNotARequirement()
     {
         Assert.Empty(Read("Six parts of OKF 0.2 apply; nothing beyond them is built.\n| --- | --- |\n"));
     }
 
     [Fact]
-    public void Read_KeepsTheIdAndMarksItRetired_WhenTheRowSitsUnderRetired()
+    public void Read_MarksTheRequirementRetired_WhenTheRowSitsUnderRetired()
     {
         var requirements = Read("## Retired\n\n| INGEST-006 | Withdrawn. | test |\n");
 
