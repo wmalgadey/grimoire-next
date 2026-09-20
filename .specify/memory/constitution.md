@@ -28,10 +28,18 @@ a required template field, or a gate. Two gates exist from the first feature: `t
 8. Where the product conforms to an external standard, `docs/product.md` names it with a pinned
    version and the capability requirements state which parts apply. Nothing of the standard beyond
    those parts is built. **Verified:** review
-9. A feature is done when merged to main with its capability files reconciled and
-   `docs/decisions.md` updated, after the owner has read what its review-proven requirements are
-   about, and after the owner has exercised its outcome once with the real external systems in
-   place. No branch stack deeper than one. **Verified:** review
+9. A feature is done when it is merged to main, and nothing of it reaches main before then: every
+   task in its `tasks.md` complete, both gates green, its capability files reconciled,
+   `docs/decisions.md` updated and `docs/trace.md` regenerated, after the owner has read what its
+   review-proven requirements are about, and after the owner has exercised its outcome once with
+   the real external systems in place. **Verified:** review
+10. A feature is built on a stack of branches, so that each part of it can be reviewed on its own:
+   one feature branch off main, and beneath it at most one branch per phase of `tasks.md`, each
+   based on the one before. The budget in 7 caps that at six — setup, foundational, one per user
+   story, and closing. The plan names the mapping before implementation starts, and the stack is
+   not deepened afterwards. Every PR in the stack stays a draft until its phase is complete and
+   leaves the build and the test suites green on its own branch. Only the feature branch merges to
+   main, and only under 9. **Verified:** review
 
 ### II. Simplicity
 
@@ -143,4 +151,4 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    checklist, and is not retroactive. Versioning is semantic: MAJOR removal or redefinition, MINOR new
    rule, PATCH wording. **Verified:** review
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-09-20
+**Version**: 2.0.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-09-20

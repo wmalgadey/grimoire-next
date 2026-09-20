@@ -20,12 +20,14 @@ requires an amendment that retires one.
       agent rather than on our code, does the instruction every run receives state that shape, in
       full, as the requirement lists it? *(I.8)*
 
-- [ ] **4. Closing the feature** — Merged to main, no branch stack deeper than one, and the
-      capability files reconciled with this feature's requirements as added, changed, or removed,
-      removed ones keeping their IDs under "Retired". Does `docs/decisions.md` carry this feature's
-      binding decisions, each with a reason? Has the owner read what each review-proven requirement
-      of this feature is about? Has the owner exercised the outcome once with the real external
-      systems in place? *(I.9, IV.2)*
+- [ ] **4. Closing the feature** — Every task in `tasks.md` complete and both gates green, with
+      the capability files reconciled against this feature's requirements as added, changed, or
+      removed, removed ones keeping their IDs under "Retired", and `docs/trace.md` regenerated. Did
+      the branch stack match the mapping the plan named, at most one branch per phase and none
+      added later, and does only the feature branch merge to main? Does `docs/decisions.md` carry
+      this feature's binding decisions, each with a reason? Has the owner read what each
+      review-proven requirement of this feature is about? Has the owner exercised the outcome once
+      with the real external systems in place? *(I.9, I.10, IV.2)*
 
 - [ ] **5. Nothing built without a consumer** — Every mechanism, abstraction, option, gate, and
       placeholder added is consumed by this feature; any new gate was added by the first feature that

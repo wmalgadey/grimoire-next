@@ -87,6 +87,27 @@ Enforced by: [means]. No purpose-built tooling.
 feature / a Later outcome proposed to the owner]. The cut runs along [boundary], so each half still
 has a user-observable result.
 
+## PR stack *(mandatory)*
+
+<!--
+  REQUIRED (Constitution I.10). Named BEFORE implementation starts, and not deepened afterwards.
+  One feature branch off main; beneath it at most one branch per phase of tasks.md, each based on
+  the one before. I.7's budget caps the depth at six. Only the feature branch merges to main, and
+  only when the feature is done (I.9) — every task complete, both gates green, the owner's
+  acceptance run behind it.
+-->
+
+| Branch | Phases of `tasks.md` | Based on | Merges into |
+| --- | --- | --- | --- |
+| `NNN-<feature>` | none — the spec, plan and tasks themselves | `main` | `main`, at close only |
+| `NNN-<feature>-<name>` | [phase(s)] | `NNN-<feature>` | `NNN-<feature>` |
+| `NNN-<feature>-<name>` | [phase(s)] | [the branch above] | [the branch above] |
+
+**Depth**: [n] of at most 6 · **Phases sharing a branch**: [which, and why]
+
+Every PR in the stack is a draft until its phase is complete, and leaves the build and the test
+suites green on its own branch. A step that cannot pass yet belongs in the PR that makes it pass.
+
 ## Project Structure
 
 ### Documentation (this feature)
