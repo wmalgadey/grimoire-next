@@ -45,7 +45,7 @@ jobs:
   # while a feature is in flight and green where the feature lands — which is main, and which is
   # also where a feature counts as done (Constitution I.9).
   trace-check:
-    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+    if: ${{ github.event_name == 'push' || github.event.pull_request.base.ref == 'main' }}
     runs-on: ubuntu-latest
 
     steps:
