@@ -145,10 +145,10 @@ exactly that state and nothing else.
 
 ## Phase 6: Closing the feature
 
-- [ ] T037 Run the Contract suite in both halves — `--filter-not-trait "requires=signin"` as CI does, and `--filter-trait "requires=signin"` locally with the owner's sign-in — and the E2E suite. All pass, Contract inside `--timeout 90s`. The default run is Fast only, so this is the one place they are exercised before the PR — **Req:** Principle III.7
-- [ ] T038 Run `trace-check check --complete`; it passes — every `test` requirement has a test carrying its ID, no test carries an unknown, retired or reserved ID, every test has a level, and every E2E test has a requirement ID. This is the call CI makes where the feature lands on main — **Req:** Principle IV.3
-- [ ] T039 Regenerate and commit `docs/trace.md` with `Grimoire.Trace write`, and set OUT-01's status and spec reference in `docs/product.md` — the only two edits an agent makes to that file — **Req:** Principle IV.4
-- [ ] T040 Reconcile `docs/capabilities/{ingest,wiki,guard,access,runs}.md` with this feature's requirements as added, changed or removed, and merge the plan's binding decisions into `docs/decisions.md`, each with its reason and the next free `DEC-NNN` — **Req:** Principle IV.2, Principle II.6
+- [X] T037 Run the Contract suite in both halves — `--filter-not-trait "requires=signin"` as CI does, and `--filter-trait "requires=signin"` locally with the owner's sign-in — and the E2E suite. All pass, Contract inside `--timeout 90s`. The default run is Fast only, so this is the one place they are exercised before the PR — **Req:** Principle III.7
+- [X] T038 Run `trace-check check --complete`; it passes — every `test` requirement has a test carrying its ID, no test carries an unknown, retired or reserved ID, every test has a level, and every E2E test has a requirement ID. This is the call CI makes where the feature lands on main — **Req:** Principle IV.3
+- [X] T039 Regenerate and commit `docs/trace.md` with `Grimoire.Trace write`, and set OUT-01's status and spec reference in `docs/product.md` — the only two edits an agent makes to that file — **Req:** Principle IV.4
+- [X] T040 Reconcile `docs/capabilities/{ingest,wiki,guard,access,runs}.md` with this feature's requirements as added, changed or removed, and merge the plan's binding decisions into `docs/decisions.md`, each with its reason and the next free `DEC-NNN` — **Req:** Principle IV.2, Principle II.6
 - [ ] T041 Walk `docs/review-checklist.md`, all twelve items — including item 3, which is what proves WIKI-001, and item 5's question whether the owner has read what WIKI-001, this feature's one review-proven requirement, is about — **Req:** Principle Gov.2, Principle I.9
 - [ ] T042 The owner exercises OUT-01 once with the real external systems in place, per the acceptance run in plan.md and `quickstart.md`: the real `claude` CLI signed in against a real model, and a real wiki. This is the last task of the feature; without it the feature is not done — **Req:** Principle I.9
 
@@ -208,3 +208,12 @@ exactly that state and nothing else.
 - Commit after each task or logical group.
 - A finding from review becomes a test only if it names a violated requirement ID (Governance 3);
   otherwise it becomes the smallest code change that resolves it, or is dropped.
+
+---
+
+## Phase 7: Convergence
+
+Appended by `/speckit-converge` (Governance 2). Each finding traces to the artifact it came from.
+
+- [X] T043 **CRITICAL** Compose the hub at its entry point in `src/Grimoire.Hub/Program.cs`, which still builds a bare `WebApplication`: read the start-up inputs quickstart.md documents — `--wiki`, `--purpose`, `--model`, with the instruction defaulting to the `instructions/ingest.md` that ships with Grimoire — call `HubApplication.Build` with `FileSystemWikiStore` and `HarnessProcess` at their two ports, bind loopback (DEC-014, `docs/product.md` §2), and give the harness the hub's own address for `--mcp-config`, which is known only once the server is listening. Dependency wiring is not tested (III.8), so no suite catches this and none is added; the owner's acceptance run is what exercises it — per quickstart.md acceptance run, plan.md Structure Decision, Constitution I.9 (missing)
+- [X] T044 `POST /api/submissions` answers `202` with a `Location` of `/api/submissions/{id}`, which no endpoint serves; `contracts/hub-http-api.md` defines two endpoints and neither is that one. Return the accepted body without a location that resolves nowhere — per `contracts/hub-http-api.md` (contradicts)

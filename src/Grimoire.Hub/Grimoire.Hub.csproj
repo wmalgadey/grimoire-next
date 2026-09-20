@@ -20,4 +20,10 @@
     <Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- So does the instruction, which is Grimoire's own and versioned in this repository (V.1).
+       It is what the instruction argument defaults to, so it sits under the same base directory. -->
+  <ItemGroup>
+    <Content Include="../../instructions/ingest.md" Link="instructions/ingest.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
