@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "dgSpecHash": "NyMtwgJp/k0=",
+  "success": true,
+  "projectFilePath": "/Volumes/Daten/grimoire-next/tests/Grimoire.Contract.Tests/Grimoire.Contract.Tests.csproj",
+  "expectedPackageFiles": [
+    "/Users/wolfgang/.nuget/packages/microsoft.applicationinsights/2.23.0/microsoft.applicationinsights.2.23.0.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/microsoft.bcl.asyncinterfaces/6.0.0/microsoft.bcl.asyncinterfaces.6.0.0.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/microsoft.testing.extensions.telemetry/2.4.0/microsoft.testing.extensions.telemetry.2.4.0.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/microsoft.testing.extensions.trxreport.abstractions/2.4.0/microsoft.testing.extensions.trxreport.abstractions.2.4.0.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/microsoft.testing.platform/2.4.0/microsoft.testing.platform.2.4.0.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/microsoft.testing.platform.msbuild/2.4.0/microsoft.testing.platform.msbuild.2.4.0.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/microsoft.win32.registry/5.0.0/microsoft.win32.registry.5.0.0.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/system.security.accesscontrol/6.0.1/system.security.accesscontrol.6.0.1.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/xunit.analyzers/2.1.0/xunit.analyzers.2.1.0.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/xunit.v3/4.0.1/xunit.v3.4.0.1.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/xunit.v3.assert/4.0.1/xunit.v3.assert.4.0.1.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/xunit.v3.common/4.0.1/xunit.v3.common.4.0.1.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/xunit.v3.core.mtp-v2/4.0.1/xunit.v3.core.mtp-v2.4.0.1.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/xunit.v3.extensibility.core/4.0.1/xunit.v3.extensibility.core.4.0.1.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/xunit.v3.mtp-v2/4.0.1/xunit.v3.mtp-v2.4.0.1.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/xunit.v3.runner.common/4.0.1/xunit.v3.runner.common.4.0.1.nupkg.sha512",
+    "/Users/wolfgang/.nuget/packages/xunit.v3.runner.inproc.console/4.0.1/xunit.v3.runner.inproc.console.4.0.1.nupkg.sha512"
+  ],
+  "logs": []
+}

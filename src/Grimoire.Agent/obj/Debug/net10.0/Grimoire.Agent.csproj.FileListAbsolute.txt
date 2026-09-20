@@ -1,0 +1,12 @@
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/bin/Debug/net10.0/Grimoire.Agent.deps.json
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/bin/Debug/net10.0/Grimoire.Agent.dll
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/bin/Debug/net10.0/Grimoire.Agent.pdb
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/obj/Debug/net10.0/Grimoire.Agent.GeneratedMSBuildEditorConfig.editorconfig
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/obj/Debug/net10.0/Grimoire.Agent.AssemblyInfoInputs.cache
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/obj/Debug/net10.0/Grimoire.Agent.AssemblyInfo.cs
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/obj/Debug/net10.0/Grimoire.Agent.csproj.CoreCompileInputs.cache
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/obj/Debug/net10.0/Grimoire.Agent.sourcelink.json
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/obj/Debug/net10.0/Grimoire.Agent.dll
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/obj/Debug/net10.0/refint/Grimoire.Agent.dll
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/obj/Debug/net10.0/Grimoire.Agent.pdb
+/Volumes/Daten/grimoire-next/src/Grimoire.Agent/obj/Debug/net10.0/ref/Grimoire.Agent.dll

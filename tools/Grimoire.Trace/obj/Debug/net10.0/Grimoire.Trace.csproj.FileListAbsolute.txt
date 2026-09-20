@@ -1,0 +1,15 @@
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/bin/Debug/net10.0/Grimoire.Trace
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/bin/Debug/net10.0/Grimoire.Trace.deps.json
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/bin/Debug/net10.0/Grimoire.Trace.runtimeconfig.json
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/bin/Debug/net10.0/Grimoire.Trace.dll
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/bin/Debug/net10.0/Grimoire.Trace.pdb
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/Grimoire.Trace.GeneratedMSBuildEditorConfig.editorconfig
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/Grimoire.Trace.AssemblyInfoInputs.cache
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/Grimoire.Trace.AssemblyInfo.cs
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/Grimoire.Trace.csproj.CoreCompileInputs.cache
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/Grimoire.Trace.sourcelink.json
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/Grimoire.Trace.dll
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/refint/Grimoire.Trace.dll
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/Grimoire.Trace.pdb
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/Grimoire.Trace.genruntimeconfig.cache
+/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/obj/Debug/net10.0/ref/Grimoire.Trace.dll

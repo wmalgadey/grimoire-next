@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "j7lsbyT24ek=",
+  "success": true,
+  "projectFilePath": "/Volumes/Daten/grimoire-next/tools/Grimoire.Trace/Grimoire.Trace.csproj",
+  "expectedPackageFiles": [
+    "/Users/wolfgang/.nuget/packages/system.reflection.metadataloadcontext/10.0.12/system.reflection.metadataloadcontext.10.0.12.nupkg.sha512"
+  ],
+  "logs": []
+}

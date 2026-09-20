@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "Grimoire.Wiki/1.0.0": {
+        "runtime": {
+          "Grimoire.Wiki.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Grimoire.Wiki/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

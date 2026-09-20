@@ -14,8 +14,11 @@ requires an amendment that retires one.
 - [ ] **2. Slice shape** — The feature is one vertical slice with a user-observable result and adds
       exactly one of: a new operation, a new user interaction, a new external system. *(I.6)*
 
-- [ ] **3. Standard scope** — Where an external standard applies, only the parts the capability
-      requirements name are built, against the version pinned in `docs/product.md`. *(I.8)*
+- [ ] **3. Standard scope and the instruction** — Where an external standard applies, only the
+      parts the capability requirements name are built, against the version pinned in
+      `docs/product.md`. And where a capability requirement places the shape of an artifact on the
+      agent rather than on our code, does the instruction every run receives state that shape, in
+      full, as the requirement lists it? *(I.8)*
 
 - [ ] **4. Closing the feature** — Merged to main, no branch stack deeper than one, and the
       capability files reconciled with this feature's requirements as added, changed, or removed,

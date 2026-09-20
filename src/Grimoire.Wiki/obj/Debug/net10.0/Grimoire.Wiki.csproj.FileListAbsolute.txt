@@ -1,0 +1,12 @@
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/bin/Debug/net10.0/Grimoire.Wiki.deps.json
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/bin/Debug/net10.0/Grimoire.Wiki.dll
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/bin/Debug/net10.0/Grimoire.Wiki.pdb
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/obj/Debug/net10.0/Grimoire.Wiki.GeneratedMSBuildEditorConfig.editorconfig
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/obj/Debug/net10.0/Grimoire.Wiki.AssemblyInfoInputs.cache
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/obj/Debug/net10.0/Grimoire.Wiki.AssemblyInfo.cs
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/obj/Debug/net10.0/Grimoire.Wiki.csproj.CoreCompileInputs.cache
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/obj/Debug/net10.0/Grimoire.Wiki.sourcelink.json
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/obj/Debug/net10.0/Grimoire.Wiki.dll
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/obj/Debug/net10.0/refint/Grimoire.Wiki.dll
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/obj/Debug/net10.0/Grimoire.Wiki.pdb
+/Volumes/Daten/grimoire-next/src/Grimoire.Wiki/obj/Debug/net10.0/ref/Grimoire.Wiki.dll

@@ -1,0 +1,41 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "Grimoire.Trace/1.0.0": {
+        "dependencies": {
+          "System.Reflection.MetadataLoadContext": "10.0.12"
+        },
+        "runtime": {
+          "Grimoire.Trace.dll": {}
+        }
+      },
+      "System.Reflection.MetadataLoadContext/10.0.12": {
+        "runtime": {
+          "lib/net10.0/System.Reflection.MetadataLoadContext.dll": {
+            "assemblyVersion": "10.0.0.12",
+            "fileVersion": "10.0.1226.42308"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Grimoire.Trace/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "System.Reflection.MetadataLoadContext/10.0.12": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-+DWu1fzj75I1FgdHSg3crgeZmfF2z55x1+OXF2IO2Lcq/iNgM9tL734pxAG0vo5iE82FVPHwbqUt31o8ipPBWg==",
+      "path": "system.reflection.metadataloadcontext/10.0.12",
+      "hashPath": "system.reflection.metadataloadcontext.10.0.12.nupkg.sha512"
+    }
+  }
+}
