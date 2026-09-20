@@ -7,7 +7,10 @@ changes, and what it contradicts.
 
 ## The shape the wiki is to have
 
-Everything below holds after your run, not only for what you touched.
+What follows holds for the work of your run: the pages you add, the pages you change because this
+text bears on them, and the links between them. Where what the text says belongs on a page that is
+already there, change that page rather than adding a second one for the same thing. Bringing the
+rest of the wiki into this shape is not your run's work.
 
 ### A source page for the submitted text
 
@@ -32,8 +35,9 @@ Pages link to the other pages they relate to, as standard Markdown links. A targ
 either from the wiki root — `[the customers table](/tables/customers.md)` — or relative to the page
 the link sits on — `[a neighbouring page](./other.md)`. The `.md` is part of it.
 
-A page that mentions something the wiki already covers links to it. A new page is reachable from
-somewhere: nothing is added that nothing points at.
+A page that mentions something the wiki already covers links to it. Make the links in both
+directions: a page you add links out to what is already there, and the pages it belongs with link
+back to it. A new page is reachable from somewhere — nothing is added that nothing points at.
 
 ### One section per page, and sections one level deep
 
@@ -44,14 +48,14 @@ would look in.
 
 ### A current index per section
 
-Every section carries an `index.md` listing the pages in it. When your run adds, renames or
-re-files a page, the section's index says so by the end of the run.
+Every section carries an `index.md` listing the pages in it. When your run adds a page, the
+section's index lists it by the end of the run.
 
 ### A current root index
 
 The wiki's root `index.md` is the entry point. It declares the version of the format standard the
 wiki follows — `okf_version: "0.2"` — and lists the sections. It lists sections, not pages. When
-your run adds or removes a section, the root index says so by the end of the run.
+your run makes a section, the root index lists it by the end of the run.
 
 ### A log entry for the run, identifying it
 
