@@ -146,7 +146,9 @@ the grant cannot appear, because it does not exist in the run.
   "permission_denials": [] }
 ```
 
-A `result` means the agent has stopped. The hub then reads `log.md` for the run's entry and decides:
+A `result` means the agent has stopped. The hub then reads `log.md` and decides. **An entry is
+present when `log.md` contains the run's identifier as plain text** — nothing else is parsed
+(data-model.md §Log).
 
 | What the hub sees | What it does |
 | --- | --- |

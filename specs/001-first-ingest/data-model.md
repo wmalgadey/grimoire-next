@@ -65,7 +65,7 @@ One attempt to work one submission into the wiki.
 
 | Field | Type | Rules |
 | --- | --- | --- |
-| `Id` | GUID | Handed to the agent as part of what a run is given (INGEST-002); names the run in the generation record (WIKI-002) and in the log entry (WIKI-001) |
+| `Id` | GUID | Handed to the agent as part of what a run is given (INGEST-002); names the run in the generation record (WIKI-002) and in the log entry (WIKI-001), where its presence as plain text is what RUNS-005 matches on |
 | `SubmissionId` | GUID | Exactly one submission per run |
 | `StartedAt` | UTC instant | Read from `TimeProvider`; start of the elapsed-time ceiling (research.md R-12) |
 | `Grant` | `ToolGrant` | Recorded for every run (GUARD-003) |
@@ -84,12 +84,19 @@ The list of tools a given run may use, recorded with the run (GUARD-003).
 
 | Field | Type | Rules |
 | --- | --- | --- |
-| `ToolNames` | ordered set of string | For an ingest run: read anything in the wiki, create and change pages, indexes and the log — and nothing else. Deleting and moving are not in it (GUARD-002) |
+| `ToolNames` | ordered set of string | The five **bare** tool names the hub serves — `list_pages`, `read_page`, `write_page`, `write_index`, `append_log`: read anything in the wiki, create and change pages, indexes and the log, and nothing else. Deleting and moving are not in it (GUARD-002) |
 | `RecordedAt` | UTC instant | Recorded when the run is dispatched |
 
 The grant is what the MCP endpoint serves, and it is also the agent's *entire* tool surface: the
 run is started with every built-in tool switched off, so a tool absent from the grant does not exist
 for that run (GUARD-001; research.md R-03, R-11).
+
+**Two spellings, one grant.** The hub serves and records the bare names above; the CLI namespaces
+every MCP tool and reports them as `mcp__wiki__<name>`. Neither is converted in store — the grant
+is kept bare, and the comparison GUARD-001 rests on maps before it compares: *the tool surface
+reported in `system/init` equals the grant* means that set equals
+`{ "mcp__wiki__" + n : n ∈ ToolNames }`. The mapping lives in `HarnessProcess`, the one place that
+speaks to the CLI (Constitution V.2), and nowhere else.
 
 ---
 
@@ -167,6 +174,12 @@ agent.
 **The one thing Grimoire reads in the wiki**: whether `log.md` holds an entry identifying a given
 run. That single fact decides the run's state (RUNS-005). Nothing else in the wiki is read to
 decide anything.
+
+**How the entry is matched**: `log.md` contains the run's `Id` as plain text. Nothing more is
+parsed — not the entry's shape, not its prose, not which lines belong to which entry. WIKI-001
+already demands that the entry identify its run, so no format is imposed on the agent and the log
+stays a document a person reads. A run `Id` is a fresh GUID, so it cannot appear in an older
+entry (spec Clarifications, 2026-09-20).
 
 Indexes and the log are not pages: they carry no `type`, no `sources` and no `generated` record.
 

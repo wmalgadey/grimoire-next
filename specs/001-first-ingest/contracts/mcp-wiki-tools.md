@@ -1,7 +1,10 @@
 # Contract: MCP wiki tools (agent ↔ hub)
 
 The hub serves these as an MCP server over streamable HTTP at `/mcp/runs/{runId}`, bound to
-loopback. The agent reaches them as `mcp__wiki__<tool>`.
+loopback. The agent reaches them as `mcp__wiki__<tool>`: the bare names below are what the hub
+serves and what the grant records, and `mcp__wiki__` is the CLI's namespacing of them. Where the
+two have to be compared — the tool surface `system/init` reports against the grant — the bare
+names are mapped to the prefixed form first (data-model.md §ToolGrant).
 
 **No authentication on the endpoint.** `docs/product.md` §2 puts Grimoire inside a network the user
 trusts and gives it no access control of its own; the run identifier in the path is addressing, not

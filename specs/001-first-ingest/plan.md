@@ -160,12 +160,12 @@ src/
     OkfFrontmatter.cs                #   only the six OKF parts R-07 names
     Adapters/FileSystemWikiStore.cs  #   the only place the filesystem is touched
   Grimoire.Runs/                     # RUNS context
-    Submission.cs  Run.cs  ToolGrant.cs
+    Submission.cs                    #   the submission and its four states (RUNS-001)
     SubmissionBoard.cs               #   the in-memory states — a plain object, no port (R-08)
-    RunStateMachine.cs               #   RUNS-001, RUNS-005 and its single nudge
+    RunStateMachine.cs               #   Run, plus RUNS-005 and its single nudge
   Grimoire.Agent/                    # GUARD context
     IAgentHarness.cs                 #   port — dispatch, nudge, stop
-    Grant.cs  Ceilings.cs            #   GUARD-002, GUARD-004
+    ToolGrant.cs  Ceilings.cs        #   GUARD-002/003, GUARD-004
     Adapters/HarnessProcess.cs       #   the only place the claude process and its NDJSON live
   Grimoire.Hub/                      # composition root + the two HTTP surfaces
     Api/SubmissionsEndpoints.cs      #   ACCESS-001/002, INGEST-001/003/004/005
