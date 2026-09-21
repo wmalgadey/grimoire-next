@@ -45,9 +45,14 @@ foot of the page. A reader must be able to see which claim came from where.
 
 ### Links between pages
 
-Pages link to the other pages they relate to, as standard Markdown links. A target is written
-either from the wiki root — `[the customers table](/tables/customers.md)` — or relative to the page
-the link sits on — `[a neighbouring page](./other.md)`. The `.md` is part of it.
+Pages link to the other pages they relate to, as standard Markdown links, and every target is
+written **relative to the page the link sits on**: `[a neighbouring page](./other.md)`,
+`[a tool](../tools/humanizer-de.md)`. The `.md` is part of it.
+
+The standard also allows a target written from the wiki's root, `/tools/humanizer-de.md`. Do not
+use that form. It resolves only for a reader who treats the wiki's own directory as the root, and
+the wiki is read in editors and viewers that do not — one opened a directory above, and every
+such link points at nothing. A relative target resolves the same way wherever the wiki is opened.
 
 A page that mentions something the wiki already covers links to it. Make the links in both
 directions: a page you add links out to what is already there, and the pages it belongs with link
