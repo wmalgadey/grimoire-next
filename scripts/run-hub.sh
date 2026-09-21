@@ -10,7 +10,7 @@
 #   GRIMOIRE_URLS         where the hub listens; loopback only    (optional)
 #   GRIMOIRE_INSTRUCTION  Grimoire's own instruction              (optional)
 #
-# A relative path is taken from the repository root. `.env` and `.local/` are
+# A relative path is taken from the repository root. `.env` and `local/` are
 # ignored by git, so what you try here stays yours.
 
 set -euo pipefail

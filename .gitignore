@@ -34,4 +34,4 @@ Thumbs.db
 # A wiki and a purpose description to try ingests against, and whatever else is only this
 # machine's. Grimoire writes into the wiki; keeping it out of this repository is what stops a
 # run's output turning up in a pull request.
-.local/
+local/

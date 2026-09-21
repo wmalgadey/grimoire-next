@@ -14,9 +14,11 @@ rest of the wiki into this shape is not your run's work.
 
 ### A source page for the submitted text
 
-Every submitted text gets a page of its own that stands for it as a source. Other pages name that
-page where they rest on it. What the source page itself carries is your judgement — a faithful
-record of what the text says and where it came from, in your words or the author's.
+Every submitted text gets a page of its own that stands for it as a source. It is filed by its
+subject like every other page: what the text is *about* decides where it goes, never that it
+happens to be a source. Other pages name it where they rest on it. What it carries is your
+judgement — a faithful record of what the text says and where it came from, in your words or the
+author's.
 
 ### A type on every page
 
@@ -42,9 +44,16 @@ back to it. A new page is reachable from somewhere — nothing is added that not
 ### One section per page, and sections one level deep
 
 Every page lives in exactly one section — one directory — and sections are one level deep. There
-are no sections inside sections, and no page belongs to two. Which sections exist is your
-decision; make one when the wiki has enough to fill it, and put a page in the section a reader
-would look in.
+are no sections inside sections, and no page belongs to two.
+
+**A section is a subject, never a kind of page.** Its name says what the pages in it are about —
+the thing a reader has in mind when they go looking. `sources`, `quellen`, `notes`, `inbox`,
+`misc`, `eingereicht` and the like are not subjects: they say how a page came to exist, which is
+not how anyone looks for it. Nothing in this wiki is filed by its origin.
+
+Which subjects exist is your decision, and a new subject gets its own section the moment the
+first page belongs to it — a section holding one page is a section. Put a page where a reader
+would look for it, not where the last page happened to go.
 
 ### A current index per section
 
