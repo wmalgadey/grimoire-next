@@ -64,7 +64,7 @@ As long as one person uses Grimoire, it needs no access control of its own: it a
      Later = needs a trigger from §7. -->
 | ID     | I can ...                                                                                              | Status | Capabilities                  | Specs |
 | ------ | ------------------------------------------------------------------------------------------------------ | ------ | ----------------------------- | ----- |
-| OUT-01 | submit a text in the browser and afterwards find new, linked pages including a source page in the wiki | Now    | INGEST,WIKI,GUARD,ACCESS,RUNS |       |
+| OUT-01 | submit a text in the browser and afterwards find new, linked pages including a source page in the wiki | Now    | INGEST,WIKI,GUARD,ACCESS,RUNS | 001-first-ingest |
 | OUT-02 | see for every run what it did, why it ended and what it cost                                           | Next   | RUNS                          |       |
 | OUT-03 | ask a question and get an answer with references to wiki pages                                         | Next   | QUERY                         |       |
 | OUT-04 | trust that an agent only reaches what I have allowed                                                   | Later  | GUARD                         |       |

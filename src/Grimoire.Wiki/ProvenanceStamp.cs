@@ -4,7 +4,7 @@ namespace Grimoire.Wiki;
 /// Who generated a page and when. The only thing Grimoire writes into the wiki
 /// (WIKI-002, Constitution V.1).
 /// </summary>
-/// <param name="By">Grimoire and the model the run was served by, and the run itself.</param>
+/// <param name="By">An actor, in one of the three forms OKF 0.2 §7 admits.</param>
 /// <param name="At">The write time.</param>
 public sealed record GenerationRecord(string By, DateTimeOffset At);
 

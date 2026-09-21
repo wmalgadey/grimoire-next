@@ -26,10 +26,21 @@ public sealed class RunAddress(IHttpContextAccessor accessor, string model)
             : throw new InvalidOperationException("this tool call carries no readable run identifier");
 
     /// <summary>
-    /// Who generated a page: Grimoire, the model the run was served by, and the run itself. This
-    /// is the whole of what Grimoire writes into the wiki (WIKI-002, Constitution V.1).
+    /// Who generated a page: Grimoire, and the model the run was served by. This is the whole of
+    /// what Grimoire writes into the wiki (WIKI-002, Constitution V.1).
     /// </summary>
-    public string GeneratedBy => $"Grimoire; model {model}; run {RunId}";
+    /// <remarks>
+    /// The <c>&lt;producer&gt;/&lt;version&gt;</c> form of OKF 0.2 §7, which admits three spellings
+    /// of an actor and no free text; the standard's own example is
+    /// <c>reference_agent/gemini-2.5-pro</c>. The root index declares <c>okf_version: "0.2"</c>, so
+    /// a record in any other shape is a claim the wiki does not honour.
+    /// <para>
+    /// The run identifier is deliberately not here. An actor is one actor, and the page was
+    /// produced by the agent rather than by a run; what the run did is in the log entry, which
+    /// names every file it touched, and <see cref="GenerationRecord.At"/> dates the page.
+    /// </para>
+    /// </remarks>
+    public string GeneratedBy => $"grimoire/{model}";
 }
 
 /// <summary>

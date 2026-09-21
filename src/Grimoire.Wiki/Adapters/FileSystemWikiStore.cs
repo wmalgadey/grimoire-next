@@ -58,7 +58,9 @@ public sealed class FileSystemWikiStore : IWikiStore
         var file = Resolve(WikiFile.Log);
 
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        await File.AppendAllTextAsync(file, entry, cancellationToken).ConfigureAwait(false);
+
+        // ensure the log files always ends with a single newline, so new log entries are separated by a blank line
+        await File.AppendAllTextAsync(file, entry.TrimEnd('\n') + '\n', cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

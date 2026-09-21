@@ -71,8 +71,11 @@ public static class SubmissionsEndpoints
             var result = await intake.SubmitAsync(request?.Text ?? string.Empty, startUpInputs())
                 .ConfigureAwait(false);
 
+            // 202 with the accepted submission and no location: there is no endpoint for one
+            // submission, and `contracts/hub-http-api.md` promises none — the browser reads the
+            // list. A location pointing at a route nobody serves would be a promise that 404s.
             return result.Accepted is { } accepted
-                ? Results.Accepted($"/api/submissions/{accepted.Id}", SubmissionView.Of(accepted))
+                ? Results.Json(SubmissionView.Of(accepted), statusCode: StatusCodes.Status202Accepted)
                 : Refused(result.Refused!.Value);
         });
 

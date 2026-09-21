@@ -145,12 +145,12 @@ exactly that state and nothing else.
 
 ## Phase 6: Closing the feature
 
-- [ ] T037 Run the Contract suite in both halves — `--filter-not-trait "requires=signin"` as CI does, and `--filter-trait "requires=signin"` locally with the owner's sign-in — and the E2E suite. All pass, Contract inside `--timeout 90s`. The default run is Fast only, so this is the one place they are exercised before the PR — **Req:** Principle III.7
-- [ ] T038 Run `trace-check check --complete`; it passes — every `test` requirement has a test carrying its ID, no test carries an unknown, retired or reserved ID, every test has a level, and every E2E test has a requirement ID. This is the call CI makes where the feature lands on main — **Req:** Principle IV.3
-- [ ] T039 Regenerate and commit `docs/trace.md` with `Grimoire.Trace write`, and set OUT-01's status and spec reference in `docs/product.md` — the only two edits an agent makes to that file — **Req:** Principle IV.4
-- [ ] T040 Reconcile `docs/capabilities/{ingest,wiki,guard,access,runs}.md` with this feature's requirements as added, changed or removed, and merge the plan's binding decisions into `docs/decisions.md`, each with its reason and the next free `DEC-NNN` — **Req:** Principle IV.2, Principle II.6
-- [ ] T041 Walk `docs/review-checklist.md`, all twelve items — including item 3, which is what proves WIKI-001, and item 5's question whether the owner has read what WIKI-001, this feature's one review-proven requirement, is about — **Req:** Principle Gov.2, Principle I.9
-- [ ] T042 The owner exercises OUT-01 once with the real external systems in place, per the acceptance run in plan.md and `quickstart.md`: the real `claude` CLI signed in against a real model, and a real wiki. This is the last task of the feature; without it the feature is not done — **Req:** Principle I.9
+- [X] T037 Run the Contract suite in both halves — `--filter-not-trait "requires=signin"` as CI does, and `--filter-trait "requires=signin"` locally with the owner's sign-in — and the E2E suite. All pass, Contract inside `--timeout 90s`. The default run is Fast only, so this is the one place they are exercised before the PR — **Req:** Principle III.7
+- [X] T038 Run `trace-check check --complete`; it passes — every `test` requirement has a test carrying its ID, no test carries an unknown, retired or reserved ID, every test has a level, and every E2E test has a requirement ID. This is the call CI makes where the feature lands on main — **Req:** Principle IV.3
+- [X] T039 Regenerate and commit `docs/trace.md` with `Grimoire.Trace write`, and set OUT-01's status and spec reference in `docs/product.md` — the only two edits an agent makes to that file — **Req:** Principle IV.4
+- [X] T040 Reconcile `docs/capabilities/{ingest,wiki,guard,access,runs}.md` with this feature's requirements as added, changed or removed, and merge the plan's binding decisions into `docs/decisions.md`, each with its reason and the next free `DEC-NNN` — **Req:** Principle IV.2, Principle II.6
+- [X] T041 Walk `docs/review-checklist.md`, all twelve items — including item 3, which is what proves WIKI-001, and item 5's question whether the owner has read what WIKI-001, this feature's one review-proven requirement, is about — **Req:** Principle Gov.2, Principle I.9
+- [X] T042 The owner exercises OUT-01 once with the real external systems in place, per the acceptance run in plan.md and `quickstart.md`: the real `claude` CLI signed in against a real model, and a real wiki. This is the last task of the feature; without it the feature is not done — **Req:** Principle I.9
 
 ---
 
@@ -208,3 +208,23 @@ exactly that state and nothing else.
 - Commit after each task or logical group.
 - A finding from review becomes a test only if it names a violated requirement ID (Governance 3);
   otherwise it becomes the smallest code change that resolves it, or is dropped.
+
+---
+
+## Phase 7: Convergence
+
+Appended by `/speckit-converge` (Governance 2). Each finding traces to the artifact it came from.
+
+- [X] T043 **CRITICAL** Compose the hub at its entry point in `src/Grimoire.Hub/Program.cs`, which still builds a bare `WebApplication`: read the start-up inputs quickstart.md documents — `--wiki`, `--purpose`, `--model`, with the instruction defaulting to the `instructions/ingest.md` that ships with Grimoire — call `HubApplication.Build` with `FileSystemWikiStore` and `HarnessProcess` at their two ports, bind loopback (DEC-014, `docs/product.md` §2), and give the harness the hub's own address for `--mcp-config`, which is known only once the server is listening. Dependency wiring is not tested (III.8), so no suite catches this and none is added; the owner's acceptance run is what exercises it — per quickstart.md acceptance run, plan.md Structure Decision, Constitution I.9 (missing)
+- [X] T044 `POST /api/submissions` answers `202` with a `Location` of `/api/submissions/{id}`, which no endpoint serves; `contracts/hub-http-api.md` defines two endpoints and neither is that one. Return the accepted body without a location that resolves nowhere — per `contracts/hub-http-api.md` (contradicts)
+
+---
+
+## Phase 8: Convergence
+
+Appended by a second `/speckit-converge`, at the owner's request. Governance 2 has it run once per
+feature; this run followed the first real ingest, which is where the wiki the standard describes
+first met the wiki we actually write.
+
+- [X] T045 `generated.by` is a free-form string — `Grimoire; model <id>; run <guid>` in `src/Grimoire.Hub/Mcp/WikiToolsServer.cs:32` — where OKF 0.2 §7 admits three actor forms only: `<producer>/<version>`, `human:<id>`, `process:<id>`. The root index we write declares `okf_version: "0.2"`, so this is a claim the wiki does not honour. Write `grimoire/<model>` (the `<producer>/<version>` form, as the standard's own `reference_agent/gemini-2.5-pro` example), and name the convention in `docs/capabilities/wiki.md` beside the parts of OKF that apply. **The run identifier leaves the page with it**, which is the owner's decision: the log entry now lists every file a run touched, so a page is reached from its run, and `generated.at` dates it. No test asserts the identifier in the stamp — `ProvenanceStamp` is agnostic about the string — so none breaks. WIKI-002's closing clause, "When a run updates a page, the record MUST name that run", stops being true of the implementation and is a **spec change, not part of this task**: it goes through `/speckit-clarify` (Governance 2), which settles the wording before `docs/capabilities/wiki.md` is reconciled — per WIKI-002, Constitution I.8, OKF 0.2 §7 (contradicts)
+- [X] T046 The log-entry example in `instructions/ingest.md` shows a new page, an updated page and an updated index, but no source page — while the text under it asks for one line per file the run touched, and every run writes a source page. Show it, so the shape the agent copies is the whole shape — per `instructions/ingest.md`, WIKI-001 (partial)
