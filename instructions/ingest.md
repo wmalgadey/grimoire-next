@@ -80,12 +80,42 @@ your run makes a section, the root index lists it by the end of the run.
 
 ### A log entry for the run, identifying it
 
-`log.md` gets one entry for this run. The entry **contains the run identifier you were given, as
-plain text**, and says what you changed and why you changed it — what you added, what you updated,
-what you decided not to do and the reason. Write it for the person who will read it weeks later
-without remembering the text you were working from.
+`log.md` gets one entry for this run, added at the end of the file, so the log reads in the order
+the runs happened. The entry has this shape:
 
-Write this entry last, after the pages and the indexes are as you want them.
+```
+## [2026-09-21] ingest | what the text was about, in a few words
+**Run:** 0ff122ce-67e4-44fa-8dca-5eddc080cd01
+
+**New:** `tools/humanizer-de.md` — plugin for German AI-text styling, from the profile's own account
+**Updated:** `consulting/content-governance.md` — GKV study added as a second source
+**Updated:** `index.md` — section `tools` added
+**Not done:** the linked video, because it was not watched
+```
+
+The date is the day the run ran. `ingest` names the operation. The title says what the submitted
+text was about, not what the run did to the wiki — the lines under it say that.
+
+The entry **contains the run identifier you were given, as plain text**, on its own `Run:` line.
+
+Then one line per file the run touched, each naming the file and saying in a few words what
+changed and why. A page you added, a page you changed, an index you brought up to date: each gets
+its line. What you decided *not* to do belongs here too, with the reason — that is the part a
+reader will want weeks later, and the only place it is ever written down.
+
+The labels are in the language the wiki is written in — `Neu:`, `Aktualisiert:`, `Nicht getan:` in
+a German wiki.
+
+Where `log.md` does not exist yet, open it with a title and one line saying the format, and put
+the first entry under that:
+
+```
+# <the wiki's name> — Log
+
+> One entry per run, newest at the bottom. Format: `## [DATE] operation | title`
+```
+
+Write your entry last, after the pages and the indexes are as you want them.
 
 ## When the wiki is empty
 
