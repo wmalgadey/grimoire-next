@@ -5,6 +5,7 @@ using Grimoire.Runs;
 using Grimoire.Wiki;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Grimoire.Hub;
 
@@ -49,6 +50,26 @@ public static class HubApplication
             Args = args,
             ContentRootPath = AppContext.BaseDirectory,
         });
+
+        // One line per entry, stamped, so that what the console says can be held against the clock
+        // while a run is under way. UTC, because everything else the running system shows is UTC
+        // too — the browser's list of submissions, and the `generated.at` on every page a run
+        // writes — and a log that needs an offset applied before it can be compared is a log that
+        // will be compared wrongly.
+        builder.Logging.AddSimpleConsole(console =>
+        {
+            console.SingleLine = true;
+            console.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
+            console.UseUtcTimestamp = true;
+        });
+
+        // What is left after this is one line as a request arrives and one as it finishes — the
+        // agent's tool calls among them, which is how a run is watched. The three categories
+        // turned down here only restate that same request: the endpoint that was selected, the
+        // static file that was sent, the result type that was written.
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Routing", LogLevel.Warning);
+        builder.Logging.AddFilter("Microsoft.AspNetCore.StaticFiles", LogLevel.Warning);
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Http.Result", LogLevel.Warning);
 
         // The wiki tools, served from the hub itself over streamable HTTP. Putting them here keeps
         // the stamping, the grant and both ceilings in one place where Fast tests reach them, and
