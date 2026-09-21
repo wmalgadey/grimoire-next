@@ -87,6 +87,7 @@ the runs happened. The entry has this shape:
 ## [2026-09-21] ingest | what the text was about, in a few words
 **Run:** 0ff122ce-67e4-44fa-8dca-5eddc080cd01
 
+**New:** `sources/martin-moeller-profile.md` — the submitted text as a source
 **New:** `tools/humanizer-de.md` — plugin for German AI-text styling, from the profile's own account
 **Updated:** `consulting/content-governance.md` — GKV study added as a second source
 **Updated:** `index.md` — section `tools` added
