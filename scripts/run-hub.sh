@@ -2,6 +2,10 @@
 #
 # Start the hub against the wiki named in .env, for trying an ingest by hand.
 #
+#   run-hub.sh                start the hub against the wiki as it stands
+#   run-hub.sh --fresh        throw that wiki away first and start from an empty one
+#   run-hub.sh --fresh --yes  the same without being asked to confirm
+#
 # `.env` at the repository root, `KEY=value` per line:
 #
 #   GRIMOIRE_WIKI         the wiki this Grimoire writes into      (required)
@@ -14,6 +18,17 @@
 # ignored by git, so what you try here stays yours.
 
 set -euo pipefail
+
+fresh=false
+confirmed=false
+
+for argument in "$@"; do
+  case "$argument" in
+    --fresh) fresh=true ;;
+    --yes|-y) confirmed=true ;;
+    *) echo "run-hub.sh [--fresh] [--yes]" >&2; exit 1 ;;
+  esac
+done
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 env_file="$root/.env"
@@ -50,6 +65,32 @@ if [[ ! -f "$purpose" ]]; then
   echo "No purpose description at $purpose. Every run is given it, and without it every" >&2
   echo "submission is refused (INGEST-003)." >&2
   exit 1
+fi
+
+# Throwing the wiki away is how a changed instruction gets a clean reading: a run cannot delete
+# or move what an earlier one wrote (GUARD-002), so an abandoned section stays in the tree and in
+# the root index until someone removes it by hand.
+if [[ "$fresh" == true && -d "$wiki" ]]; then
+  # Refuse the paths where a mistyped GRIMOIRE_WIKI does real damage. The wiki is meant to be a
+  # directory of its own, and none of these is that.
+  case "$wiki" in
+    / | "$HOME" | "$HOME"/ | "$root" | "$root"/) echo "Refusing to delete $wiki." >&2; exit 1 ;;
+  esac
+
+  files="$(find "$wiki" -type f -not -path '*/.git/*' | wc -l | tr -d ' ')"
+  commits="$(git -C "$wiki" rev-list --count HEAD 2>/dev/null || echo 0)"
+
+  echo "About to delete $wiki — $files file(s), $commits commit(s) of history."
+  [[ "$commits" != "0" ]] && echo "Its history goes with it, and that history is the only undo there is."
+
+  if [[ "$confirmed" != true ]]; then
+    # No terminal to ask at means no answer, and no answer means no.
+    read -r -p "Type the word yes to delete it: " answer || answer=""
+    [[ "$answer" == "yes" ]] || { echo "Left alone." >&2; exit 1; }
+  fi
+
+  rm -rf "$wiki"
+  echo "Deleted $wiki."
 fi
 
 # The wiki is a repository you control, because Grimoire never commits and never takes a run
