@@ -8,7 +8,7 @@ The goal is reached when I trust the runs enough to let them run unattended and 
 
 ## 2. User and context
 
-One person, one wiki with a purpose described by the user, self-hosted, used in the browser. Sources are submitted in passing, several times a week. The user reviews the results afterwards. During a run they do not wait. Reading and editing the wiki outside of Grimoire is possible at any time — that is a property of the artifact, not the intended way of working with it.
+One person, one wiki with a purpose described by the user, self-hosted, used in the browser. Sources are submitted in passing, several times a week. The user reviews the results afterwards. Submitting never requires waiting. The user often watches a run while it happens and returns to the results later; runs may also finish while nobody is looking. Reading and editing the wiki outside of Grimoire is possible at any time — that is a property of the artifact, not the intended way of working with it.
 
 The user describes the purpose of the wiki in a hand-written file. Every run receives it. Grimoire neither creates nor modifies it. The file belongs to Grimoire, not to the wiki: it is not a wiki page, it carries no OKF metadata and the agent does not maintain it.
 
@@ -62,23 +62,25 @@ As long as one person uses Grimoire, it needs no access control of its own: it a
      never reused; Order of rows = priority. OUT is not a capability name.
      Status: Now = gets specified next, Next = after that, without a condition,
      Later = needs a trigger from §7. -->
-| ID     | I can ...                                                                                              | Status | Capabilities                  | Specs |
-| ------ | ------------------------------------------------------------------------------------------------------ | ------ | ----------------------------- | ----- |
+| ID     | I can ...                                                                                              | Status | Capabilities                  | Specs            |
+| ------ | ------------------------------------------------------------------------------------------------------ | ------ | ----------------------------- | ---------------- |
 | OUT-01 | submit a text in the browser and afterwards find new, linked pages including a source page in the wiki | Now    | INGEST,WIKI,GUARD,ACCESS,RUNS | 001-first-ingest |
-| OUT-02 | see for every run what it did, why it ended and what it cost                                           | Next   | RUNS                          |       |
-| OUT-03 | ask a question and get an answer with references to wiki pages                                         | Next   | QUERY                         |       |
-| OUT-04 | trust that an agent only reaches what I have allowed                                                   | Later  | GUARD                         |       |
-| OUT-05 | submit a URL instead of a text                                                                         | Later  | INGEST,WIKI                   |       |
-| OUT-06 | have a high-value answer become a new wiki page, so that knowledge compounds                           | Later  | QUERY,WIKI                    |       |
-| OUT-07 | have the wiki checked and see the proposals                                                            | Later  | LINT                          |       |
-| OUT-08 | approve or reject the consequential proposals, while uncritical ones are carried out without asking    | Later  | LINT,RUNS,WIKI                |       |
-| OUT-09 | let the agent research on the internet when needed                                                     | Later  | INGEST,QUERY                  |       |
-| OUT-10 | run Grimoire permanently on my server                                                                  | Later  | OPS                           |       |
-| OUT-11 | use Grimoire through a chat program                                                                    | Later  | ACCESS                        |       |
-| OUT-12 | share the wiki with further people                                                                     | Later  | ACCESS                        |       |
-| OUT-13 | monitor the runs incl. detailed logs and metrics over time in a dashboard                              | Later  | RUNS                          |       |
-| OUT-14 | have Grimoire help me phrase the wiki's description, while I make the change myself                    | Later  | WIKI                          |       |
-| OUT-15 | stop committing by hand, because a run puts its own changes into the wiki's history                    | Later  | WIKI,RUNS                     |       |
+| OUT-02 | see for every run what it did, why it ended and what it cost                                           | Next   | RUNS                          |                  |
+| OUT-16 | I can watch what the agent is doing while a run is in progress                                         | Next   |                               | RUNS             |
+| OUT-03 | ask a question and get an answer with references to wiki pages                                         | Next   | QUERY                         |                  |
+| OUT-04 | trust that an agent only reaches what I have allowed                                                   | Later  | GUARD                         |                  |
+| OUT-05 | submit a URL instead of a text                                                                         | Later  | INGEST,WIKI                   |                  |
+| OUT-06 | have a high-value answer become a new wiki page, so that knowledge compounds                           | Later  | QUERY,WIKI                    |                  |
+| OUT-07 | have the wiki checked and see the proposals                                                            | Later  | LINT                          |                  |
+| OUT-08 | approve or reject the consequential proposals, while uncritical ones are carried out without asking    | Later  | LINT,RUNS,WIKI                |                  |
+| OUT-09 | let the agent research on the internet when needed                                                     | Later  | INGEST,QUERY                  |                  |
+| OUT-10 | run Grimoire permanently on my server                                                                  | Later  | OPS                           |                  |
+| OUT-11 | use Grimoire through a chat program                                                                    | Later  | ACCESS                        |                  |
+| OUT-17 | I am told when a run ends, without opening Grimoire                                                    | Later  |                               | RUNS             |
+| OUT-12 | share the wiki with further people                                                                     | Later  | ACCESS                        |                  |
+| OUT-13 | monitor the runs incl. detailed logs and metrics over time in a dashboard                              | Later  | RUNS                          |                  |
+| OUT-14 | have Grimoire help me phrase the wiki's description, while I make the change myself                    | Later  | WIKI                          |                  |
+| OUT-15 | stop committing by hand, because a run puts its own changes into the wiki's history                    | Later  | WIKI,RUNS                     |                  |
 
 Against the core loop (§3): steps 1 and 2 are OUT-01, step 3 is OUT-02, step 4 is OUT-03. The loop closes once Next is done, not with Now alone.
 
@@ -96,6 +98,7 @@ A trigger moves an outcome from Later to Next.
 - OUT-13: as soon as I have needed to compare runs by hand more than twice.
 - OUT-14: as soon as I set up a second wiki.
 - OUT-15: as soon as ingest, query and the browser UI run stably and I trust the agent enough that I no longer need the history as my gate.
+- OUT-17: as soon as I have enough confidence in the process, so I do not need to watch the agents worl.
 
 ## 8. Open questions
 
