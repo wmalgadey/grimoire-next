@@ -28,7 +28,7 @@ public sealed class FileSystemWikiStore : IWikiStore
 
         IReadOnlyList<string> paths =
         [
-            .. Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .. Directory.EnumerateFiles(root, "*", ListingLeavesLinksAlone)
                 .Select(f => Path.GetRelativePath(root, f).Replace(Path.DirectorySeparatorChar, '/'))
                 // A wiki is normally a git repository — scripts/run-hub.sh makes one — and its
                 // .git holds hundreds of files that are not pages. Listing them would bury the
@@ -109,7 +109,22 @@ public sealed class FileSystemWikiStore : IWikiStore
     private static bool IsInside(string directory, string full) =>
         full.Length > directory.Length
         && full.StartsWith(directory, StringComparison.Ordinal)
-        && full[directory.Length] == Path.DirectorySeparatorChar;
+        // A filesystem root keeps its separator — TrimEndingDirectorySeparator leaves "/" and
+        // "C:\\" as they are — so the child begins straight after it rather than after a
+        // separator of its own.
+        && (directory.EndsWith(Path.DirectorySeparatorChar) || full[directory.Length] == Path.DirectorySeparatorChar);
+
+    /// <summary>
+    /// How the wiki is enumerated: into real directories only. <c>AttributesToSkip</c> covers the
+    /// entry itself and the recursion, so a linked directory is neither listed nor descended into.
+    /// Without it <c>list_pages</c> would answer with files from outside the wiki that
+    /// <see cref="ReadAsync"/> and <see cref="WriteAsync"/> both refuse to touch.
+    /// </summary>
+    private static readonly EnumerationOptions ListingLeavesLinksAlone = new()
+    {
+        RecurseSubdirectories = true,
+        AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.System,
+    };
 
     /// <summary>
     /// Refuses a path that reaches outside the wiki through a symbolic link.

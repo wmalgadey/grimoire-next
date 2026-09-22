@@ -167,6 +167,30 @@ public sealed class FileSystemWikiStoreTests : IDisposable
 
     [Fact]
     [Trait("req", "GUARD-001")]
+    public async Task List_LeavesOutWhatALinkReachesOutsideTheWiki()
+    {
+        var outside = Directory.CreateTempSubdirectory("grimoire-outside-").FullName;
+
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(outside, "secret.md"), "Not the wiki's.\n", TestContext.Current.CancellationToken);
+            Directory.CreateSymbolicLink(Path.Combine(root, "elsewhere"), outside);
+            await wiki.WriteAsync("recipes/sourdough.md", "Body.\n", TestContext.Current.CancellationToken);
+
+            // Refusing to read or write through the link is not enough on its own: an enumeration
+            // that walks into it answers list_pages with files from outside the wiki, which the
+            // run may then ask for by name.
+            Assert.Equal(["recipes/sourdough.md"], await wiki.ListAsync(TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-001")]
     public async Task ReadPage_IsAllowed_WhenALinkStaysInsideTheWiki()
     {
         await wiki.WriteAsync("recipes/sourdough.md", "Body.\n", TestContext.Current.CancellationToken);

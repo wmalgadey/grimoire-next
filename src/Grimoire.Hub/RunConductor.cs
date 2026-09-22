@@ -69,7 +69,7 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
 
         if (run.Ceilings.ReachedBy(clock.GetUtcNow() - run.StartedAt, run.TokensUsed))
         {
-            _ = harness.StopAsync(run.Id, CancellationToken.None);
+            _ = StopAtACeilingAsync(run, submissionId);
         }
     }
 
@@ -149,10 +149,16 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
             return;
         }
 
-        _ = StopAtTheElapsedCeilingAsync(run, submissionId);
+        _ = StopAtACeilingAsync(run, submissionId);
     }
 
-    private async Task StopAtTheElapsedCeilingAsync(Run run, Guid submissionId)
+    /// <summary>
+    /// What either ceiling does: the interrupt first, and then the ending. Both go through here so
+    /// that neither can stop a run without also ending it — a stop that the agent does not answer
+    /// would otherwise leave the submission reading running, and the board refuses every later
+    /// text while one does (GUARD-004, INGEST-005).
+    /// </summary>
+    private async Task StopAtACeilingAsync(Run run, Guid submissionId)
     {
         try
         {
@@ -160,9 +166,9 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
         }
         catch (Exception)
         {
-            // Nothing awaits a timer callback, so a throw here would surface later as an
-            // unobserved task exception and the run would be left reading running. Whether the
-            // stop reached the agent or not, the ceiling was reached and the run is over.
+            // Nothing awaits this, so a throw would surface later as an unobserved task exception
+            // and the run would be left reading running. Whether the stop reached the agent or
+            // not, the ceiling was reached and the run is over.
         }
         finally
         {

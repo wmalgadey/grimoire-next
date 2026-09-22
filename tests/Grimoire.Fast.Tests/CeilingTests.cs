@@ -165,6 +165,22 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    public async Task Run_EndsFailed_WhenTheCostCeilingIsReachedAndTheAgentNeverReportsAgain()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+
+        // The interrupt goes out and the agent answers nothing — a turn that was already wedged
+        // when its streamed usage crossed the ceiling. The cost ceiling has to end the run for
+        // the same reason the elapsed one does, or the board refuses every later text.
+        hub.Harness.Spend(submission.Id, Ceilings.Fixed.Tokens);
+
+        Assert.Equal(SubmissionState.Failed, submission.State);
+        Assert.Null(hub.Conductor.Of(submission.Id));
+    }
+
+    [Fact]
     public async Task Run_IsNotStoppedByTheClock_BeforeTheCeiling()
     {
         var hub = new FastHub();
