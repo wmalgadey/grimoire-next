@@ -93,3 +93,77 @@ jobs:
       - name: trace-check --complete
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' }}
         run: dotnet run --project tools/Grimoire.Trace --no-build --configuration Release -- check --complete
+
+  # The three project metrics: requirements proven, line coverage of the Fast suite over the code
+  # that holds decisions of ours, and the time it takes to read src/. `scripts/metrics.sh` computes
+  # them with existing tools and writes the Markdown table this job puts in the job summary.
+  #
+  # Not a gate, and no thresholds anywhere: this job fails when a measurement breaks — a tool
+  # missing, a report unreadable, a value absent — and never because a value is low. Constitution
+  # II.2 makes a gate an amendment; three measurements are not one.
+  #
+  # On push to main only. A metric of a pull request's branch would be a number to move before the
+  # merge, which is what a target is.
+  metrics:
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    # Two pushes to main in quick succession would otherwise measure main twice at once, and both
+    # runs force-push the same branch: whichever finished last would win, so an older commit's
+    # numbers could end up on the badges. One group for the whole repository, and the newer run
+    # cancels the older, so what the badges show is always the newest measurement that completed.
+    concurrency:
+      group: metrics-badges
+      cancel-in-progress: true
+
+    # The one job in this workflow that may write, and it writes to the `badges` branch alone.
+    # Nothing here commits to main.
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      # The line counter. An existing tool counts the lines (Constitution II.3); nothing of ours
+      # distinguishes a comment from a statement.
+      - name: Install cloc
+        run: sudo apt-get update && sudo apt-get install --yes cloc
+
+      # ReportGenerator, from .config/dotnet-tools.json — it filters the coverage report to the
+      # projects in scope and sums it.
+      - name: Restore the local tools
+        run: dotnet tool restore
+
+      - name: Build
+        run: dotnet build Grimoire.slnx --configuration Release
+
+      # The script writes the table to stdout and nothing else, so the job summary gets the table
+      # and the log gets the tools' own output.
+      - name: The three metrics
+        env:
+          CONFIGURATION: Release
+        run: |
+          ./scripts/metrics.sh > "$RUNNER_TEMP/metrics.md"
+          cat "$RUNNER_TEMP/metrics.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # The three endpoint documents README.md's badges read. A fresh repository in the directory
+      # that holds them, force-pushed: the branch is orphan by construction and carries one commit,
+      # so the badge history never grows and no measurement can reach a branch anyone develops on.
+      - name: Publish the badge documents
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: artifacts/metrics/badges
+        run: |
+          git init --quiet --initial-branch=badges
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add requirements.json coverage.json readtime.json
+          git commit --quiet --message "metrics of ${GITHUB_SHA}"
+          git push --quiet --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges

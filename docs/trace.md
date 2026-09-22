@@ -93,3 +93,4 @@ Allowed at Fast and Contract (Constitution III.5); an E2E or Deploy test here fa
 | `Grimoire.Fast.Tests.TraceCheckTests.Check_Passes_WhenEveryTestMatchesTheRegistry` | Grimoire.Fast.Tests | fast |
 | `Grimoire.Fast.Tests.TraceCheckTests.CompleteCheck_Fails_WhenATestRequirementHasNoTest` | Grimoire.Fast.Tests | fast |
 | `Grimoire.Fast.Tests.TraceCheckTests.CompleteCheck_Passes_WhenAReviewRequirementHasNoTest` | Grimoire.Fast.Tests | fast |
+| `Grimoire.Fast.Tests.TraceSummaryTests.Summarise_CountsTheActiveRequirements` | Grimoire.Fast.Tests | fast |
