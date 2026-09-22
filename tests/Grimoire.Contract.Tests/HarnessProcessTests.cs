@@ -92,6 +92,7 @@ public sealed class HarnessProcessTests
         var report = new RunReport(
             AgentReportedIn: _ => reportedIn = true,
             CostSoFar: (_, _) => { },
+            AgentExited: (_, _) => { },
             AgentStopped: async (_, _) =>
             {
                 if (Interlocked.Increment(ref stops) == 1)
@@ -131,6 +132,7 @@ public sealed class HarnessProcessTests
             // The first tokens mean a model call is under way, which is the moment a stop has to
             // reach: nothing can prevent the next call without ending the one in flight (R-04).
             CostSoFar: (_, _) => stopSent ??= run.Harness.StopAsync(dispatch.RunId, CancellationToken.None),
+            AgentExited: (_, _) => { },
             AgentStopped: (_, endedAbnormally) =>
             {
                 abnormal = endedAbnormally;

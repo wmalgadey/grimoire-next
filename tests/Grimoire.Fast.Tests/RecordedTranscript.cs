@@ -80,6 +80,36 @@ internal static class RecordedTranscript
         {"type":"system","subtype":"init","session_id":"8f3c1b70","tools":["mcp__wiki__list_pages","mcp__wiki__read_page","mcp__wiki__write_page","mcp__wiki__write_index","mcp__wiki__append_log",{"name":"Bash"}],"mcp_servers":[{"name":"wiki","status":"connected"}],"capabilities":["interrupt_receipt_v1"]}
         """;
 
+    /// <summary>
+    /// The two <c>result</c> messages of a nudged run, and the streamed usage of its second turn.
+    /// </summary>
+    /// <remarks>
+    /// Recorded on 2026-09-22 from <c>claude</c> 2.1.278 on <c>claude-haiku-4-5-20251001</c>: a
+    /// prompt, a <c>result</c>, a second user message on the same stdin, a second <c>result</c>.
+    /// This is the measurement <c>contracts/agent-cli-protocol.md</c> §What the two usage figures
+    /// count records — 51 094, then a session total of 108 989 against a streamed 57 895, which
+    /// add up exactly. Trimmed to the fields the hub reads.
+    /// </remarks>
+    internal const string ResultOfTheFirstNudgedTurn =
+        """
+        {"type":"result","subtype":"success","terminal_reason":"completed","modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":10,"outputTokens":41,"cacheReadInputTokens":0,"cacheCreationInputTokens":51043,"thinkingTokens":34}}}
+        """;
+
+    /// <summary>The second <c>result</c>: the whole session, the first turn included.</summary>
+    internal const string ResultOfTheSecondNudgedTurn =
+        """
+        {"type":"result","subtype":"success","terminal_reason":"completed","modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":20,"outputTokens":264,"cacheReadInputTokens":0,"cacheCreationInputTokens":108705,"thinkingTokens":221}}}
+        """;
+
+    /// <summary>The second turn's last streamed usage: that turn alone, counted from nothing.</summary>
+    internal const string StreamedUsageOfTheSecondNudgedTurn =
+        """
+        {"type":"stream_event","event":{"type":"message_delta","usage":{"input_tokens":10,"output_tokens":223,"cache_read_input_tokens":0,"cache_creation_input_tokens":57662}}}
+        """;
+
+    /// <summary>What the run above had caused by the end of its second turn.</summary>
+    internal const long NudgedSessionTotal = 20 + 264 + 0 + 108_705;
+
     /// <summary><see cref="Init"/> from a CLI that does not advertise the interrupt.</summary>
     internal const string InitWithoutTheInterrupt =
         """

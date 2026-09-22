@@ -48,6 +48,7 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
         AgentReportedIn: AgentReportedIn,
         CostSoFar: CostSoFar,
         AgentStopped: AgentStoppedAsync,
+        AgentExited: AgentExited,
         RunEnded: RunEnded);
 
     private void AgentReportedIn(Guid submissionId) => board.Find(submissionId)?.AgentReportedIn();
@@ -77,6 +78,11 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
     /// The decision RUNS-005 rests on. The wiki's log is read for the run's identifier and nothing
     /// else in the wiki is read at all.
     /// </summary>
+    /// <remarks>
+    /// The run does not end here. What this settles is whether the agent is told anything further:
+    /// one nudge, or nothing at all. A run ends at its process's exit or at the interrupt, and the
+    /// verdict is taken there with the exit code in it.
+    /// </remarks>
     private async Task AgentStoppedAsync(Guid submissionId, bool endedAbnormally)
     {
         if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
@@ -92,20 +98,29 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
             run.TokensUsed,
             endedAbnormally));
 
-        switch (decision)
+        if (decision == RunDecision.Nudge)
         {
-            case RunDecision.Nudge:
-                await harness.NudgeAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
-                break;
-
-            case RunDecision.Done:
-                RunEnded(submissionId, RunOutcome.Done);
-                break;
-
-            default:
-                RunEnded(submissionId, RunOutcome.Failed);
-                break;
+            await harness.NudgeAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
+            return;
         }
+
+        // Done or failed, nothing further is sent. The CLI reads stdin for as long as it is open,
+        // so this is also what lets the agent's process end at all — and the run ends there.
+        await harness.NothingFurtherAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Where a run ends. The result, the log entry and the exit code are read together, which is
+    /// the protocol's decision table whole — its "or a non-zero exit" row included.
+    /// </summary>
+    private void AgentExited(Guid submissionId, int exitCode)
+    {
+        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        {
+            return;
+        }
+
+        RunEnded(submissionId, run.Exited(exitCode, clock.GetUtcNow() - run.StartedAt));
     }
 
     /// <summary>

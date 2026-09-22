@@ -37,11 +37,16 @@ internal sealed class DrivableHarness : IAgentHarness
 
     public Task StopAsync(Guid runId, CancellationToken cancellationToken) => Task.CompletedTask;
 
+    public Task NothingFurtherAsync(Guid runId, CancellationToken cancellationToken) => Task.CompletedTask;
+
     /// <summary>What the CLI's <c>system/init</c> does to the run: submitted becomes running.</summary>
     public void ReportIn(Guid submissionId) => reports[submissionId].AgentReportedIn(submissionId);
 
     /// <summary>The run is over, one way or the other.</summary>
     public void End(Guid submissionId, RunOutcome outcome) => reports[submissionId].RunEnded(submissionId, outcome);
+
+    /// <summary>The run's process is gone, with this exit code. Where a run ends.</summary>
+    public void Exit(Guid submissionId, int exitCode) => reports[submissionId].AgentExited(submissionId, exitCode);
 }
 
 /// <summary>

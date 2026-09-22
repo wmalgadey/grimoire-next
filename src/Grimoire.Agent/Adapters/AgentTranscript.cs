@@ -33,9 +33,12 @@ public enum TranscriptSays
 /// </summary>
 /// <param name="Says">Which event it is.</param>
 /// <param name="TokensUsed">
-/// Every token the run has caused up to and including this line. Never goes backwards: the CLI's
-/// streamed <c>usage</c> is cumulative within a response, so the running figure is the highest
-/// seen and not the sum of the deltas (research.md R-04).
+/// Every token the run has caused up to and including this line. Never goes backwards. The CLI's
+/// streamed <c>usage</c> is cumulative within one response and starts again at the next, and the
+/// <c>result</c>'s <c>modelUsage</c> is cumulative across the whole session — so the running
+/// figure is the last reconciled session total plus this response's own, and neither a sum of the
+/// deltas nor a sum of the results (research.md R-04,
+/// <c>contracts/agent-cli-protocol.md</c> §What the two usage figures count).
 /// </param>
 /// <param name="EndedAbnormally">
 /// On <see cref="TranscriptSays.AgentStopped"/>: the agent did not stop of its own accord — an
@@ -79,6 +82,12 @@ public sealed class AgentTranscript(ToolGrant grant)
     private long spent;
 
     /// <summary>
+    /// The session total the last <c>result</c> reconciled to. Every turn after it streams on top
+    /// of this rather than starting the run's counter again.
+    /// </summary>
+    private long reconciled;
+
+    /// <summary>
     /// Whether what <c>system/init</c> reported is this run's grant. The bare names the grant
     /// records are mapped to the prefixed form the CLI uses before they are compared.
     /// </summary>
@@ -106,12 +115,19 @@ public sealed class AgentTranscript(ToolGrant grant)
                     InitIsAcceptable(message, grant) ? TranscriptSays.AgentReportedIn : TranscriptSays.InitIsNotAcceptable);
 
             case "stream_event":
-                spent = Math.Max(spent, StreamedTotal(message));
+                // The streamed usage is cumulative within one response and starts again at the
+                // next, so a nudged run's second turn streams from nothing. Added to what the last
+                // result reconciled to, rather than compared against it: measured, turn two's
+                // 57 895 beside turn one's 51 094 is a run that has caused 108 989, and a bare
+                // Math.Max would have read it as 57 895 until the next result corrected it.
+                spent = Math.Max(spent, reconciled + StreamedTotal(message));
                 return new TranscriptEvent(TranscriptSays.CostSoFar, spent);
 
             case "result":
-                // modelUsage is the authority; the streamed total was only a floor (R-04).
-                spent = Math.Max(spent, Ceilings.CostOf(ModelUsage(message)));
+                // modelUsage is the authority and it is cumulative across the session, so the
+                // whole run's cost is the last one and not the sum of them (R-04, measured).
+                reconciled = Math.Max(reconciled, Ceilings.CostOf(ModelUsage(message)));
+                spent = Math.Max(spent, reconciled);
                 return new TranscriptEvent(TranscriptSays.AgentStopped, spent, EndedAbnormally(message));
 
             default:

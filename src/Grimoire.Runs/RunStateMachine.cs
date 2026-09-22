@@ -12,16 +12,20 @@ namespace Grimoire.Runs;
 /// </param>
 public sealed record AgentStop(bool LogEntryPresent, TimeSpan Elapsed, long TokensUsed, bool EndedAbnormally = false);
 
-/// <summary>What the hub does about a run whose agent has stopped.</summary>
+/// <summary>
+/// What the hub does about a run whose agent has stopped. None of these ends the run: a run ends
+/// at its process's exit or at the interrupt, never at a <c>result</c>. What this settles is
+/// whether anything further is sent to the agent.
+/// </summary>
 public enum RunDecision
 {
-    /// <summary>The run is over and it is done.</summary>
+    /// <summary>Nothing further is sent, and the log names the run. The verdict waits for the exit.</summary>
     Done,
 
     /// <summary>Tell the agent its log entry is missing and let it carry on. Once, and only once.</summary>
     Nudge,
 
-    /// <summary>The run is over and it failed.</summary>
+    /// <summary>Nothing further is sent, and this run will not be done whatever the exit says.</summary>
     Failed,
 }
 
@@ -67,6 +71,16 @@ public sealed class Run
     /// </summary>
     public bool LogEntryNudged { get; private set; }
 
+    /// <summary>Whether a <c>result</c> arrived and the agent stopped of its own accord.</summary>
+    /// <remarks>
+    /// Kept because the verdict is not taken where this is learnt. A run ends at its process's
+    /// exit, and by then the result is behind it.
+    /// </remarks>
+    public bool StoppedOfItsOwnAccord { get; private set; }
+
+    /// <summary>Whether the wiki's log named this run when the agent last stopped.</summary>
+    public bool LogEntryWasPresent { get; private set; }
+
     /// <summary>Record what the run has caused so far. Never goes backwards.</summary>
     public void Spent(long tokensUsed) => TokensUsed = Math.Max(TokensUsed, tokensUsed);
 
@@ -93,6 +107,11 @@ public sealed class Run
 
         Spent(stop.TokensUsed);
 
+        // Recorded rather than acted on: the run does not end here, and these are two of the three
+        // things the verdict at the exit is taken from.
+        StoppedOfItsOwnAccord = !stop.EndedAbnormally;
+        LogEntryWasPresent = stop.LogEntryPresent;
+
         // A ceiling reached ends the run failed whatever the log says, and so does an ending the
         // agent did not choose (GUARD-004).
         if (stop.EndedAbnormally || Ceilings.ReachedBy(stop.Elapsed, stop.TokensUsed))
@@ -114,4 +133,23 @@ public sealed class Run
         LogEntryNudged = true;
         return RunDecision.Nudge;
     }
+
+    /// <summary>
+    /// The verdict, taken where a run actually ends: at its process's exit. Three things have to
+    /// agree — the agent stopped of its own accord, the log names the run, and the process exited
+    /// zero — and any one of them missing is a failed run. A ceiling reached fails it whatever the
+    /// other three say (RUNS-005, GUARD-004, contracts/agent-cli-protocol.md).
+    /// </summary>
+    /// <remarks>
+    /// The exit code is read here and nowhere else, which is what the protocol's "or a non-zero
+    /// exit" row asks for. A CLI that reports a clean result and then exits non-zero did not do
+    /// what it said it did, and the run is not done.
+    /// </remarks>
+    public RunOutcome Exited(int exitCode, TimeSpan elapsed) =>
+        StoppedOfItsOwnAccord
+        && LogEntryWasPresent
+        && exitCode == 0
+        && !Ceilings.ReachedBy(elapsed, TokensUsed)
+            ? RunOutcome.Done
+            : RunOutcome.Failed;
 }

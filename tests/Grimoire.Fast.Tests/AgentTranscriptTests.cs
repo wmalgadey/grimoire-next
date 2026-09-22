@@ -185,13 +185,43 @@ public sealed class AgentTranscriptTests
 
     [Fact]
     [Trait("req", "GUARD-004")]
-    public void Result_CountsNoLessThanTheTurnBefore_AfterANudge()
+    public void Result_CountsTheSessionTotalAndNotTheSumOfTheTurns()
+    {
+        var transcript = Transcript();
+        transcript.Read(RecordedTranscript.ResultOfTheFirstNudgedTurn);
+
+        // modelUsage is cumulative across the session: the second result carries the whole run,
+        // the first turn included. Summing the two results would count the first turn twice —
+        // 160 083 for a run that caused 108 989.
+        Assert.Equal(
+            RecordedTranscript.NudgedSessionTotal,
+            transcript.Read(RecordedTranscript.ResultOfTheSecondNudgedTurn).TokensUsed);
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-004")]
+    public void StreamedUsage_CountsTheTurnsBefore_WhenANudgedTurnStreamsFromNothing()
+    {
+        var transcript = Transcript();
+        transcript.Read(RecordedTranscript.ResultOfTheFirstNudgedTurn);
+
+        // The streamed figure is this response's alone and starts at the bottom, so on its own it
+        // says 57 895 for a run that has by then caused 108 989. Read as a bare maximum the
+        // ceiling would have been blind to a whole turn's worth of tokens until the next result.
+        Assert.Equal(
+            RecordedTranscript.NudgedSessionTotal,
+            transcript.Read(RecordedTranscript.StreamedUsageOfTheSecondNudgedTurn).TokensUsed);
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-004")]
+    public void Result_CountsNoLessThanTheTurnBefore_WhenALaterResultReportsLess()
     {
         var transcript = Transcript();
         transcript.Read(RecordedTranscript.Result);
 
-        // A nudged run carries on and reports a second, smaller turn. What the run has cost does
-        // not go back down.
+        // Not a shape the CLI produces in one session — modelUsage only grows — but the counter
+        // is what a ceiling rests on, and it does not go back down for any reason.
         Assert.Equal(
             RecordedTranscript.PinnedModelTotal + RecordedTranscript.BackgroundCallTotal,
             transcript.Read(RecordedTranscript.ResultOfTheOneTurnProbe).TokensUsed);

@@ -178,6 +178,33 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             : WriteUserMessageAsync(process, "No log entry for this run was found in log.md.", cancellationToken);
     }
 
+    public Task NothingFurtherAsync(Guid runId, CancellationToken cancellationToken)
+    {
+        var process = Find(runId);
+        if (process is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            // The CLI reads stdin for as long as it is open. Closing it is the whole of this: no
+            // interrupt, because there is no call in flight to end — the agent has said its piece.
+            process.StandardInput.Close();
+        }
+        catch (Exception e) when (e is IOException or ObjectDisposedException)
+        {
+            // Already closed, or the process is already gone.
+        }
+
+        // The backstop runs on its own and this call does not wait for it. It is made from inside
+        // the reader, and waiting here for an exit would be waiting for a stream that the reader
+        // is not reading while it waits.
+        _ = Task.Run(() => KillIfItWillNotEndAsync(process), CancellationToken.None);
+
+        return Task.CompletedTask;
+    }
+
     public async Task StopAsync(Guid runId, CancellationToken cancellationToken)
     {
         var process = Find(runId);
@@ -226,6 +253,16 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
         // leaves the turn unfinished, whereas the interrupt ends it and lets the run say how it
         // ended (contracts/agent-cli-protocol.md, research.md R-11). The process is given that
         // moment before it is killed.
+        await KillIfItWillNotEndAsync(process).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The backstop of <c>contracts/agent-cli-protocol.md</c>: a process that has not ended a
+    /// while after its stdin was closed is killed. Never the mechanism — a signal leaves the turn
+    /// unfinished, and by the time this fires the run has nothing left to say.
+    /// </summary>
+    private static async Task KillIfItWillNotEndAsync(Process process)
+    {
         try
         {
             using var backstop = new CancellationTokenSource(KillAfter);
@@ -236,9 +273,16 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             // It did not end on its own.
         }
 
-        if (!process.HasExited)
+        try
         {
-            process.Kill(entireProcessTree: true);
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception e) when (e is InvalidOperationException or NotSupportedException)
+        {
+            // It ended between the two calls, or it was never ours to kill.
         }
     }
 
@@ -314,11 +358,11 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
 
             await process.WaitForExitAsync().ConfigureAwait(false);
 
-            // The stream is over. Whatever the last message was, a run whose process has gone is
-            // not going to report anything further: if the hub has already ended it this is a
-            // no-op, and if it has not — a nudged run whose process died, say — it ends failed
-            // here rather than reading running for ever.
-            report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
+            // The stream is over and the process is gone, so its exit code can finally be read.
+            // This is where a run ends: the hub puts the code together with what the result said
+            // and what the log held, and all three have to agree for a run to be done. A run the
+            // hub has already ended — one stopped at a ceiling — is unaffected; that ending stands.
+            report.AgentExited(dispatch.SubmissionId, process.ExitCode);
         }
         catch (Exception)
         {

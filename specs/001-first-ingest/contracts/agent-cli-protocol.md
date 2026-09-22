@@ -160,6 +160,28 @@ present when `log.md` contains the run's identifier as plain text** — nothing 
 | Either ceiling reached | Run ends `failed`, whatever the log says (GUARD-004) |
 | `terminal_reason: "aborted_streaming"`, or a non-zero exit | Run ends `failed` |
 
+### What the two usage figures count
+
+**Measured on 2026-09-22**, `claude` 2.1.278, `claude-haiku-4-5-20251001`, one run of two turns —
+a prompt, a `result`, a second user message on the same stdin, a second `result`:
+
+| | `result.modelUsage`, summed | streamed `usage`, highest in the turn |
+| --- | ---: | ---: |
+| Turn 1 | 51 094 | 51 094 |
+| Turn 2 | **108 989** | **57 895** |
+
+51 094 + 57 895 = 108 989 exactly. So:
+
+- **`modelUsage` is cumulative across the session.** The second `result` carries the whole run,
+  the first turn included. The run's cost is therefore the *latest* `modelUsage` total and never
+  the sum of the results, which would count the first turn twice.
+- **The streamed `usage` is per turn.** It is cumulative within one response and starts again at
+  the next, so a nudged run's second turn streams from nothing.
+
+The live counter is therefore the last reconciled session total **plus** the current response's
+streamed figure. Read as a bare maximum it would have called the run above 57 895 tokens for the
+whole of its second turn — 51 094 short — until the next `result` corrected it.
+
 **`modelUsage` is what the run's cost is reconciled against** — the sum of `inputTokens`,
 `outputTokens`, `cacheReadInputTokens` and `cacheCreationInputTokens` across **every** entry, the
 CLI's own background calls included. The second entry above is such a call: the run never asked for

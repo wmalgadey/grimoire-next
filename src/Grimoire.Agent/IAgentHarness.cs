@@ -42,14 +42,24 @@ public sealed record AgentDispatch(Guid RunId, Guid SubmissionId, string Prompt,
 /// the run itself where it is reached (GUARD-004).
 /// </param>
 /// <param name="AgentStopped">
-/// The agent has stopped. The hub reads the wiki's log and decides — done, one nudge, or failed
-/// (RUNS-005). The flag says whether the agent stopped of its own accord.
+/// The agent has stopped — a <c>result</c>. The hub reads the wiki's log and decides whether to
+/// nudge (RUNS-005). It does <b>not</b> end the run here; what this settles is only whether
+/// anything further is sent. The flag says whether the agent stopped of its own accord.
 /// </param>
-/// <param name="RunEnded">The run is over, one way or the other.</param>
+/// <param name="AgentExited">
+/// The run's process is gone, with this exit code. This is where a run ends: the result, the log
+/// entry and the exit code are read together, and all three have to agree for a run to be done
+/// (contracts/agent-cli-protocol.md, RUNS-005, GUARD-004).
+/// </param>
+/// <param name="RunEnded">
+/// The run is over without a process exit to read — a dispatch that never started one, or a
+/// surface refused before the first model call.
+/// </param>
 public sealed record RunReport(
     Action<Guid> AgentReportedIn,
     Action<Guid, long> CostSoFar,
     Func<Guid, bool, Task> AgentStopped,
+    Action<Guid, int> AgentExited,
     Action<Guid, RunOutcome> RunEnded);
 
 /// <summary>
@@ -75,4 +85,16 @@ public interface IAgentHarness
     /// Stop a run at once, a model call in flight included. Sent at either ceiling (GUARD-004).
     /// </summary>
     Task StopAsync(Guid runId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Tell a run that nothing further is coming, and let its process end of its own accord. The
+    /// CLI reads stdin for as long as it is open, so this is what lets a finished agent exit at
+    /// all (contracts/agent-cli-protocol.md).
+    /// </summary>
+    /// <remarks>
+    /// This does not end the run and does not wait for the exit. The run ends when the process is
+    /// gone and its exit code can be read, which is reported through
+    /// <see cref="RunReport.AgentExited"/>.
+    /// </remarks>
+    Task NothingFurtherAsync(Guid runId, CancellationToken cancellationToken);
 }

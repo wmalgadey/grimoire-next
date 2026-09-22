@@ -19,6 +19,7 @@ internal sealed class InMemoryAgentHarness : IAgentHarness
     private readonly List<AgentDispatch> dispatched = [];
     private readonly List<Guid> nudged = [];
     private readonly List<Guid> stopped = [];
+    private readonly List<Guid> toldNothingFurther = [];
     private readonly Dictionary<Guid, RunReport> reports = [];
 
     /// <summary>Every dispatch this harness was given, in the order it was given them.</summary>
@@ -27,6 +28,16 @@ internal sealed class InMemoryAgentHarness : IAgentHarness
     public IReadOnlyList<Guid> Nudged => nudged;
 
     public IReadOnlyList<Guid> Stopped => stopped;
+
+    /// <summary>The runs the hub has told that nothing further is coming.</summary>
+    public IReadOnlyList<Guid> ToldNothingFurther => toldNothingFurther;
+
+    /// <summary>
+    /// What the run's process exits with once its stdin is closed. Zero unless a test says
+    /// otherwise — a CLI that reports a clean result and then exits non-zero is one of the things
+    /// the protocol's decision table has an answer for.
+    /// </summary>
+    public int ExitCode { get; set; }
 
     /// <summary>A run is under way once it has been dispatched and has not yet reported an end.</summary>
     public bool RunUnderWay { get; private set; }
@@ -79,6 +90,29 @@ internal sealed class InMemoryAgentHarness : IAgentHarness
     {
         stopped.Add(runId);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Closing the run's stdin, as the real adapter does. The process then ends, and the run ends
+    /// with it — which is why this reports the exit rather than only recording the call.
+    /// </summary>
+    public Task NothingFurtherAsync(Guid runId, CancellationToken cancellationToken)
+    {
+        toldNothingFurther.Add(runId);
+
+        if (dispatched.FirstOrDefault(d => d.RunId == runId) is { } dispatch)
+        {
+            Exit(dispatch.SubmissionId, ExitCode);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The run's process is gone, with this exit code. Where a run ends.</summary>
+    public void Exit(Guid submissionId, int exitCode)
+    {
+        RunUnderWay = false;
+        reports[submissionId].AgentExited(submissionId, exitCode);
     }
 
     /// <summary>What the CLI's <c>system/init</c> does to the run.</summary>
