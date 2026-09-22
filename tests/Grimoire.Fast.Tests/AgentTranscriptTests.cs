@@ -267,6 +267,33 @@ public sealed class AgentTranscriptTests
                 .EndedAbnormally);
 
     [Fact]
+    [Trait("req", "GUARD-004")]
+    public void Result_SaysTheAgentDidNotStopOfItsOwnAccord_WhenATerminalFieldCannotBeRead()
+    {
+        // Present and not a name. Read as absent, this result says the agent finished cleanly,
+        // and a run with a log entry and a zero exit would then be done on the strength of a
+        // field nobody could read. Absent and unreadable are not the same thing.
+        Assert.True(
+            Transcript()
+                .Read("""{"type":"result","subtype":5,"terminal_reason":"completed"}""")
+                .EndedAbnormally);
+
+        Assert.True(
+            Transcript()
+                .Read("""{"type":"result","subtype":"success","terminal_reason":{"was":"aborted"}}""")
+                .EndedAbnormally);
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-001")]
+    public void Init_RefusesTheRun_WhenTheSystemMessageCannotBeToldFromAnInit() =>
+        // It may be the init, and there is no way to tell. Passed over, the tool surface is never
+        // compared against the grant and the run proceeds unchecked.
+        Assert.Equal(
+            TranscriptSays.InitIsNotAcceptable,
+            Transcript().Read("""{"type":"system","subtype":7}""").Says);
+
+    [Fact]
     public void Line_SaysNothing_WhenItIsNotJson() =>
         Assert.Equal(TranscriptSays.Nothing, Transcript().Read(RecordedTranscript.NotJson).Says);
 
