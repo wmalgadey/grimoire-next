@@ -5,6 +5,7 @@ artifacts/
 
 # Test and tool output
 TestResults/
+StrykerOutput/
 *.trx
 *.coverage
 coverage/

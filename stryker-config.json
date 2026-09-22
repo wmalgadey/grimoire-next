@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker-net/master/src/Stryker.Core/Stryker.Core/Schemas/stryker-config.schema.json",
+  "stryker-config": {
+    "solution": "Grimoire.Mutation.slnx",
+    "test-runner": "mtp",
+    "reporters": [ "json", "cleartext", "progress" ],
+    "mutation-level": "Standard",
+    "verbosity": "info"
+  }
+}

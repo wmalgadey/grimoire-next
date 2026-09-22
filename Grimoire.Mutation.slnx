@@ -1,0 +1,20 @@
+<!-- The solution Stryker.NET is pointed at. It is Grimoire.slnx without the Contract and E2E
+     suites: Stryker reads a solution to resolve a project under test that the test project
+     reaches only through Grimoire.Hub, and in that mode it runs every test project the solution
+     names. The measurement uses the Fast suite alone, so the Fast suite alone is in here. The
+     build, the test runner and the suites themselves are untouched; this file only narrows what
+     Stryker looks at. -->
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Grimoire.Agent/Grimoire.Agent.csproj" />
+    <Project Path="src/Grimoire.Hub/Grimoire.Hub.csproj" />
+    <Project Path="src/Grimoire.Runs/Grimoire.Runs.csproj" />
+    <Project Path="src/Grimoire.Wiki/Grimoire.Wiki.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Grimoire.Fast.Tests/Grimoire.Fast.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Grimoire.Trace/Grimoire.Trace.csproj" />
+  </Folder>
+</Solution>
