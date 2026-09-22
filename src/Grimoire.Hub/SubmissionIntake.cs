@@ -47,15 +47,18 @@ public sealed class SubmissionIntake(
 
         var run = conductor.Begin(submission.Id);
 
-        var dispatch = new AgentDispatch(
-            run.Id,
-            submission.Id,
-            assemblePrompt(submission.Text, run.Id),
-            run.Grant,
-            model);
-
         try
         {
+            // Assembling the prompt is inside this try and not above it. It reads the instruction
+            // from disk, so it can throw for a reason that has nothing to do with the run — a file
+            // deleted between start-up and now — and the run is already registered by then.
+            var dispatch = new AgentDispatch(
+                run.Id,
+                submission.Id,
+                assemblePrompt(submission.Text, run.Id),
+                run.Grant,
+                model);
+
             await harness.DispatchAsync(dispatch, conductor.Report(), CancellationToken.None).ConfigureAwait(false);
         }
         catch

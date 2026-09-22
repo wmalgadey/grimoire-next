@@ -45,6 +45,13 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
     private static readonly TimeSpan KillAfter = TimeSpan.FromSeconds(10);
 
     private readonly Dictionary<Guid, Process> running = [];
+
+    /// <summary>
+    /// The runs a stop is already under way for. The hub raises the cost ceiling on every streamed
+    /// usage past it, so a second and a third <see cref="StopAsync"/> for one run are the normal
+    /// case; only the first sends the interrupt and waits for the kill backstop.
+    /// </summary>
+    private readonly HashSet<Guid> stopping = [];
     private readonly Lock gate = new();
 
     /// <summary>The argv of <c>contracts/agent-cli-protocol.md</c>, exactly.</summary>
@@ -121,10 +128,43 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             running[dispatch.RunId] = process;
         }
 
+        // stderr is redirected, so somebody has to read it: a pipe nobody drains fills at about
+        // 64 KiB, and the CLI then blocks on its own diagnostics — stdout stops, the run stalls,
+        // and no ceiling can tell that from a slow model. Nothing is done with the lines; what the
+        // hub acts on arrives on stdout (contracts/agent-cli-protocol.md).
+        _ = Task.Run(() => DrainAsync(process.StandardError), CancellationToken.None);
+
+        return DispatchedAsync(process, dispatch, report, cancellationToken);
+    }
+
+    /// <summary>
+    /// The prompt first and the reader after it. Both write to the same <c>StandardInput</c> — the
+    /// reader sends the interrupt and closes stdin when <c>system/init</c> is refused — and a
+    /// <c>StreamWriter</c> is not thread-safe, so the two must not overlap. Started the other way
+    /// round, a refused init could close stdin underneath the prompt still being written to it.
+    /// </summary>
+    private async Task DispatchedAsync(
+        Process process, AgentDispatch dispatch, RunReport report, CancellationToken cancellationToken)
+    {
+        await WriteUserMessageAsync(process, dispatch.Prompt, cancellationToken).ConfigureAwait(false);
+
         // The stream is read on its own; the run is under way and this call returns (INGEST-001).
         _ = Task.Run(() => ReadAsync(process, dispatch, report), CancellationToken.None);
+    }
 
-        return WriteUserMessageAsync(process, dispatch.Prompt, cancellationToken);
+    private static async Task DrainAsync(StreamReader stderr)
+    {
+        try
+        {
+            while (await stderr.ReadLineAsync().ConfigureAwait(false) is not null)
+            {
+                // Read and let go. The point is that the pipe never fills.
+            }
+        }
+        catch (Exception)
+        {
+            // Nothing awaits this, and a reader that has lost its process has nothing left to do.
+        }
     }
 
     public Task NudgeAsync(Guid runId, CancellationToken cancellationToken)
@@ -146,6 +186,16 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             return;
         }
 
+        lock (gate)
+        {
+            // A stop already under way is not repeated. Without this the second call writes to the
+            // stdin the first one closed, and waits a second time on the kill backstop.
+            if (!stopping.Add(runId))
+            {
+                return;
+            }
+        }
+
         // The interrupt ends a call in flight; killing the process is the backstop, not the
         // mechanism, because a signal leaves the turn unfinished (GUARD-004, research.md R-11).
         var interrupt = new JsonObject
@@ -165,9 +215,11 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             // finished reporting itself. Closing stdin is what tells it that.
             process.StandardInput.Close();
         }
-        catch (IOException)
+        catch (Exception e) when (e is IOException or ObjectDisposedException)
         {
-            // The process is already gone; the backstop below is all that is left.
+            // The process is already gone, or its stdin is already closed — Process.StandardInput
+            // hands back the same writer every time, so a closed one throws ObjectDisposedException
+            // rather than IOException. Either way the backstop below is all that is left.
         }
 
         // The interrupt is the mechanism and the kill is the backstop, in that order: a signal
@@ -280,6 +332,7 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             lock (gate)
             {
                 running.Remove(dispatch.RunId);
+                stopping.Remove(dispatch.RunId);
             }
         }
     }

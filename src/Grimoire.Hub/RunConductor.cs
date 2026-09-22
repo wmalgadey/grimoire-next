@@ -12,7 +12,10 @@ namespace Grimoire.Hub;
 /// </summary>
 public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, IWikiStore wiki, TimeProvider clock)
 {
-    private readonly ConcurrentDictionary<Guid, Run> runs = new();
+    private readonly ConcurrentDictionary<Guid, Watched> runs = new();
+
+    /// <summary>A run under way, together with the timer that holds it to its elapsed ceiling.</summary>
+    private sealed record Watched(Run Run, ITimer Deadline);
 
     /// <summary>A run for this submission, with its grant and both ceilings recorded on it.</summary>
     public Run Begin(Guid submissionId)
@@ -24,12 +27,22 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
             ToolGrant.Ingest(clock),
             Ceilings.Fixed);
 
-        runs[submissionId] = run;
+        // GUARD-004's elapsed ceiling has to be able to fire while the agent says nothing at all —
+        // a model call that hangs, or a tool call that never comes back, is exactly the run the
+        // ceiling exists for, and such a run reports no cost to read the clock against. So it is
+        // the clock that raises it here, and not a line of the CLI's.
+        var deadline = clock.CreateTimer(
+            _ => ElapsedCeilingReached(submissionId),
+            state: null,
+            dueTime: run.Ceilings.Elapsed,
+            period: Timeout.InfiniteTimeSpan);
+
+        runs[submissionId] = new Watched(run, deadline);
         return run;
     }
 
     /// <summary>The run this submission is being worked by, or null once it is over.</summary>
-    public Run? Of(Guid submissionId) => runs.GetValueOrDefault(submissionId);
+    public Run? Of(Guid submissionId) => runs.GetValueOrDefault(submissionId)?.Run;
 
     public RunReport Report() => new(
         AgentReportedIn: AgentReportedIn,
@@ -45,7 +58,7 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
     /// </summary>
     private void CostSoFar(Guid submissionId, long tokensUsed)
     {
-        if (runs.GetValueOrDefault(submissionId) is not { } run)
+        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
         {
             return;
         }
@@ -66,7 +79,7 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
     /// </summary>
     private async Task AgentStoppedAsync(Guid submissionId, bool endedAbnormally)
     {
-        if (runs.GetValueOrDefault(submissionId) is not { } run)
+        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
         {
             return;
         }
@@ -106,12 +119,54 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
     /// </remarks>
     private void RunEnded(Guid submissionId, RunOutcome outcome)
     {
-        if (!runs.TryRemove(submissionId, out _))
+        if (!runs.TryRemove(submissionId, out var watched))
         {
             return;
         }
 
+        watched.Deadline.Dispose();
+
         board.Find(submissionId)?.Ended(
             outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed);
+    }
+
+    /// <summary>
+    /// The elapsed ceiling, raised by the clock rather than by anything the agent said. The run is
+    /// stopped the same way the cost ceiling stops it — the interrupt first, the kill behind it —
+    /// and then it ends failed (GUARD-004).
+    /// </summary>
+    /// <remarks>
+    /// It ends here rather than waiting for the agent's <c>result</c>, which is what the cost
+    /// ceiling can afford to do: a run that has just reported its cost is talking to us, whereas a
+    /// run that reached this ceiling may be one that has stopped talking altogether. The verdict is
+    /// not in doubt either way — a run at a ceiling ends failed — and <see cref="RunEnded"/> is a
+    /// no-op if the stop got the agent to report after all.
+    /// </remarks>
+    private void ElapsedCeilingReached(Guid submissionId)
+    {
+        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        {
+            return;
+        }
+
+        _ = StopAtTheElapsedCeilingAsync(run, submissionId);
+    }
+
+    private async Task StopAtTheElapsedCeilingAsync(Run run, Guid submissionId)
+    {
+        try
+        {
+            await harness.StopAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Nothing awaits a timer callback, so a throw here would surface later as an
+            // unobserved task exception and the run would be left reading running. Whether the
+            // stop reached the agent or not, the ceiling was reached and the run is over.
+        }
+        finally
+        {
+            RunEnded(submissionId, RunOutcome.Failed);
+        }
     }
 }

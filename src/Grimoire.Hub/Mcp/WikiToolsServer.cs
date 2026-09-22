@@ -98,6 +98,16 @@ public sealed class WikiToolsServer(IWikiStore wiki, RunAddress run, TimeProvide
         [Description("The page's full text, frontmatter included.")] string content,
         CancellationToken cancellationToken)
     {
+        if (WikiFile.IsReservedForSomethingOtherThanAPage(path))
+        {
+            // An index carries no generation record and the log is not a page, so both have tools
+            // of their own. Written through this one they would be stamped as pages
+            // (WIKI-002, data-model.md).
+            return Refused(
+                "not-a-page",
+                $"\"{path}\" is an index or the log; use write_index or append_log");
+        }
+
         var record = new GenerationRecord(run.GeneratedBy, clock.GetUtcNow());
         var stamped = ProvenanceStamp.Apply(content, record);
 
@@ -126,6 +136,13 @@ public sealed class WikiToolsServer(IWikiStore wiki, RunAddress run, TimeProvide
         [Description("The index's full text.")] string content,
         CancellationToken cancellationToken)
     {
+        if (!WikiFile.IsAnIndex(path))
+        {
+            // This tool writes without a generation record. Pointed at a page it would create one
+            // that no run is recorded as having generated, which is the whole of WIKI-002.
+            return Refused("not-an-index", $"\"{path}\" is not an {WikiFile.Index}");
+        }
+
         try
         {
             await wiki.WriteAsync(path, content, cancellationToken).ConfigureAwait(false);

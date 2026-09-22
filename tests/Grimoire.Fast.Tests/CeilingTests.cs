@@ -135,6 +135,66 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    public async Task Run_IsStoppedByTheClockAlone_WhenTheAgentSaysNothing()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+        hub.Harness.ReportIn(submission.Id);
+
+        // Not one line from the agent after it reported in: no cost, no stop, nothing to read a
+        // clock against. This is the run the elapsed ceiling exists for — a hung model call or a
+        // tool call that never comes back — and it is the clock that has to raise it.
+        hub.Clock.Advance(Ceilings.Fixed.Elapsed);
+
+        Assert.Equal([run.Id], hub.Harness.Stopped);
+    }
+
+    [Fact]
+    public async Task Run_EndsFailed_WhenTheClockRunsOutAndTheAgentNeverReportsAgain()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+
+        hub.Clock.Advance(Ceilings.Fixed.Elapsed);
+
+        // A stopped run that never says how it ended still ends. Left running, the board would
+        // refuse every later submission as a run in progress for as long as the process lives.
+        Assert.Equal(SubmissionState.Failed, submission.State);
+    }
+
+    [Fact]
+    public async Task Run_IsNotStoppedByTheClock_BeforeTheCeiling()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+
+        hub.Clock.Advance(Ceilings.Fixed.Elapsed - TimeSpan.FromSeconds(1));
+
+        Assert.Empty(hub.Harness.Stopped);
+        Assert.Equal(SubmissionState.Running, submission.State);
+    }
+
+    [Fact]
+    public async Task Run_IsNotStoppedByTheClock_AfterItHasAlreadyEnded()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+        await hub.Wiki.AppendLogAsync(
+            $"Run {hub.Conductor.Of(submission.Id)!.Id} added one page.\n", TestContext.Current.CancellationToken);
+        await hub.Harness.StoppedAsync(submission.Id);
+
+        // The run is over and its timer went with it; the clock moving on is not a second ending.
+        hub.Clock.Advance(Ceilings.Fixed.Elapsed * 2);
+
+        Assert.Empty(hub.Harness.Stopped);
+        Assert.Equal(SubmissionState.Done, submission.State);
+    }
+
+    [Fact]
     public async Task Run_EndsFailed_AfterACeilingStopsIt()
     {
         var hub = new FastHub();

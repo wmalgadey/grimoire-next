@@ -18,6 +18,30 @@ public static class WikiFile
 
     /// <summary>The name a section index and the root index both carry.</summary>
     public const string Index = "index.md";
+
+    /// <summary>
+    /// Whether a path names an index — the root's or a section's. The name is what decides it, at
+    /// any depth, because that is what <c>data-model.md</c> reserves.
+    /// </summary>
+    public static bool IsAnIndex(string path) =>
+        NameIn(path).Equals(Index, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether a path names something the wiki reserves and no page may be written to. An index
+    /// carries no generation record and the log is not a page at all, so a page written over
+    /// either would put a record where data-model.md says none belongs (WIKI-002).
+    /// </summary>
+    public static bool IsReservedForSomethingOtherThanAPage(string path) =>
+        IsAnIndex(path) || NameIn(path).Equals(Log, StringComparison.OrdinalIgnoreCase);
+
+    private static string NameIn(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        var cut = path.LastIndexOfAny(['/', '\\']);
+
+        return cut < 0 ? path : path[(cut + 1)..];
+    }
 }
 
 /// <summary>
