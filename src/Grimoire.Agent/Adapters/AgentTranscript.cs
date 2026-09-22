@@ -114,6 +114,12 @@ public sealed class AgentTranscript(ToolGrant grant)
                 return new TranscriptEvent(
                     InitIsAcceptable(message, grant) ? TranscriptSays.AgentReportedIn : TranscriptSays.InitIsNotAcceptable);
 
+            case "system" when IsThereAndUnreadable(message["subtype"]):
+                // It may be the init, and there is no way to tell. An init that is not recognised
+                // is a tool surface that is never checked, so the run does not get to proceed on
+                // the strength of a line nobody could read (GUARD-001).
+                return new TranscriptEvent(TranscriptSays.InitIsNotAcceptable);
+
             case "stream_event":
                 // The streamed usage is cumulative within one response and starts again at the
                 // next, so a nudged run's second turn streams from nothing. Added to what the last
@@ -243,9 +249,20 @@ public sealed class AgentTranscript(ToolGrant grant)
     }
 
     /// <summary>An ending the agent did not choose: an aborted stream, or a subtype that is not success.</summary>
+    /// <remarks>
+    /// A field that is there and cannot be read as a name counts as an ending the agent did not
+    /// choose. Absent and unreadable are not the same thing: absent is the CLI saying nothing
+    /// about it, unreadable is a result whose ending nobody can establish — and a run whose
+    /// ending cannot be established did not stop of its own accord (GUARD-004).
+    /// </remarks>
     private static bool EndedAbnormally(JsonObject result) =>
-        Text(result["terminal_reason"]) is "aborted_streaming"
+        IsThereAndUnreadable(result["terminal_reason"])
+        || IsThereAndUnreadable(result["subtype"])
+        || Text(result["terminal_reason"]) is "aborted_streaming"
         || Text(result["subtype"]) is { } subtype && subtype != "success";
+
+    /// <summary>A field that is present and is not a string — there, and not readable.</summary>
+    private static bool IsThereAndUnreadable(JsonNode? node) => node is not null && Text(node) is null;
 
     private static long Field(JsonObject node, string name) =>
         node[name] is { } value && long.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
