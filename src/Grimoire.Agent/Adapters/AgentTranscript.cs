@@ -14,10 +14,12 @@ public enum TranscriptSays
     AgentReportedIn,
 
     /// <summary>
-    /// <c>system/init</c>, and what it reported is not: a tool surface that is not the grant, the
-    /// wiki server not connected, or no interrupt to send (GUARD-001, GUARD-004).
+    /// <c>system/init</c>, and what it reported is not acceptable: a tool surface that is not the
+    /// grant, a surface or a capability list that cannot be read as names at all, the wiki server
+    /// not connected, or no interrupt to send (GUARD-001, GUARD-004). The run ends failed on any
+    /// of them, and the name says the judgment rather than one of its reasons.
     /// </summary>
-    SurfaceIsNotTheGrant,
+    InitIsNotAcceptable,
 
     /// <summary>What the run has caused so far, in tokens.</summary>
     CostSoFar,
@@ -101,7 +103,7 @@ public sealed class AgentTranscript(ToolGrant grant)
         {
             case "system" when message["subtype"]?.GetValue<string>() == "init":
                 return new TranscriptEvent(
-                    InitIsAcceptable(message, grant) ? TranscriptSays.AgentReportedIn : TranscriptSays.SurfaceIsNotTheGrant);
+                    InitIsAcceptable(message, grant) ? TranscriptSays.AgentReportedIn : TranscriptSays.InitIsNotAcceptable);
 
             case "stream_event":
                 spent = Math.Max(spent, StreamedTotal(message));
@@ -132,12 +134,16 @@ public sealed class AgentTranscript(ToolGrant grant)
 
     /// <summary>
     /// What <c>system/init</c> has to say before a run may proceed: a tool surface that is the
-    /// grant, the wiki server connected, and an interrupt we can actually send.
+    /// grant, the wiki server connected, and an interrupt we can actually send. A <c>tools</c> or
+    /// <c>capabilities</c> that is not an array of names is not read past — see
+    /// <see cref="Strings"/>.
     /// </summary>
     private static bool InitIsAcceptable(JsonObject init, ToolGrant grant) =>
-        SurfaceIsTheGrant(grant, Strings(init["tools"]))
+        Strings(init["tools"]) is { } tools
+        && SurfaceIsTheGrant(grant, tools)
         && WikiServerIsConnected(init["mcp_servers"])
-        && Strings(init["capabilities"]).Contains(InterruptCapability, StringComparer.Ordinal);
+        && Strings(init["capabilities"]) is { } capabilities
+        && capabilities.Contains(InterruptCapability, StringComparer.Ordinal);
 
     private static bool WikiServerIsConnected(JsonNode? servers) =>
         servers is JsonArray listed && listed.Any(IsConnectedWikiServer);
@@ -147,10 +153,33 @@ public sealed class AgentTranscript(ToolGrant grant)
         && described["name"]?.GetValue<string>() == ServerName
         && described["status"]?.GetValue<string>() == "connected";
 
-    private static IReadOnlyList<string> Strings(JsonNode? array) =>
-        array is JsonArray listed
-            ? [.. listed.Select(n => n?.GetValue<string>()).OfType<string>()]
-            : [];
+    /// <summary>
+    /// The names a JSON array holds, or <c>null</c> when it is not an array of strings. An element
+    /// that is not a string is not a name that can be compared, and dropping it would let a
+    /// <c>tools</c> of the granted names plus a <c>null</c> pass as the grant. What cannot be read
+    /// is refused, not read around (GUARD-001).
+    /// </summary>
+    private static List<string>? Strings(JsonNode? array)
+    {
+        if (array is not JsonArray listed)
+        {
+            return null;
+        }
+
+        var names = new List<string>(listed.Count);
+
+        foreach (var element in listed)
+        {
+            if (element is not JsonValue value || !value.TryGetValue<string>(out var name))
+            {
+                return null;
+            }
+
+            names.Add(name);
+        }
+
+        return names;
+    }
 
     private static long StreamedTotal(JsonObject message)
     {

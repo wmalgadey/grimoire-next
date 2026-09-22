@@ -37,7 +37,7 @@ public sealed class AgentTranscriptTests
     [Trait("req", "GUARD-001")]
     public void Init_RefusesTheSurface_WhenAToolOutsideTheGrantIsReported() =>
         Assert.Equal(
-            TranscriptSays.SurfaceIsNotTheGrant,
+            TranscriptSays.InitIsNotAcceptable,
             Transcript().Read(RecordedTranscript.InitWithAToolOutsideTheGrant).Says);
 
     [Fact]
@@ -46,15 +46,15 @@ public sealed class AgentTranscriptTests
         // The grant is the whole surface and not a ceiling on it, so a surface short of it is no
         // more this run's grant than one beyond it.
         Assert.Equal(
-            TranscriptSays.SurfaceIsNotTheGrant,
+            TranscriptSays.InitIsNotAcceptable,
             Transcript().Read(RecordedTranscript.InitOfTheSpikesStub).Says);
 
     [Fact]
     [Trait("req", "GUARD-001")]
-    public void Init_RefusesTheSurface_WithoutTheWikiServerConnected()
+    public void Init_RefusesTheRun_WithoutTheWikiServerConnected()
     {
         Assert.Equal(
-            TranscriptSays.SurfaceIsNotTheGrant,
+            TranscriptSays.InitIsNotAcceptable,
             Transcript().Read(RecordedTranscript.InitWithTheWikiServerDown).Says);
 
         // What is read is the wiki's own status, not that of every server the CLI lists. A second
@@ -66,11 +66,37 @@ public sealed class AgentTranscriptTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-001")]
+    public void Init_RefusesTheSurface_WhenTheToolsAreNotAllNames()
+    {
+        // The granted names are all there, and something that is no name is there too. Dropping
+        // what cannot be read would leave exactly the grant behind and let the run start on a
+        // surface nobody could compare.
+        Assert.Equal(
+            TranscriptSays.InitIsNotAcceptable,
+            Transcript().Read(RecordedTranscript.InitWithAMalformedToolsArray).Says);
+
+        Assert.Equal(
+            TranscriptSays.InitIsNotAcceptable,
+            Transcript().Read(RecordedTranscript.InitWithAnObjectAmongTheTools).Says);
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-001")]
+    public void Init_RefusesTheSurface_WithoutAToolsArrayAtAll() =>
+        // No surface reported is not an empty surface; it is a surface that was never read.
+        Assert.Equal(
+            TranscriptSays.InitIsNotAcceptable,
+            Transcript()
+                .Read("""{"type":"system","subtype":"init","mcp_servers":[{"name":"wiki","status":"connected"}],"capabilities":["interrupt_receipt_v1"]}""")
+                .Says);
+
+    [Fact]
     [Trait("req", "GUARD-004")]
-    public void Init_RefusesTheSurface_WithoutAnInterruptToSend() =>
+    public void Init_RefusesTheRun_WithoutAnInterruptToSend() =>
         // A run that cannot be interrupted cannot be stopped at a ceiling, so it does not start.
         Assert.Equal(
-            TranscriptSays.SurfaceIsNotTheGrant,
+            TranscriptSays.InitIsNotAcceptable,
             Transcript().Read(RecordedTranscript.InitWithoutTheInterrupt).Says);
 
     [Fact]

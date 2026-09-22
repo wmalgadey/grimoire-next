@@ -253,7 +253,7 @@ test seen to fail, the mutation reverted.
 | Test | Asked for by | Mutants it killed |
 | --- | --- | --- |
 | `ProvenanceStampTests.WritePage_WritesAnActorAYamlReaderReadsBack_WhenPlainYamlWouldNot` (new) | WIKI-002 | 12 in `ProvenanceStamp.cs` — five of the eight at line 81, both at 88, five of the six at 90: an actor's name written so that a YAML reader gives back something else, or nothing |
-| `AgentTranscriptTests.Init_RefusesTheSurface_WithoutTheWikiServerConnected` (a second fixture) | GUARD-001 | `AgentTranscript.cs` 143, `Any` → `All` — a run refused because some other MCP server was down |
+| `AgentTranscriptTests.Init_RefusesTheRun_WithoutTheWikiServerConnected` (a second fixture) | GUARD-001 | `AgentTranscript.cs` 143, `Any` → `All` — a run refused because some other MCP server was down |
 | `TestCatalogueTests.Read_PassesOverAnAttributeThatIsNotATrait` (new) | IV.3 | `TestCatalogue.cs` 117, `&&` → `\|\|` — a requirement id read off an attribute that is not a trait |
 | `TestCatalogueTests.Describe_SaysTheTestHasNoLevel_WhenItCarriesNoTraitAtAll`, `…_WhenNoTraitNamesOne`, `Describe_ReadsTheFirstLevelThatIsOneOfTheFour` (new) | IV.3 | `TestCatalogue.cs` 107, `FirstOrDefault` → `First` — the catalogue throwing on the one thing the gate's third condition is written about |
 
@@ -267,3 +267,20 @@ own rules are now provable without an assembly that breaks the gate.
 
 `SubmissionBoard.RunInProgress` was removed in the same pull request. It had no caller
 (Principle II.1); four mutants went with it, one of them a survivor this report no longer carries.
+
+## After the measurement
+
+The review of this pull request asked for three changes to `AgentTranscript.cs`, and they were
+made after the run above. Nothing here is a measurement; it is what the tables no longer describe.
+
+- `TranscriptSays.SurfaceIsNotTheGrant` is now `InitIsNotAcceptable`. The event was always raised
+  for three different things, the surface being one of them, and the name named only that one.
+- `Strings` returned the string elements of an array and dropped the rest. A `tools` of the
+  granted names and a `null` beside them therefore read as the grant. It now returns nothing at
+  all for an array that is not all names, and `system/init` is refused on it — two Fast tests,
+  `Init_RefusesTheSurface_WhenTheToolsAreNotAllNames` and `…_WithoutAToolsArrayAtAll`.
+- The prefix-ownership remark in `ToolGrant.cs` still named `HarnessProcess`; the mapping moved
+  to `AgentTranscript` in this pull request.
+
+The line numbers in every table above are the measured ones and predate these three. The Fast
+suite is 167 tests, not the 165 the Validity section counts.

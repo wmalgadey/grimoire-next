@@ -7,7 +7,7 @@ namespace Grimoire.Agent;
 /// <para>
 /// These are the <b>bare</b> names, as the hub serves them and as the grant records them. The CLI
 /// namespaces every MCP tool and reports them prefixed; neither spelling is converted in store —
-/// <c>HarnessProcess</c> maps before it compares, and it is the only place that knows the prefix
+/// <c>AgentTranscript</c> maps before it compares, and it is the only place that knows the prefix
 /// (Constitution V.2, data-model.md §ToolGrant).
 /// </para>
 /// <para>

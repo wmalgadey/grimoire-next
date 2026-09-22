@@ -232,7 +232,7 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
 
                 switch (said.Says)
                 {
-                    case TranscriptSays.SurfaceIsNotTheGrant:
+                    case TranscriptSays.InitIsNotAcceptable:
                         // Failed here, before the first model call (GUARD-001).
                         report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
                         await StopAsync(dispatch.RunId, CancellationToken.None).ConfigureAwait(false);
