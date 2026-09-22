@@ -41,4 +41,15 @@ run Grimoire.Agent \
   --mutate '**/ToolGrant.cs' \
   --mutate '**/Adapters/AgentTranscript.cs'
 run Grimoire.Wiki --mutate '**/*' --mutate '!**/Adapters/**'
-run Grimoire.Trace
+
+# Grimoire.Trace without its wiring and its output. `Program.cs` is argument parsing and the two
+# verbs wired together, `RepositoryLayout.cs` is where the repository keeps things, and
+# `TraceDocument.cs` renders docs/trace.md — none of the three holds a decision of ours, and
+# III.8 does not test those. What is left is what the gate actually decides: the catalogue that
+# reads the traits, the registry that reads the requirements, the check itself, and the records
+# the three of them pass around.
+run Grimoire.Trace \
+  --mutate '**/*' \
+  --mutate '!**/Program.cs' \
+  --mutate '!**/RepositoryLayout.cs' \
+  --mutate '!**/TraceDocument.cs'

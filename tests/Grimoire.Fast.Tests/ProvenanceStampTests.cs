@@ -1,4 +1,5 @@
 using Grimoire.Wiki;
+using YamlDotNet.RepresentationModel;
 
 namespace Grimoire.Fast.Tests;
 
@@ -179,6 +180,37 @@ public sealed class ProvenanceStampTests
 
         Assert.Null(result.Page);
         Assert.Contains("generated", result.Error!, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("grimoire/claude: opus 5")]
+    [InlineData("\"grimoire/claude-opus-5\"")]
+    [InlineData("- grimoire/claude-opus-5")]
+    public void WritePage_WritesAnActorAYamlReaderReadsBack_WhenPlainYamlWouldNot(string actor)
+    {
+        // The actor is not a constant of ours: it is `grimoire/<model>` and the model name is
+        // configuration, so whatever is configured reaches `generated.by`. A colon, a leading
+        // quote and a leading `-` are three spellings a YAML reader would not give back as they
+        // went in — a colon is a mapping, a quote opens a quoted scalar, a `-` opens a sequence.
+        // What WIKI-002 asks for is that the record says who generated the page, and a value the
+        // reader cannot give back does not say it.
+        var result = ProvenanceStamp.Apply(Page("type: Recipe"), new GenerationRecord(actor, Record.At));
+
+        Assert.Null(result.Error);
+        Assert.Equal(actor, GeneratedBy(result.Page!));
+    }
+
+    /// <summary>The <c>generated.by</c> of a stamped page, as a YAML reader gives it back.</summary>
+    private static string GeneratedBy(string page)
+    {
+        var closing = page.IndexOf("\n---", 4, StringComparison.Ordinal);
+        var frontmatter = page[4..closing];
+
+        var read = new YamlStream();
+        read.Load(new StringReader(frontmatter));
+
+        var generated = (YamlMappingNode)((YamlMappingNode)read.Documents[0].RootNode)["generated"];
+        return ((YamlScalarNode)generated["by"]).Value!;
     }
 
     [Fact]

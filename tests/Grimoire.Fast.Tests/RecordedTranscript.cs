@@ -54,6 +54,15 @@ internal static class RecordedTranscript
         {"type":"system","subtype":"init","session_id":"8f3c1b70","tools":["mcp__wiki__list_pages","mcp__wiki__read_page","mcp__wiki__write_page","mcp__wiki__write_index","mcp__wiki__append_log"],"mcp_servers":[{"name":"wiki","status":"failed"}],"capabilities":["interrupt_receipt_v1"]}
         """;
 
+    /// <summary>
+    /// <see cref="Init"/> with the wiki connected and a second server that is not. The CLI reports
+    /// every server it was configured with, and a hub may be configured with more than the wiki's.
+    /// </summary>
+    internal const string InitWithASecondServerDown =
+        """
+        {"type":"system","subtype":"init","session_id":"8f3c1b70","tools":["mcp__wiki__list_pages","mcp__wiki__read_page","mcp__wiki__write_page","mcp__wiki__write_index","mcp__wiki__append_log"],"mcp_servers":[{"name":"wiki","status":"connected"},{"name":"notes","status":"failed"}],"capabilities":["interrupt_receipt_v1"]}
+        """;
+
     /// <summary><see cref="Init"/> from a CLI that does not advertise the interrupt.</summary>
     internal const string InitWithoutTheInterrupt =
         """

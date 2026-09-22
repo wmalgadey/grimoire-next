@@ -3,11 +3,21 @@ using System.Runtime.InteropServices;
 
 namespace Grimoire.Trace;
 
+/// <summary>One xunit trait, as the two arguments of the attribute spell it.</summary>
+internal readonly record struct TestTrait(string Name, string Value);
+
 /// <summary>
 /// Reads the <c>level</c> and <c>req</c> traits off the built test assemblies with
 /// <see cref="MetadataLoadContext"/> — metadata only. No test is executed and no runner is
 /// involved, which is what makes the check deterministic (Constitution IV.3, research.md R-05).
 /// </summary>
+/// <remarks>
+/// Finding the methods is <see cref="Read"/> and reading what they carry is
+/// <see cref="Describe"/>. The split is not decoration: every judgment the catalogue makes about
+/// a method is in <see cref="Describe"/>, which is given traits, so the gate's own rules are
+/// provable without an assembly to carry them — including the one an assembly this gate reads
+/// cannot carry, a test with no level.
+/// </remarks>
 internal static class TestCatalogue
 {
     private const string TraitAttribute = "Xunit.TraitAttribute";
@@ -54,20 +64,30 @@ internal static class TestCatalogue
                     continue;
                 }
 
-                var traits = typeTraits.Concat(Traits(attributes)).ToList();
-
-                yield return new TestMethod(
+                yield return Describe(
                     assembly.Suite,
                     type.FullName ?? type.Name,
                     method.Name,
-                    Level(traits),
-                    [.. traits.Where(t => t.Name.Equals("req", StringComparison.OrdinalIgnoreCase))
-                              .Select(t => t.Value)
-                              .Distinct(StringComparer.Ordinal)
-                              .Order(StringComparer.Ordinal)]);
+                    [.. typeTraits.Concat(Traits(attributes))]);
             }
         }
     }
+
+    /// <summary>
+    /// One test, as the traits it carries describe it. The class's traits come before the
+    /// method's, which is the order a level is read in. A method carrying none is a test with no
+    /// level, which the gate has something to say about (Constitution IV.3) — so this says it
+    /// rather than refusing to describe the method.
+    /// </summary>
+    public static TestMethod Describe(string suite, string typeName, string methodName, IReadOnlyList<TestTrait> traits) =>
+        new(suite,
+            typeName,
+            methodName,
+            Level(traits),
+            [.. traits.Where(t => t.Name.Equals("req", StringComparison.OrdinalIgnoreCase))
+                      .Select(t => t.Value)
+                      .Distinct(StringComparer.Ordinal)
+                      .Order(StringComparer.Ordinal)]);
 
     /// <summary>A method xunit would run: <c>[Fact]</c>, <c>[Theory]</c>, or anything deriving from them.</summary>
     private static bool IsTest(IList<CustomAttributeData> attributes) =>
@@ -102,7 +122,7 @@ internal static class TestCatalogue
         }
     }
 
-    private static string? Level(IEnumerable<(string Name, string Value)> traits)
+    private static string? Level(IEnumerable<TestTrait> traits)
     {
         var declared = traits
             .Where(t => t.Name.Equals("level", StringComparison.OrdinalIgnoreCase))
@@ -112,10 +132,10 @@ internal static class TestCatalogue
         return declared;
     }
 
-    private static List<(string Name, string Value)> Traits(IEnumerable<CustomAttributeData> attributes) =>
+    private static List<TestTrait> Traits(IEnumerable<CustomAttributeData> attributes) =>
         [.. attributes
             .Where(a => a.AttributeType.FullName == TraitAttribute && a.ConstructorArguments.Count == 2)
-            .Select(a => (
-                Name: a.ConstructorArguments[0].Value as string ?? string.Empty,
-                Value: a.ConstructorArguments[1].Value as string ?? string.Empty))];
+            .Select(a => new TestTrait(
+                a.ConstructorArguments[0].Value as string ?? string.Empty,
+                a.ConstructorArguments[1].Value as string ?? string.Empty))];
 }

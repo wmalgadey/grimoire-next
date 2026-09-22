@@ -68,22 +68,6 @@ public sealed class SubmissionBoard(TimeProvider clock)
     }
 
     /// <summary>
-    /// Whether a run is under way. A submission is dispatched the moment it is accepted, so one
-    /// reading <c>Submitted</c> means a run has begun just as much as one reading <c>Running</c>
-    /// does — the two differ only in whether the agent has reported in yet.
-    /// </summary>
-    public bool RunInProgress
-    {
-        get
-        {
-            lock (gate)
-            {
-                return submissions.Exists(s => s.State is SubmissionState.Submitted or SubmissionState.Running);
-            }
-        }
-    }
-
-    /// <summary>
     /// Accept a text, or refuse it with the one reason that applies.
     /// </summary>
     /// <remarks>

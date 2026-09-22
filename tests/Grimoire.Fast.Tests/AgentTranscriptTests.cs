@@ -51,10 +51,19 @@ public sealed class AgentTranscriptTests
 
     [Fact]
     [Trait("req", "GUARD-001")]
-    public void Init_RefusesTheSurface_WithoutTheWikiServerConnected() =>
+    public void Init_RefusesTheSurface_WithoutTheWikiServerConnected()
+    {
         Assert.Equal(
             TranscriptSays.SurfaceIsNotTheGrant,
             Transcript().Read(RecordedTranscript.InitWithTheWikiServerDown).Says);
+
+        // What is read is the wiki's own status, not that of every server the CLI lists. A second
+        // server down is not this run's wiki down, and a run that refused on it would refuse for a
+        // reason GUARD-001 does not give.
+        Assert.Equal(
+            TranscriptSays.AgentReportedIn,
+            Transcript().Read(RecordedTranscript.InitWithASecondServerDown).Says);
+    }
 
     [Fact]
     [Trait("req", "GUARD-004")]
