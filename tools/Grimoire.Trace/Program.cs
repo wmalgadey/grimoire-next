@@ -23,6 +23,9 @@ try
         return 2;
     }
 
+    // A failure of the tool itself is prefixed with the tool's name, not with `trace-check`: two of
+    // the three verbs are not the gate, and only the gate's verdict below says `trace-check`.
+    //
     // Every argument is read against the verb that was given, and anything that does not fit it
     // ends the run. A gate that quietly runs a different command shape than the caller asked for
     // is the one failure a gate must not have (Constitution IV.3: what the check cannot read, it
@@ -40,7 +43,7 @@ try
                 break;
 
             case "--complete":
-                Console.Error.WriteLine($"trace-check: --complete belongs to `check`; `{verb}` has no such call");
+                Console.Error.WriteLine($"Grimoire.Trace: --complete belongs to `check`; `{verb}` has no such call");
                 Console.Error.WriteLine(Usage);
                 return 2;
 
@@ -49,12 +52,12 @@ try
                 break;
 
             case "--configuration":
-                Console.Error.WriteLine("trace-check: --configuration needs a value, Debug or Release");
+                Console.Error.WriteLine("Grimoire.Trace: --configuration needs a value, Debug or Release");
                 Console.Error.WriteLine(Usage);
                 return 2;
 
             default:
-                Console.Error.WriteLine($"trace-check: unrecognised argument \"{args[at]}\"");
+                Console.Error.WriteLine($"Grimoire.Trace: unrecognised argument \"{args[at]}\"");
                 Console.Error.WriteLine(Usage);
                 return 2;
         }
@@ -97,6 +100,6 @@ try
 }
 catch (TraceInputException failure)
 {
-    Console.Error.WriteLine($"trace-check: {failure.Message}");
+    Console.Error.WriteLine($"Grimoire.Trace: {failure.Message}");
     return 2;
 }

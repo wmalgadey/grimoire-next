@@ -110,6 +110,14 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    # Two pushes to main in quick succession would otherwise measure main twice at once, and both
+    # runs force-push the same branch: whichever finished last would win, so an older commit's
+    # numbers could end up on the badges. One group for the whole repository, and the newer run
+    # cancels the older, so what the badges show is always the newest measurement that completed.
+    concurrency:
+      group: metrics-badges
+      cancel-in-progress: true
+
     # The one job in this workflow that may write, and it writes to the `badges` branch alone.
     # Nothing here commits to main.
     permissions:
