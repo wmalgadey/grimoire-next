@@ -67,12 +67,20 @@ The `trace-check` gate and the trace document (both need the tree built; the too
 dotnet run --project tools/Grimoire.Trace -- check              # every push: unknown/retired id, missing level, E2E without req
 dotnet run --project tools/Grimoire.Trace -- check --complete   # adds: a `test` requirement with no test (PRs based on main)
 dotnet run --project tools/Grimoire.Trace -- write              # regenerates docs/trace.md
+dotnet run --project tools/Grimoire.Trace -- summary            # the requirement counts as JSON; writes nothing
 ```
 
 Mutation measurement (Stryker, Fast suite only, via `Grimoire.Mutation.slnx`; a measurement, not a gate):
 
 ```
 ./scripts/mutation.sh
+```
+
+The three project metrics behind the README badges — requirements proven, Fast-suite line coverage over the domain projects, time to read `src/`. Needs a built tree, `dotnet tool restore`, `jq` and `cloc`; writes the badge documents to git-ignored `artifacts/metrics/` and the table to stdout. A measurement too, not a gate — CI's `metrics` job runs it on push to main:
+
+```
+./scripts/metrics.sh
+CONFIGURATION=Release ./scripts/metrics.sh
 ```
 
 Run the hub by hand — `.env` at the root (copy `.env-example`), a real wiki, and a signed-in `claude` on `PATH`:
@@ -96,7 +104,7 @@ Three bounded contexts plus a composition root (`plan.md`, Structure Decision). 
 - **`src/Grimoire.Agent`** — the port to the agent (`IAgentHarness`, `AgentDispatch`, `RunReport`), the `ToolGrant` (five bare tool names) and the fixed `Ceilings` (15 min, 2 000 000 tokens). Adapters: `HarnessProcess` owns the `claude` child process and the two things written to its stdin; `AgentTranscript` is the only place that reads the CLI's NDJSON protocol and the MCP name prefix.
 - **`src/Grimoire.Wiki`** — `IWikiStore` (list, read, write, append-log — deliberately no delete, move, revert or commit, because WIKI-003 leaves undo to the user's git history), `ProvenanceStamp` / `OkfFrontmatter` (the `generated` record is the only thing Grimoire writes into a page; the rest of the page comes back byte for byte). Adapter: `FileSystemWikiStore`, the only code that touches the filesystem, and it refuses paths that leave the wiki.
 - **`src/Grimoire.Hub`** — the only project that knows all three. `Program.cs` reads the arguments and puts the two real adapters at their ports; `HubApplication.Build` is what every suite builds too, with in-memory adapters (III.9). It serves the static page from `wwwroot/` (no bundler, DEC-019), `POST`/`GET /api/submissions`, and the five wiki tools over MCP at `/mcp/runs/{runId}` — unauthenticated, loopback only (DEC-014). `InstructionLoader` is the *only* thing that puts text into the agent's prompt (V.1); `SubmissionIntake` accepts and dispatches without the user waiting; `RunConductor` holds what happens while a run is under way.
-- **`tools/Grimoire.Trace`** — the `trace-check` gate and the `write` command. Reads requirement IDs from `docs/capabilities/`, and `level`/`req` traits off built assemblies via `MetadataLoadContext` (DEC-005). Fails on what it cannot read rather than skipping it.
+- **`tools/Grimoire.Trace`** — the `trace-check` gate, the `write` command and the `summary` counts. Reads requirement IDs from `docs/capabilities/`, and `level`/`req` traits off built assemblies via `MetadataLoadContext` (DEC-005). Fails on what it cannot read rather than skipping it.
 
 ### The run lifecycle
 

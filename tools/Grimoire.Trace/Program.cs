@@ -1,6 +1,6 @@
 using Grimoire.Trace;
 
-// Two verbs, one pair of inputs: the requirement ids and proof kinds registered in
+// Three verbs, one pair of inputs: the requirement ids and proof kinds registered in
 // docs/capabilities/, and the level and req traits carried by the built test assemblies.
 //
 //   check             the gate of Constitution IV.3 — writes nothing. The three conditions that
@@ -8,13 +8,16 @@ using Grimoire.Trace;
 //   check --complete  those three and the fourth, a `test` requirement with no test. IV.3 applies
 //                     it where a feature lands on main; CI calls this on a PR whose base is main
 //   write             the single documented command of Constitution IV.4 — produces docs/trace.md
-const string Usage = "usage: Grimoire.Trace <check [--complete]|write> [--configuration <Debug|Release>]";
+//   summary           the counts behind the requirements badge, as JSON on stdout. Writes nothing
+//                     and judges nothing: no count makes it fail, so it is a measurement and not a
+//                     second gate (Constitution II.2)
+const string Usage = "usage: Grimoire.Trace <check [--complete]|write|summary> [--configuration <Debug|Release>]";
 
 try
 {
     var verb = args.Length > 0 ? args[0] : null;
 
-    if (verb is not ("check" or "write"))
+    if (verb is not ("check" or "write" or "summary"))
     {
         Console.Error.WriteLine(Usage);
         return 2;
@@ -37,7 +40,7 @@ try
                 break;
 
             case "--complete":
-                Console.Error.WriteLine("trace-check: --complete belongs to `check`; `write` has no such call");
+                Console.Error.WriteLine($"trace-check: --complete belongs to `check`; `{verb}` has no such call");
                 Console.Error.WriteLine(Usage);
                 return 2;
 
@@ -60,6 +63,14 @@ try
     var layout = RepositoryLayout.Discover();
     var requirements = CapabilityRegistry.Read(layout.CapabilitiesDirectory);
     var tests = TestCatalogue.Read(layout.TestAssemblies(configuration));
+
+    // Nothing but the two readers stands behind the count, so the badge and the gate can never
+    // disagree about what is registered.
+    if (verb == "summary")
+    {
+        Console.WriteLine(TraceSummary.Render(requirements, tests));
+        return 0;
+    }
 
     if (verb == "write")
     {

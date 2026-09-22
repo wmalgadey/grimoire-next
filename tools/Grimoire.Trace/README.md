@@ -1,11 +1,13 @@
 # Grimoire.Trace
 
-The `trace-check` gate of Constitution IV.3, and the single documented command that writes
-`docs/trace.md` (IV.4). Two verbs, one pair of inputs, no state of its own.
+The `trace-check` gate of Constitution IV.3, the single documented command that writes
+`docs/trace.md` (IV.4), and the counts behind the requirements badge. Three verbs, one pair of
+inputs, no state of its own.
 
 ```
 Grimoire.Trace check [--complete] [--configuration <Debug|Release>]
 Grimoire.Trace write            [--configuration <Debug|Release>]
+Grimoire.Trace summary          [--configuration <Debug|Release>]
 ```
 
 ## What it reads
@@ -63,16 +65,37 @@ The single documented command of Constitution IV.4: requirement, proof kind, tes
 The file is committed when a feature closes, together with the outcome status and spec reference in
 `docs/product.md` — the only two edits an agent makes to that file.
 
+## `summary` — the counts behind the badge
+
+JSON on stdout, nothing written, nothing judged:
+
+```json
+{
+  "requirements": 16,
+  "byProof": { "test": 15, "eval": 0, "review": 1 },
+  "testRequirementsWithATest": 15
+}
+```
+
+The same two readers as the gate, so the badge and the gate cannot disagree about what is
+registered. Retired requirements are not counted: they keep their id (IV.2) and are no longer
+requirements of the system. `scripts/metrics.sh` and the `metrics` job of
+`.github/workflows/ci.yml` are what read this.
+
+No count makes the verb fail, which is what keeps it a measurement and not a second gate (II.2).
+It exits `2` on input it cannot read, like the other two verbs.
+
 ## The files
 
 | File | What it is |
 | --- | --- |
-| `Program.cs` | the two verbs, the argument reading, the exit codes |
+| `Program.cs` | the three verbs, the argument reading, the exit codes |
 | `RepositoryLayout.cs` | where the repository keeps the two inputs; finds the root by `Grimoire.slnx` |
 | `CapabilityRegistry.cs` | reads `docs/capabilities/`, fail-closed |
 | `TestCatalogue.cs` | reads the traits off the built assemblies |
 | `TraceCheck.cs` | the four conditions. Pure: it is handed the two lists and decides |
 | `TraceDocument.cs` | renders `docs/trace.md` |
+| `TraceSummary.cs` | counts the registered requirements. Pure, like the check |
 
 `TraceCheck.Run` and `CapabilityRegistry.Read` are proven by the Fast suite, which feeds them
 small in-memory lists — one test per condition above, and one per way a row can fail to read. The

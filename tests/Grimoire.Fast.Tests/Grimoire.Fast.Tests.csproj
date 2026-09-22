@@ -13,6 +13,15 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
   </ItemGroup>
 
+  <!-- Microsoft.Testing.Platform's own coverage extension, which is what puts the coverage
+       options on this suite's command line; nothing of ours measures coverage (Constitution
+       II.3). It is on the Fast suite alone, because the coverage metric is of the Fast suite
+       alone. It collects only where the run asks for it, so the ordinary run — the one the time
+       budget of III.7 measures — is the same run it was without the package. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+  </ItemGroup>
+
   <!-- YamlDotNet, to read back what ProvenanceStamp wrote. "Plain YAML would not read this value
        back" is the property under test, and only a YAML reader can say whether it does. V.2 keeps
        the parser out of every other bounded context; this is the suite that checks the one which
