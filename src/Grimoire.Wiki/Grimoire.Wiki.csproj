@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The frontmatter is YAML, and "does the frontmatter parse" is a decision WIKI-002 rests on.
+       A parser of our own would be a worse answer to the same question. It is referenced only
+       here, where the frontmatter is read (Constitution V.2). -->
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+</Project>

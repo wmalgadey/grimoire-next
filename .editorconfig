@@ -1,0 +1,89 @@
+# Style and analysis rules for the whole tree. EnforceCodeStyleInBuild in Directory.Build.props
+# makes the IDExxxx rules below build diagnostics, and TreatWarningsAsErrors makes them errors.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{md,markdown}]
+trim_trailing_whitespace = false
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[*.{csproj,props,targets,slnx}]
+indent_size = 2
+
+[*.cs]
+indent_size = 4
+max_line_length = 120
+
+# The complexity ceiling (Constitution II.3: the analysis the SDK already ships, nothing of our
+# own). CA1502 is off by default in .NET 10 and its default threshold is 25; CodeMetricsConfig.txt
+# sets ours to 15. It is an error rather than a warning for the same reason everything else here
+# is: a warning that is only a warning is a rule nobody keeps.
+dotnet_diagnostic.CA1502.severity = error
+
+# Two rule families are read differently by the compiler than by the editor: naming (IDE1006) and
+# whitespace (IDE0055) take their build severity from the dotnet_diagnostic keys below and from
+# nothing else. Setting `dotnet_naming_rule.<name>.severity` or an option's `:warning` suffix moves
+# the squiggle in the IDE and leaves the build silent, which is the one thing a rule must not do
+# here. With these two lines they are warnings, and TreatWarningsAsErrors makes them errors.
+dotnet_diagnostic.IDE1006.severity = warning
+dotnet_diagnostic.IDE0055.severity = warning
+
+# Language conventions
+csharp_using_directive_placement = outside_namespace:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_prefer_braces = true:warning
+csharp_style_var_for_built_in_types = false:silent
+csharp_style_var_when_type_is_apparent = true:silent
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_style_readonly_field = true:warning
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
+dotnet_style_coalesce_expression = true:warning
+dotnet_style_null_propagation = true:warning
+
+# IDE0005 (unused usings) is left at its default: raising it at build time demands
+# GenerateDocumentationFile, and XML documentation files nobody reads are not worth the rule.
+csharp_style_unused_value_expression_statement_preference = discard_variable:silent
+
+# Naming. A private field carries its lifetime in its name: a constant and a static readonly are
+# PascalCase, everything else is camelCase. The three rules are ordered because the first one whose
+# symbol group matches wins, so the two narrow groups have to come before the group that matches
+# every private field.
+#
+# The severity below is what the IDE reads. The build reads dotnet_diagnostic.IDE1006.severity
+# instead, which is set with the other build severities at the top of this file; without that line
+# a naming violation is red in the editor and invisible in CI.
+dotnet_naming_rule.private_constants_pascal_case.severity = warning
+dotnet_naming_rule.private_constants_pascal_case.symbols = private_constants
+dotnet_naming_rule.private_constants_pascal_case.style = pascal_case
+dotnet_naming_symbols.private_constants.applicable_kinds = field
+dotnet_naming_symbols.private_constants.applicable_accessibilities = private
+dotnet_naming_symbols.private_constants.required_modifiers = const
+
+dotnet_naming_rule.private_static_readonly_pascal_case.severity = warning
+dotnet_naming_rule.private_static_readonly_pascal_case.symbols = private_static_readonly_fields
+dotnet_naming_rule.private_static_readonly_pascal_case.style = pascal_case
+dotnet_naming_symbols.private_static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.private_static_readonly_fields.applicable_accessibilities = private
+dotnet_naming_symbols.private_static_readonly_fields.required_modifiers = static, readonly
+
+dotnet_naming_rule.private_fields_camel_case.severity = warning
+dotnet_naming_rule.private_fields_camel_case.symbols = private_fields
+dotnet_naming_rule.private_fields_camel_case.style = camel_case
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.camel_case.capitalization = camel_case
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+
+# Test projects: xunit's own analyzers apply; nothing is relaxed here.

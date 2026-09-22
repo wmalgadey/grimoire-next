@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Grimoire.Hub/Grimoire.Hub.csproj" />
+    <ProjectReference Include="../../tools/Grimoire.Trace/Grimoire.Trace.csproj" />
+  </ItemGroup>
+
+  <!-- FakeTimeProvider. The Fast suite has 15 s for the whole of it (Constitution III.7), so no
+       test in it waits for real time; the elapsed-time ceiling of GUARD-004 is the requirement
+       that would otherwise make one. TimeProvider is the framework's own abstraction, so no
+       interface of ours stands in for it (II.4) and the provider itself is not tested (III.8). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+
+  <!-- YamlDotNet, to read back what ProvenanceStamp wrote. "Plain YAML would not read this value
+       back" is the property under test, and only a YAML reader can say whether it does. V.2 keeps
+       the parser out of every other bounded context; this is the suite that checks the one which
+       has it, not a second context reading frontmatter. -->
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+</Project>

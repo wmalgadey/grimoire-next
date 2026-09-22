@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A Run records the tools it was granted (GUARD-003) and the two ceilings it ran under
+       (GUARD-004), which data-model.md puts on the Run itself. Those are GUARD's vocabulary, so
+       RUNS reads them; nothing goes the other way. -->
+  <ItemGroup>
+    <ProjectReference Include="../Grimoire.Agent/Grimoire.Agent.csproj" />
+  </ItemGroup>
+
+</Project>

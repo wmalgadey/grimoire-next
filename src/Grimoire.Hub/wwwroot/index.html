@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Grimoire — submit a text</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font: 16px/1.5 system-ui, sans-serif;
+        margin: 0 auto;
+        max-width: 42rem;
+        padding: 2rem 1rem;
+      }
+      h1 { font-size: 1.25rem; font-weight: 600; }
+      textarea {
+        box-sizing: border-box;
+        font: inherit;
+        min-height: 14rem;
+        padding: 0.6rem;
+        resize: vertical;
+        width: 100%;
+      }
+      button { font: inherit; margin-top: 0.75rem; padding: 0.5rem 1.1rem; }
+      #message { margin-top: 1rem; min-height: 1.5rem; }
+      #message[data-kind="refused"] { color: #b3261e; }
+      h2 { font-size: 1rem; font-weight: 600; margin-top: 2.5rem; }
+      #submissions { list-style: none; margin: 0; padding: 0; }
+      #submissions li {
+        border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        display: flex;
+        gap: 1rem;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+      }
+      #submissions time { font-variant-numeric: tabular-nums; }
+      .state { font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>Submit a text</h1>
+
+    <form id="submission">
+      <label for="text">Paste the text you want in the wiki.</label>
+      <textarea id="text" name="text" autofocus></textarea>
+      <button id="submit" type="submit">Submit</button>
+    </form>
+
+    <!-- The run happens without the user: once the text is accepted the browser is free
+         (INGEST-001). -->
+    <p id="message" role="status" aria-live="polite"></p>
+
+    <h2>What became of each submission</h2>
+
+    <!-- Exactly one of the four states per submission, and no further detail about the run
+         (ACCESS-002). Everything more — steps, reasoning, duration, cost, history — is OUT-02. -->
+    <ul id="submissions"></ul>
+
+    <script src="app.js"></script>
+  </body>
+</html>
