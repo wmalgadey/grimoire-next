@@ -72,10 +72,21 @@ internal static partial class CapabilityRegistry
         ArgumentNullException.ThrowIfNull(files);
 
         var requirements = new List<Requirement>();
+        var read = 0;
 
         foreach (var file in files)
         {
+            read++;
             requirements.AddRange(ParseOne(file));
+        }
+
+        if (read == 0)
+        {
+            // No file at all is not a registry of no requirements; it is a registry that could
+            // not be read. Taken as empty, the gate would pass over nothing and report success,
+            // so deleting or renaming the capability files would switch the gate off rather than
+            // fail it — which is the one thing IV.3 says a gate must not do.
+            throw new TraceInputException("no capability files: nothing to read a requirement from");
         }
 
         var duplicate = requirements.GroupBy(r => r.Id, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);

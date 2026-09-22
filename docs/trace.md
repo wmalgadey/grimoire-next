@@ -67,6 +67,7 @@ Allowed at Fast and Contract (Constitution III.5); an E2E or Deploy test here fa
 | `Grimoire.Fast.Tests.CapabilityRegistryTests.Read_Fails_WhenAnIdIsRegisteredTwice` | Grimoire.Fast.Tests | fast |
 | `Grimoire.Fast.Tests.CapabilityRegistryTests.Read_Fails_WhenTheProofIsNotOneOfTheThree` | Grimoire.Fast.Tests | fast |
 | `Grimoire.Fast.Tests.CapabilityRegistryTests.Read_Fails_WhenTheSameIdIsRegisteredInTwoFiles` | Grimoire.Fast.Tests | fast |
+| `Grimoire.Fast.Tests.CapabilityRegistryTests.Read_Fails_WithNoCapabilityFileAtAll` | Grimoire.Fast.Tests | fast |
 | `Grimoire.Fast.Tests.CapabilityRegistryTests.Read_KeepsTheWholeText_WhenTheRequirementContainsAPipe` | Grimoire.Fast.Tests | fast |
 | `Grimoire.Fast.Tests.CapabilityRegistryTests.Read_LeavesTheRequirementActive_WhenAHeadingAfterRetiredEndsTheSection` | Grimoire.Fast.Tests | fast |
 | `Grimoire.Fast.Tests.CapabilityRegistryTests.Read_MarksTheRequirementRetired_WhenTheRowSitsUnderRetired` | Grimoire.Fast.Tests | fast |

@@ -34,6 +34,36 @@ jobs:
       - name: Contract suite — time-budget 90 s
         run: dotnet test tests/Grimoire.Contract.Tests --no-build --configuration Release -- --timeout 90s --filter-not-trait "requires=signin"
 
+  # The E2E suite: a real browser against a running hub, driven by Microsoft.Playwright.Xunit.v3.
+  # Its own job because the browser install costs more than the suite does, and because nothing
+  # else here needs one.
+  #
+  # It had been built by the job above and never run, which made ACCESS-001 and ACCESS-002 read
+  # `proven` in docs/trace.md on the strength of tests that no pipeline executed: trace-check reads
+  # the traits off a built assembly, so it can tell that a test exists and not that it passes.
+  #
+  # No time budget — Constitution III.7 sets one for Fast and Contract only.
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build Grimoire.slnx --configuration Release
+
+      # The bootstrap script the Playwright package drops beside the built assembly. Chromium
+      # alone: PageTest uses it unless a test says otherwise, and none does.
+      - name: Install the browser
+        run: pwsh tests/Grimoire.E2E.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: E2E suite
+        run: dotnet test tests/Grimoire.E2E.Tests --no-build --configuration Release
+
   # trace-check (Constitution IV.3): reads the requirement ids and proof kinds from
   # docs/capabilities/ and the level/req traits off the built test assemblies. Writes nothing.
   #

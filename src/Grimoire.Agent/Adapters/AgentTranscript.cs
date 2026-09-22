@@ -103,14 +103,14 @@ public sealed class AgentTranscript(ToolGrant grant)
     /// <summary>What this line tells the hub.</summary>
     public TranscriptEvent Read(string line)
     {
-        if (Parse(line) is not { } message || message["type"]?.GetValue<string>() is not { } type)
+        if (Parse(line) is not { } message || Text(message["type"]) is not { } type)
         {
             return new TranscriptEvent(TranscriptSays.Nothing);
         }
 
         switch (type)
         {
-            case "system" when message["subtype"]?.GetValue<string>() == "init":
+            case "system" when Text(message["subtype"]) == "init":
                 return new TranscriptEvent(
                     InitIsAcceptable(message, grant) ? TranscriptSays.AgentReportedIn : TranscriptSays.InitIsNotAcceptable);
 
@@ -134,6 +134,14 @@ public sealed class AgentTranscript(ToolGrant grant)
                 return new TranscriptEvent(TranscriptSays.Nothing);
         }
     }
+
+    /// <summary>
+    /// A node read as a string, or null where it is anything else. <c>GetValue&lt;string&gt;</c>
+    /// throws on a node of another type, and a line this cannot make sense of is a line that says
+    /// nothing — not one that takes the reader down with it, orphaning the process it was reading.
+    /// </summary>
+    private static string? Text(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
     private static JsonObject? Parse(string line)
     {
@@ -166,8 +174,8 @@ public sealed class AgentTranscript(ToolGrant grant)
 
     private static bool IsConnectedWikiServer(JsonNode? server) =>
         server is JsonObject described
-        && described["name"]?.GetValue<string>() == ServerName
-        && described["status"]?.GetValue<string>() == "connected";
+        && Text(described["name"]) == ServerName
+        && Text(described["status"]) == "connected";
 
     /// <summary>
     /// The names a JSON array holds, or <c>null</c> when it is not an array of strings. An element
@@ -236,8 +244,8 @@ public sealed class AgentTranscript(ToolGrant grant)
 
     /// <summary>An ending the agent did not choose: an aborted stream, or a subtype that is not success.</summary>
     private static bool EndedAbnormally(JsonObject result) =>
-        result["terminal_reason"]?.GetValue<string>() is "aborted_streaming"
-        || result["subtype"]?.GetValue<string>() is { } subtype && subtype != "success";
+        Text(result["terminal_reason"]) is "aborted_streaming"
+        || Text(result["subtype"]) is { } subtype && subtype != "success";
 
     private static long Field(JsonObject node, string name) =>
         node[name] is { } value && long.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)

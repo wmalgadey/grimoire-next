@@ -145,4 +145,11 @@ public sealed class CapabilityRegistryTests
     [InlineData("nodash", "nodash")]
     public void Capability_IsWhatStandsBeforeTheDash(string id, string capability) =>
         Assert.Equal(capability, CapabilityRegistry.CapabilityOf(id));
+
+    [Fact]
+    public void Read_Fails_WithNoCapabilityFileAtAll() =>
+        // The gate's inputs are gone. Read as a registry of no requirements it would pass over
+        // nothing and report success, so deleting the capability files would switch the gate off
+        // instead of failing it. What it cannot read, it fails on (IV.3).
+        Assert.Throws<TraceInputException>(() => CapabilityRegistry.Parse([]));
 }
