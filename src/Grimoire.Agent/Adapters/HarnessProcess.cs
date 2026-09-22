@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Grimoire.Agent.Adapters;
@@ -22,7 +20,7 @@ public sealed record HarnessSettings(string Executable, string WorkingDirectory,
 }
 
 /// <summary>
-/// The only place the <c>claude</c> process and its newline-delimited JSON appear
+/// The <c>claude</c> process: started, written to, interrupted, killed
 /// (Constitution V.2, <c>contracts/agent-cli-protocol.md</c>).
 /// </summary>
 /// <remarks>
@@ -31,20 +29,14 @@ public sealed record HarnessSettings(string Executable, string WorkingDirectory,
 /// tells it: the ceilings, the run's state and the single nudge are all the hub's.
 /// </para>
 /// <para>
-/// The one judgment made here is the one that cannot be made anywhere else: the CLI namespaces
-/// every MCP tool as <c>mcp__wiki__&lt;name&gt;</c>, and this file owns that mapping. It maps
-/// before it compares, and a reported surface that is not the grant ends the run failed before its
-/// first model call (GUARD-001, data-model.md §ToolGrant).
+/// What the CLI's lines <em>mean</em> is <see cref="AgentTranscript"/>'s, beside this file and inside
+/// the same adapter. Nothing here reads the protocol; this class owns the process and the two
+/// things written to its stdin, and turns the events <see cref="AgentTranscript"/> produces into calls
+/// on the hub's <see cref="RunReport"/>.
 /// </para>
 /// </remarks>
 public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
 {
-    /// <summary>The prefix the CLI puts on every MCP tool. Known here and nowhere else.</summary>
-    public const string McpPrefix = "mcp__wiki__";
-
-    private const string ServerName = "wiki";
-    private const string InterruptCapability = "interrupt_receipt_v1";
-
     /// <summary>
     /// How long the interrupted process is given to finish reporting the turn before it is killed.
     /// A constant rather than a setting: docs/product.md §4 rules out per-run tuning, and this is
@@ -65,7 +57,7 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
         {
             ["mcpServers"] = new JsonObject
             {
-                [ServerName] = new JsonObject
+                [AgentTranscript.ServerName] = new JsonObject
                 {
                     ["type"] = "http",
                     ["url"] = new Uri(mcpBaseAddress, $"/mcp/runs/{dispatch.RunId}").ToString(),
@@ -87,26 +79,13 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             "--tools", string.Empty,
             "--mcp-config", mcpConfig.ToJsonString(),
             "--strict-mcp-config",
-            "--allowed-tools", $"{McpPrefix}*",
+            "--allowed-tools", $"{AgentTranscript.McpPrefix}*",
             "--permission-mode", "dontAsk",
 
             // No settings, hooks or CLAUDE.md from the machine reach the prompt (V.1).
             "--setting-sources", string.Empty,
             "--no-session-persistence",
         ];
-    }
-
-    /// <summary>
-    /// Whether what <c>system/init</c> reported is this run's grant. The bare names the grant
-    /// records are mapped to the prefixed form the CLI uses before they are compared.
-    /// </summary>
-    public static bool SurfaceIsTheGrant(ToolGrant grant, IEnumerable<string> reported)
-    {
-        ArgumentNullException.ThrowIfNull(grant);
-        ArgumentNullException.ThrowIfNull(reported);
-
-        return grant.IsTheSurface(
-            reported.Select(t => t.StartsWith(McpPrefix, StringComparison.Ordinal) ? t[McpPrefix.Length..] : t));
     }
 
     public Task DispatchAsync(AgentDispatch dispatch, RunReport report, CancellationToken cancellationToken)
@@ -238,50 +217,44 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
 
     /// <summary>
     /// The CLI's stdout, one JSON object per line. Everything the hub learns about a run arrives
-    /// here.
+    /// here; what each line means is <see cref="AgentTranscript"/>'s, and what to do about it is the
+    /// hub's.
     /// </summary>
     private async Task ReadAsync(Process process, AgentDispatch dispatch, RunReport report)
     {
-        long streamed = 0;
+        var stream = new AgentTranscript(dispatch.Grant);
 
         try
         {
             while (await process.StandardOutput.ReadLineAsync().ConfigureAwait(false) is { } line)
             {
-                if (Parse(line) is not { } message || message["type"]?.GetValue<string>() is not { } type)
-                {
-                    continue;
-                }
+                var said = stream.Read(line);
 
-                switch (type)
+                switch (said.Says)
                 {
-                    case "system" when message["subtype"]?.GetValue<string>() == "init":
-                        if (!InitIsAcceptable(message, dispatch.Grant))
-                        {
-                            // Failed here, before the first model call (GUARD-001).
-                            report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
-                            await StopAsync(dispatch.RunId, CancellationToken.None).ConfigureAwait(false);
-                            return;
-                        }
+                    case TranscriptSays.InitIsNotAcceptable:
+                        // Failed here, before the first model call (GUARD-001).
+                        report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
+                        await StopAsync(dispatch.RunId, CancellationToken.None).ConfigureAwait(false);
+                        return;
 
+                    case TranscriptSays.AgentReportedIn:
                         report.AgentReportedIn(dispatch.SubmissionId);
                         break;
 
-                    case "stream_event":
-                        streamed = Math.Max(streamed, StreamedTotal(message));
-                        report.CostSoFar(dispatch.SubmissionId, streamed);
+                    case TranscriptSays.CostSoFar:
+                        report.CostSoFar(dispatch.SubmissionId, said.TokensUsed);
                         break;
 
-                    case "result":
-                        // modelUsage is the authority; the streamed total was only a floor (R-04).
-                        streamed = Math.Max(streamed, Ceilings.CostOf(ModelUsage(message)));
-                        report.CostSoFar(dispatch.SubmissionId, streamed);
+                    case TranscriptSays.AgentStopped:
+                        report.CostSoFar(dispatch.SubmissionId, said.TokensUsed);
 
                         // The hub decides what a stop means — done, one nudge, or failed. A
                         // nudged run carries on, so more messages may follow this one.
-                        await report.AgentStopped(dispatch.SubmissionId, EndedAbnormally(message)).ConfigureAwait(false);
+                        await report.AgentStopped(dispatch.SubmissionId, said.EndedAbnormally).ConfigureAwait(false);
                         break;
 
+                    case TranscriptSays.Nothing:
                     default:
                         break;
                 }
@@ -310,86 +283,4 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             }
         }
     }
-
-    private static JsonObject? Parse(string line)
-    {
-        try
-        {
-            return JsonNode.Parse(line) as JsonObject;
-        }
-        catch (JsonException)
-        {
-            // A line that is not JSON is not a message; the CLI's own diagnostics go to stderr.
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// What <c>system/init</c> has to say before a run may proceed: a tool surface that is the
-    /// grant, the wiki server connected, and an interrupt we can actually send.
-    /// </summary>
-    private static bool InitIsAcceptable(JsonObject init, ToolGrant grant) =>
-        SurfaceIsTheGrant(grant, Strings(init["tools"]))
-        && WikiServerIsConnected(init["mcp_servers"])
-        && Strings(init["capabilities"]).Contains(InterruptCapability, StringComparer.Ordinal);
-
-    private static bool WikiServerIsConnected(JsonNode? servers) =>
-        servers is JsonArray listed && listed.Any(IsConnectedWikiServer);
-
-    private static bool IsConnectedWikiServer(JsonNode? server) =>
-        server is JsonObject described
-        && described["name"]?.GetValue<string>() == ServerName
-        && described["status"]?.GetValue<string>() == "connected";
-
-    private static IReadOnlyList<string> Strings(JsonNode? array) =>
-        array is JsonArray listed
-            ? [.. listed.Select(n => n?.GetValue<string>()).OfType<string>()]
-            : [];
-
-    private static long StreamedTotal(JsonObject message)
-    {
-        if (message["event"]?["usage"] is not JsonObject usage)
-        {
-            return 0;
-        }
-
-        return Field(usage, "input_tokens")
-            + Field(usage, "output_tokens")
-            + Field(usage, "cache_read_input_tokens")
-            + Field(usage, "cache_creation_input_tokens");
-    }
-
-    /// <summary>
-    /// Every entry of the result's <c>modelUsage</c> — all models, the CLI's own background calls
-    /// included, because a call the run never asked for is still the run's doing (R-04).
-    /// </summary>
-    private static IEnumerable<ModelTokens> ModelUsage(JsonObject result)
-    {
-        if (result["modelUsage"] is not JsonObject usage)
-        {
-            yield break;
-        }
-
-        foreach (var (_, value) in usage)
-        {
-            if (value is JsonObject model)
-            {
-                yield return new ModelTokens(
-                    Field(model, "inputTokens"),
-                    Field(model, "outputTokens"),
-                    Field(model, "cacheReadInputTokens"),
-                    Field(model, "cacheCreationInputTokens"));
-            }
-        }
-    }
-
-    /// <summary>An ending the agent did not choose: an aborted stream, or a subtype that is not success.</summary>
-    private static bool EndedAbnormally(JsonObject result) =>
-        result["terminal_reason"]?.GetValue<string>() is "aborted_streaming"
-        || result["subtype"]?.GetValue<string>() is { } subtype && subtype != "success";
-
-    private static long Field(JsonObject node, string name) =>
-        node[name] is { } value && long.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)
-            ? n
-            : 0;
 }

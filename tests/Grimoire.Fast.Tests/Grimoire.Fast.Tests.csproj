@@ -13,4 +13,12 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
   </ItemGroup>
 
+  <!-- YamlDotNet, to read back what ProvenanceStamp wrote. "Plain YAML would not read this value
+       back" is the property under test, and only a YAML reader can say whether it does. V.2 keeps
+       the parser out of every other bounded context; this is the suite that checks the one which
+       has it, not a second context reading frontmatter. -->
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
 </Project>

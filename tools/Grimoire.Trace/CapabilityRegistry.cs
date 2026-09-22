@@ -2,11 +2,20 @@ using System.Text.RegularExpressions;
 
 namespace Grimoire.Trace;
 
+/// <summary>A capability file: the name an error message quotes, and the file's text.</summary>
+internal readonly record struct CapabilityFile(string Name, string Text);
+
 /// <summary>
 /// Reads the requirement ids and their proof kinds out of <c>docs/capabilities/*.md</c>. Those
 /// files are the as-is description of the system (Constitution IV.2); this reader takes only the
 /// three columns it needs and judges nothing else about them.
 /// </summary>
+/// <remarks>
+/// Finding the files is <see cref="Read(string)"/> and reading them is <see cref="Parse"/>. The
+/// split is not decoration: every judgment the gate makes about a registration is in
+/// <see cref="Parse"/>, which is given text, so the gate's own rules are provable without a
+/// directory to put files in (Constitution IV.3).
+/// </remarks>
 internal static partial class CapabilityRegistry
 {
     /// <summary>
@@ -38,6 +47,10 @@ internal static partial class CapabilityRegistry
         return dash < 0 ? requirementId : requirementId[..dash];
     }
 
+    /// <summary>
+    /// Every requirement the capability files register. The only part of the registry that
+    /// touches the filesystem: it finds the files, reads them, and hands the text on.
+    /// </summary>
     public static IReadOnlyList<Requirement> Read(string capabilitiesDirectory)
     {
         if (!Directory.Exists(capabilitiesDirectory))
@@ -45,45 +58,24 @@ internal static partial class CapabilityRegistry
             throw new TraceInputException($"no capability files: {capabilitiesDirectory} does not exist");
         }
 
+        return Parse(Directory.GetFiles(capabilitiesDirectory, "*.md")
+            .Order(StringComparer.Ordinal)
+            .Select(file => new CapabilityFile(Path.GetFileName(file), File.ReadAllText(file))));
+    }
+
+    /// <summary>
+    /// The same reading, given the files as text. Every judgment is here: which rows register a
+    /// requirement, which row fails the read, what is retired, and that no id appears twice.
+    /// </summary>
+    public static IReadOnlyList<Requirement> Parse(IEnumerable<CapabilityFile> files)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+
         var requirements = new List<Requirement>();
 
-        foreach (var file in Directory.GetFiles(capabilitiesDirectory, "*.md").Order(StringComparer.Ordinal))
+        foreach (var file in files)
         {
-            var retiredSection = false;
-
-            var number = 0;
-
-            foreach (var line in File.ReadLines(file))
-            {
-                number++;
-
-                if (line.StartsWith('#'))
-                {
-                    retiredSection = line.TrimStart('#', ' ').StartsWith("Retired", StringComparison.OrdinalIgnoreCase);
-                    continue;
-                }
-
-                var row = RequirementRow.Match(line);
-                if (!row.Success)
-                {
-                    if (RequirementRowOpening.IsMatch(line))
-                    {
-                        throw new TraceInputException(
-                            $"{Path.GetFileName(file)} line {number} opens like a requirement row and does not read as one: "
-                            + $"\"{line.Trim()}\". A row is | <CAPABILITY>-NNN | text | test, eval or review |");
-                    }
-
-                    continue;
-                }
-
-                var id = row.Groups["id"].Value;
-                requirements.Add(new Requirement(
-                    id,
-                    CapabilityOf(id),
-                    TextColumn(line),
-                    ParseProof(row.Groups["proof"].Value, id, file),
-                    retiredSection));
-            }
+            requirements.AddRange(ParseOne(file));
         }
 
         var duplicate = requirements.GroupBy(r => r.Id, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
@@ -93,6 +85,46 @@ internal static partial class CapabilityRegistry
         }
 
         return requirements;
+    }
+
+    private static IEnumerable<Requirement> ParseOne(CapabilityFile file)
+    {
+        var retiredSection = false;
+
+        var number = 0;
+
+        foreach (var raw in file.Text.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            number++;
+
+            if (line.StartsWith('#'))
+            {
+                retiredSection = line.TrimStart('#', ' ').StartsWith("Retired", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            var row = RequirementRow.Match(line);
+            if (!row.Success)
+            {
+                if (RequirementRowOpening.IsMatch(line))
+                {
+                    throw new TraceInputException(
+                        $"{file.Name} line {number} opens like a requirement row and does not read as one: "
+                        + $"\"{line.Trim()}\". A row is | <CAPABILITY>-NNN | text | test, eval or review |");
+                }
+
+                continue;
+            }
+
+            var id = row.Groups["id"].Value;
+            yield return new Requirement(
+                id,
+                CapabilityOf(id),
+                TextColumn(line),
+                ParseProof(row.Groups["proof"].Value, id, file.Name),
+                retiredSection);
+        }
     }
 
     /// <summary>
@@ -107,12 +139,12 @@ internal static partial class CapabilityRegistry
             : string.Join('|', columns[1..^1]).Trim();
     }
 
-    private static ProofKind ParseProof(string proof, string id, string file) => proof.ToLowerInvariant() switch
+    private static ProofKind ParseProof(string proof, string id, string fileName) => proof.ToLowerInvariant() switch
     {
         "test" => ProofKind.Test,
         "eval" => ProofKind.Eval,
         "review" => ProofKind.Review,
         _ => throw new TraceInputException(
-            $"{id} in {Path.GetFileName(file)} declares proof '{proof}'; Constitution III.1 allows test, eval or review"),
+            $"{id} in {fileName} declares proof '{proof}'; Constitution III.1 allows test, eval or review"),
     };
 }

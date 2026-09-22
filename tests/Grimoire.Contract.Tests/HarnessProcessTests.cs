@@ -51,9 +51,9 @@ public sealed class HarnessProcessTests
         // Equality, not containment: with --tools "" every built-in tool is gone, so the whole
         // surface is what the hub serves, each granted name under the CLI's own prefix.
         Assert.Equal(
-            run.Grant.ToolNames.Select(n => HarnessProcess.McpPrefix + n).Order(StringComparer.Ordinal),
+            run.Grant.ToolNames.Select(n => AgentTranscript.McpPrefix + n).Order(StringComparer.Ordinal),
             tools.Order(StringComparer.Ordinal));
-        Assert.True(HarnessProcess.SurfaceIsTheGrant(run.Grant, tools));
+        Assert.True(AgentTranscript.SurfaceIsTheGrant(run.Grant, tools));
 
         var wiki = init["mcp_servers"]!.AsArray().Single(s => s!["name"]!.GetValue<string>() == "wiki")!;
         Assert.Equal("connected", wiki["status"]!.GetValue<string>());
@@ -74,7 +74,7 @@ public sealed class HarnessProcessTests
         // deny: no tool call outside the grant, and nothing changed outside the wiki.
         Assert.DoesNotContain(
             transcript.SelectMany(ToolNamesIn),
-            n => !n.StartsWith(HarnessProcess.McpPrefix, StringComparison.Ordinal));
+            n => !n.StartsWith(AgentTranscript.McpPrefix, StringComparison.Ordinal));
         Assert.False(File.Exists(escaped), "the run wrote outside the wiki");
     }
 

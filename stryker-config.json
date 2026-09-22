@@ -3,8 +3,13 @@
   "stryker-config": {
     "solution": "Grimoire.Mutation.slnx",
     "test-runner": "mtp",
-    "reporters": [ "json", "cleartext", "progress" ],
+    "reporters": [
+      "json",
+      "cleartext",
+      "progress"
+    ],
     "mutation-level": "Standard",
-    "verbosity": "info"
+    "verbosity": "info",
+    "coverage-analysis": "perTestInIsolation"
   }
 }

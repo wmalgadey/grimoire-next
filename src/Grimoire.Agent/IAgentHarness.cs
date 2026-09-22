@@ -53,9 +53,9 @@ public sealed record RunReport(
     Action<Guid, RunOutcome> RunEnded);
 
 /// <summary>
-/// The port to the agent. Its one adapter is <c>HarnessProcess</c>, which is the only place the
-/// <c>claude</c> process and its protocol appear (Constitution V.2); the Fast suite uses an
-/// in-memory adapter at this same port (III.9).
+/// The port to the agent. Its one adapter is <c>HarnessProcess</c>, which with <c>AgentTranscript</c>
+/// beside it is the only place the <c>claude</c> process and its protocol appear (Constitution
+/// V.2); the Fast suite uses an in-memory adapter at this same port (III.9).
 /// </summary>
 public interface IAgentHarness
 {
