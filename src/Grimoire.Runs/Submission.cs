@@ -46,6 +46,7 @@ public sealed partial class Submission
 
     private SubmissionState state = SubmissionState.Submitted;
     private Guid? runId;
+    private DateTimeOffset? acknowledgedAt;
 
     internal Submission(Guid id, string text, DateTimeOffset submittedAt, Lock gate)
     {
@@ -107,6 +108,22 @@ public sealed partial class Submission
     }
 
     /// <summary>
+    /// This submission's run failed and the user has not acknowledged it yet — the one thing that
+    /// holds the queue (RUNS-003), and the one row in the browser that offers the control
+    /// (ACCESS-003). It says an action is available, not what the run did.
+    /// </summary>
+    public bool AwaitingAcknowledgement
+    {
+        get
+        {
+            lock (gate)
+            {
+                return state == SubmissionState.Failed && acknowledgedAt is null;
+            }
+        }
+    }
+
+    /// <summary>
     /// Whitespace collapsed, trimmed, and cut to <see cref="ExcerptLength"/> with an ellipsis where
     /// it was cut. Collapsing is what makes the first line of a pasted document read as a sentence
     /// rather than as an indented fragment; a text at or under the length is returned whole, with
@@ -131,6 +148,17 @@ public sealed partial class Submission
     /// <summary>Every run of whitespace, newlines and tabs among it, as one thing to replace.</summary>
     [GeneratedRegex(@"\s+")]
     private static partial Regex Whitespace();
+
+    /// <summary>
+    /// Blocking: a failure nobody has acknowledged. Assumes the board's lock.
+    /// </summary>
+    internal bool IsUnacknowledgedFailure => state == SubmissionState.Failed && acknowledgedAt is null;
+
+    /// <summary>
+    /// The user has seen that this submission's run failed. Not a state, and no state changes: the
+    /// acknowledged run still reads failed (RUNS-003). Assumes the board's lock.
+    /// </summary>
+    internal void Acknowledged(DateTimeOffset at) => acknowledgedAt = at;
 
     /// <summary>
     /// Under way: the board has handed this submission out and its run has not ended. The one

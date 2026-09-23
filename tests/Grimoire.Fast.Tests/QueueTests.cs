@@ -104,20 +104,6 @@ public sealed class QueueTests
 
     [Fact]
     [Trait("req", "RUNS-002")]
-    public async Task RunEnds_StartsTheNextSubmission_AfterAFailedRun()
-    {
-        var first = await SubmittedAsync("The first text.");
-        var second = await SubmittedAsync("The second text.");
-
-        hub.Harness.End(first.Id, RunOutcome.Failed);
-
-        // What a failure does to the queue is RUNS-003's, and it is not built yet: here a failed
-        // run is simply a run that has ended, and the next one starts.
-        Assert.Equal([first.Id, second.Id], hub.Harness.Dispatched.Select(d => d.SubmissionId));
-    }
-
-    [Fact]
-    [Trait("req", "RUNS-002")]
     public async Task RunsStart_InTheOrderTheSubmissionsWereMade_AfterTheClockWasPutBack()
     {
         var first = await SubmittedAsync("The first text.");
