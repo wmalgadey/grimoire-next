@@ -90,8 +90,16 @@ public static class HubApplication
 
         var instructions = new InstructionLoader(options.InstructionPath, options.PurposeDescriptionPath);
         var board = new SubmissionBoard(clock);
-        var conductor = new RunConductor(board, harness, wiki, clock);
-        var intake = new SubmissionIntake(board, harness, conductor, instructions.Assemble, options.Model);
+
+        // The knot the conductor and the queue make, tied here because neither may hold the other
+        // whole: a run that ends is what lets the next one start, and starting one is what gives
+        // the conductor a run to watch. The composition root is where that is allowed to be known
+        // (plan.md, Structure Decision).
+        RunQueue? queue = null;
+        var conductor = new RunConductor(board, harness, wiki, clock, () => queue!.PumpAsync());
+        queue = new RunQueue(board, conductor, harness, instructions.Assemble, options.Model);
+
+        var intake = new SubmissionIntake(board, queue);
 
         app.MapSubmissions(intake, board, instructions.Read);
 

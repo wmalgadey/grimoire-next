@@ -70,16 +70,16 @@ failure nor a restart.
 
 ### Foundational (before the first test of this feature)
 
-- [ ] T001 Register this feature's six requirements in `docs/capabilities/runs.md` (RUNS-002,
+- [X] T001 Register this feature's six requirements in `docs/capabilities/runs.md` (RUNS-002,
       RUNS-003, RUNS-004, RUNS-006) and `docs/capabilities/access.md` (ACCESS-003, ACCESS-004), with
       the wording and proof kinds of `spec.md`, and delete the paragraph in `runs.md` that says
       RUNS-002/003/004 are not registered yet. This is the first implementation task: it comes
       before any test is written — **Req:** Principle IV.2
-- [ ] T002 Retire INGEST-005 in `docs/capabilities/ingest.md` — move it under a "Retired" heading
+- [X] T002 Retire INGEST-005 in `docs/capabilities/ingest.md` — move it under a "Retired" heading
       keeping its ID — and drop the qualifier "When no run is in progress, " from INGEST-001, and drop INGEST-005 from the
       sentence below the table that names which requirements say a refused submission is not stored,
       leaving INGEST-003 and INGEST-004 — **Req:** Principle IV.2
-- [ ] T003 Remove everything INGEST-005 carried, in one step so the branch is never red under
+- [X] T003 Remove everything INGEST-005 carried, in one step so the branch is never red under
       `trace-check`: `Refusal.RunInProgress` and its clause in `src/Grimoire.Runs/SubmissionBoard.cs`,
       the `409 Conflict` / `run-in-progress` arm in `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs`,
       the comment naming 409 in `src/Grimoire.Hub/wwwroot/app.js`, the four tests carrying
@@ -93,14 +93,14 @@ failure nor a restart.
 
 > Write these first and see them fail before implementing.
 
-- [ ] T004 [P] [US1] A text submitted while a run is in progress is accepted and waits, and waiting
+- [X] T004 [P] [US1] A text submitted while a run is in progress is accepted and waits, and waiting
       submissions start in the order they were made, in
       `tests/Grimoire.Fast.Tests/QueueTests.cs` — **Req:** RUNS-002 | **Level:** Fast — **Why not lower:** there is no level below Fast; the rule is a
       decision of a real domain object.
-- [ ] T005 [US1] At most one run is in progress: nothing is handed out while a submission is
+- [X] T005 [US1] At most one run is in progress: nothing is handed out while a submission is
       under way, and a submission already handed out is never handed out twice, in
       `tests/Grimoire.Fast.Tests/QueueTests.cs` — **Req:** RUNS-002 | **Level:** Fast — **Why not lower:** there is no level below Fast.
-- [ ] T006 [P] [US1] The opening of a submitted text: runs of whitespace collapsed to single spaces,
+- [X] T006 [P] [US1] The opening of a submitted text: runs of whitespace collapsed to single spaces,
       trimmed, cut to **120 characters** with `…` appended where it was cut, and a text at or under
       120 characters returned whole with nothing appended and nothing padded, in
       `tests/Grimoire.Fast.Tests/SubmissionExcerptTests.cs` — **Req:** ACCESS-004 | **Level:**
@@ -108,24 +108,24 @@ failure nor a restart.
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] `Submission` gains `RunId` (`Guid?`, null while it waits its turn) and the derived
+- [X] T007 [US1] `Submission` gains `RunId` (`Guid?`, null while it waits its turn) and the derived
       `Excerpt` per T006's rule; `Text` stays whole and untidied, in
       `src/Grimoire.Runs/Submission.cs` — **Req:** RUNS-002, ACCESS-004
-- [ ] T008 [US1] `SubmissionBoard`: `TakeNext(Guid runId)` hands out the waiting submission with the
+- [X] T008 [US1] `SubmissionBoard`: `TakeNext(Guid runId)` hands out the waiting submission with the
       earliest `SubmittedAt` and marks it with that run id, or returns null; the state transitions
       move from `Submission` onto the board so every change happens under the one existing lock, in
       `src/Grimoire.Runs/SubmissionBoard.cs` — **Req:** RUNS-002
-- [ ] T009 [US1] `RunQueue`: ask the board for the next submission and dispatch it, with nothing
+- [X] T009 [US1] `RunQueue`: ask the board for the next submission and dispatch it, with nothing
       started twice, in `src/Grimoire.Hub/RunQueue.cs` — **Req:** RUNS-002
-- [ ] T010 [US1] `SubmissionIntake` accepts and then asks the queue instead of dispatching itself;
+- [X] T010 [US1] `SubmissionIntake` accepts and then asks the queue instead of dispatching itself;
       `RunConductor.Begin` takes the run id the board was given, and tells the queue when a run has
       ended, in `src/Grimoire.Hub/SubmissionIntake.cs`, `src/Grimoire.Hub/RunConductor.cs` and
       `src/Grimoire.Hub/HubApplication.cs` — **Req:** RUNS-002
-- [ ] T011 [US1] `excerpt` on `SubmissionView`, always present, in
+- [X] T011 [US1] `excerpt` on `SubmissionView`, always present, in
       `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs`; each row renders it beside the time and the
       state, in `src/Grimoire.Hub/wwwroot/app.js` and `src/Grimoire.Hub/wwwroot/index.html` —
       **Req:** ACCESS-004
-- [ ] T012 [US1] Extend the row assertion to the excerpt and drop the remark explaining why
+- [X] T012 [US1] Extend the row assertion to the excerpt and drop the remark explaining why
       submissions are driven one after another — with a queue they no longer have to be — in
       `tests/Grimoire.E2E.Tests/SubmissionStatesTests.cs` — **Req:** ACCESS-004 | **Level:** E2E —
       **Why not lower:** the excerpt's shape is proven Fast in T006; what only a real browser can

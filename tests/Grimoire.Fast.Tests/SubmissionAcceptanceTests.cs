@@ -67,13 +67,18 @@ public sealed class SubmissionAcceptanceTests
     public async Task Submit_IsAccepted_AfterADispatchThatCouldNotStart()
     {
         hub.Harness.DispatchFailure = new InvalidOperationException("the agent process would not start");
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => hub.SubmitAsync("The first text."));
+        var first = await hub.SubmitAsync("The first text.");
+
+        // The text was accepted; what could not start is its run, and the user is told that the
+        // way they are told about any other failure — by the state of their submission.
+        Assert.NotNull(first.Accepted);
+        Assert.Equal(SubmissionState.Failed, first.Accepted!.State);
 
         hub.Harness.DispatchFailure = null;
 
-        // A run that never began is not a run in progress. Were the submission left reading
-        // Submitted, it would refuse every later text for as long as the process lives.
+        // A run that never began is not a run in progress. Were the submission left under way,
+        // nothing behind it would ever start again (RUNS-002).
         Assert.NotNull((await hub.SubmitAsync("The second text.")).Accepted);
+        Assert.True(hub.Harness.RunUnderWay);
     }
 }

@@ -74,10 +74,10 @@ public sealed class SubmissionStateTests
         hub.Harness.End(submission.Id, outcome);
         var terminal = submission.State;
 
-        // There is no transition out of either in this feature — acknowledgement is RUNS-003,
-        // held back by the split.
-        Assert.Throws<InvalidOperationException>(() => submission.AgentReportedIn());
-        Assert.Throws<InvalidOperationException>(() => submission.Ended(SubmissionState.Done));
+        // There is no transition out of either. Acknowledging a failure is not one: the
+        // acknowledged run still reads failed (RUNS-003).
+        Assert.Throws<InvalidOperationException>(() => hub.Board.ReportedIn(submission.Id));
+        Assert.Throws<InvalidOperationException>(() => hub.Board.Ended(submission.Id, SubmissionState.Done));
         Assert.Equal(terminal, submission.State);
     }
 
@@ -135,10 +135,11 @@ public sealed class SubmissionStateTests
 
         var json = JsonSerializer.SerializeToElement(SubmissionView.Of(submission));
 
-        // No step, reasoning, duration, cost or history — ACCESS-002 says "and no further
-        // detail", and OUT-02 owns everything more (contracts/hub-http-api.md).
+        // No run identifier, step, reasoning, duration, cost or history — ACCESS-002 says "and no
+        // further detail" about the run, and OUT-02 owns everything more. What is here besides the
+        // state are facts about the submission itself (ACCESS-004, contracts/hub-http-api.md).
         Assert.Equal(
-            ["id", "state", "submittedAt"],
+            ["id", "state", "submittedAt", "excerpt"],
             json.EnumerateObject().Select(p => p.Name));
         Assert.Equal(submission.Id.ToString(), json.GetProperty("id").GetString());
         Assert.Equal("running", json.GetProperty("state").GetString());

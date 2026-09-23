@@ -10,18 +10,19 @@ namespace Grimoire.E2E.Tests;
 /// nothing further about the run (ACCESS-002).
 /// </summary>
 /// <remarks>
-/// Two scenarios, which is what user story 3 is allowed at this level (Constitution III.4). The
+/// Two scenarios, which is what a user story is allowed at this level (Constitution III.4). The
 /// response shape behind them is proven a level down, in the Fast suite; this is only about what a
-/// real browser renders from it.
+/// real browser renders from it — the state, and beside it the opening of the submitted text and
+/// when it was made (ACCESS-004).
 /// <para>
-/// One run at a time (INGEST-005) is why the submissions below are driven one after another: a
-/// second text is refused while the first is under way, so what can be on the page at any moment
-/// is terminal states plus at most one submission still under way. Reaching <c>running</c>
-/// therefore happens while the page is already open, which is also how the polling shows.
+/// The submissions below are driven one after another so that each reaches the state this is about
+/// before the next is made. With a queue they no longer have to be submitted that way: a text
+/// handed over while a run is under way is accepted and waits its turn (RUNS-002).
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]
 [Trait("req", "ACCESS-002")]
+[Trait("req", "ACCESS-004")]
 public sealed class SubmissionStatesTests : PageTest
 {
     [Fact]
@@ -66,10 +67,11 @@ public sealed class SubmissionStatesTests : PageTest
 
         await Page.GotoAsync(hub.Address);
 
-        // The whole of what the row says: when the text was submitted, and the state. No step, no
-        // reasoning, no duration, no cost, no history — OUT-02 owns everything more.
+        // The whole of what the row says: when the text was submitted, the opening of it, and the
+        // state. No identifier, no step, no reasoning, no duration, no cost, no history — OUT-02
+        // owns everything more.
         await Expect(Row(submission)).ToHaveTextAsync(
-            new Regex(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC done$"));
+            new Regex(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC Ada Lovelace wrote the first program\. done$"));
 
         await Expect(Page.Locator("#submissions li")).ToHaveCountAsync(1);
     }

@@ -59,8 +59,10 @@ function whenSubmitted(submittedAt) {
   return `${new Date(submittedAt).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
-// Each submission becomes one row: when it was made, and its state. Nothing else about the run
-// is here to render — the response carries no more (ACCESS-002).
+// Each submission becomes one row: when it was made, the opening of the text, and its state.
+// Nothing about the run is here to render — the response carries no more (ACCESS-002). The
+// opening is what lets the user tell one row from another, and which text a failed run was
+// working on (ACCESS-004).
 function row(submission) {
   const item = document.createElement("li");
   item.dataset.id = submission.id;
@@ -69,11 +71,17 @@ function row(submission) {
   when.dateTime = submission.submittedAt;
   when.textContent = whenSubmitted(submission.submittedAt);
 
+  // textContent, never innerHTML: this is the user's own text coming back, and the server sends
+  // it as it was given.
+  const excerpt = document.createElement("span");
+  excerpt.className = "excerpt";
+  excerpt.textContent = submission.excerpt;
+
   const state = document.createElement("span");
   state.className = "state";
   state.textContent = submission.state;
 
-  item.append(when, " ", state);
+  item.append(when, " ", excerpt, " ", state);
   return item;
 }
 

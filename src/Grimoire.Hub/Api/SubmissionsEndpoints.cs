@@ -6,20 +6,30 @@ using Microsoft.AspNetCore.Routing;
 
 namespace Grimoire.Hub.Api;
 
-/// <summary>What the browser is told about a submission: its state, and nothing else about the run.</summary>
+/// <summary>
+/// What the browser is told about a submission: which of the four states it is in, and the two
+/// things that tell one submission from another — the opening of its text and when it was made.
+/// </summary>
 /// <remarks>
-/// ACCESS-002 says "and no further detail" — no step, no reasoning, no duration, no cost, no
-/// history. OUT-02 owns everything more, and a field added here would be a mechanism with no
-/// consumer (Constitution II.1). The wire names are on the type rather than in the host's JSON
-/// configuration, so the shape this contract promises is a property of the response itself.
+/// Nothing about the run. ACCESS-002 says "and no further detail" — no identifier, no step, no
+/// reasoning, no duration, no cost, no history — and OUT-02 owns everything more. The excerpt and
+/// the time are facts about the <em>submission</em>, which is what ACCESS-004 asks the browser to
+/// show and is the only way a user can tell which text a failed run was working on (research.md
+/// R-06). The wire names are on the type rather than in the host's JSON configuration, so the
+/// shape this contract promises is a property of the response itself.
 /// </remarks>
 public sealed record SubmissionView(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("state")] string State,
-    [property: JsonPropertyName("submittedAt")] DateTimeOffset SubmittedAt)
+    [property: JsonPropertyName("submittedAt")] DateTimeOffset SubmittedAt,
+    [property: JsonPropertyName("excerpt")] string Excerpt)
 {
     public static SubmissionView Of(Submission submission) =>
-        new(submission.Id.ToString(), WireNameOf(submission.State), submission.SubmittedAt);
+        new(
+            submission.Id.ToString(),
+            WireNameOf(submission.State),
+            submission.SubmittedAt,
+            submission.Excerpt);
 
     /// <summary>Exactly one of <c>submitted</c> · <c>running</c> · <c>done</c> · <c>failed</c> (RUNS-001).</summary>
     public static string WireNameOf(SubmissionState state) => state switch
@@ -80,7 +90,7 @@ public static class SubmissionsEndpoints
         });
 
         // The browser polls this; there is no push channel. Nothing is exposed here beyond the
-        // three fields of a SubmissionView — a fourth would be a mechanism with no consumer
+        // fields of a SubmissionView — one more would be a mechanism with no consumer
         // (Constitution II.1), and everything more about a run is OUT-02's.
         endpoints.MapGet("/api/submissions", () =>
             new SubmissionListView([.. board.All.Select(SubmissionView.Of)]));

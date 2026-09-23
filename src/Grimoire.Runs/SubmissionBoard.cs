@@ -36,13 +36,17 @@ public sealed record SubmissionResult
 }
 
 /// <summary>
-/// The submissions and their states, for as long as the process runs.
+/// The submissions and their states, and the whole of the queue rule (RUNS-002).
 /// </summary>
 /// <remarks>
-/// A plain object: no interface, no port, no store. There is no second implementation and nothing
-/// outside the process behind it (Constitution II.4), and a store would have no consumer here —
-/// surviving a restart is RUNS-004, which the split moved to the follow-up feature (research.md
-/// R-08). A stop loses everything here, which the spec says and the owner accepted.
+/// A plain object rather than a port: there is no second implementation and nothing outside the
+/// process behind it (Constitution II.4). What is outside the process is where the submissions are
+/// kept, and that is a port of its own behind this one.
+/// <para>
+/// Every judgment about a run is made in this context (plan.md, Structure Decision), which is why
+/// the queue rule is here and not in the hub: what dispatches asks and acts, and decides nothing
+/// (research.md R-03).
+/// </para>
 /// </remarks>
 public sealed class SubmissionBoard(TimeProvider clock)
 {
@@ -100,12 +104,62 @@ public sealed class SubmissionBoard(TimeProvider clock)
         }
     }
 
+    /// <summary>
+    /// The queue rule, whole: the next submission to run, marked with the run it is being given,
+    /// or null where none may start (RUNS-002).
+    /// </summary>
+    /// <remarks>
+    /// Decided under the one lock, which is what makes "at most one run in progress" true against
+    /// a race rather than by luck: two callers asking at the same moment — an accepted submission
+    /// and a run that has just ended — cannot both be handed one, because the first marks what it
+    /// took before the second reads (research.md R-03).
+    /// </remarks>
+    public Submission? TakeNext(Guid runId)
+    {
+        lock (gate)
+        {
+            if (submissions.Exists(s => s.IsUnderWay))
+            {
+                return null;
+            }
+
+            // The earliest by when it was made, which is the order the user made them in
+            // (RUNS-002). Two made in the same instant keep the order they were accepted in.
+            var next = submissions.Where(s => s.IsWaiting).MinBy(s => s.SubmittedAt);
+            next?.HandedTo(runId);
+            return next;
+        }
+    }
+
+    /// <summary>
+    /// The agent of this submission's run has reported in: submitted becomes running (RUNS-001).
+    /// </summary>
+    public void ReportedIn(Guid submissionId)
+    {
+        lock (gate)
+        {
+            Located(submissionId)?.ReportedIn();
+        }
+    }
+
+    /// <summary>This submission's run has ended, done or failed (RUNS-001).</summary>
+    public void Ended(Guid submissionId, SubmissionState terminal)
+    {
+        lock (gate)
+        {
+            Located(submissionId)?.Ended(terminal);
+        }
+    }
+
     /// <summary>The submission with this id, or null where there is none.</summary>
     public Submission? Find(Guid id)
     {
         lock (gate)
         {
-            return submissions.Find(s => s.Id == id);
+            return Located(id);
         }
     }
+
+    /// <summary>Assumes the lock: every caller here is already inside it.</summary>
+    private Submission? Located(Guid id) => submissions.Find(s => s.Id == id);
 }

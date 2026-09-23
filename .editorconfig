@@ -87,3 +87,11 @@ dotnet_naming_style.camel_case.capitalization = camel_case
 dotnet_naming_style.pascal_case.capitalization = pascal_case
 
 # Test projects: xunit's own analyzers apply; nothing is relaxed here.
+
+# CA1711 reserves the suffix "Queue" for types that are themselves a queue. `RunQueue` is not a
+# collection — it is what asks the board for the next run and dispatches it — but the queue is the
+# feature's own word for what it serves (`specs/002-ingest-queue`), and a name the spec does not
+# use would be a name nobody looks the reasoning up under. Turned off for that one file rather than
+# for the tree, so the rule still holds everywhere else.
+[src/Grimoire.Hub/RunQueue.cs]
+dotnet_diagnostic.CA1711.severity = none
