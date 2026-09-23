@@ -21,6 +21,27 @@ adds is listed below.
 | A state directory | Where the queue is kept, given at start-up: `--state <path>`, or `GRIMOIRE_STATE` in `.env` for `scripts/run-hub.sh`. Defaults to `state/` beside the hub. **Not inside the wiki** — the queue writes nothing into the wiki and Grimoire's bookkeeping does not belong in the user's version history |
 | Nothing else | No new external tool. SQLite arrives as a package (`Microsoft.Data.Sqlite`) with no native install step and no server to run |
 
+### How to tell a run's agent from every other `claude`
+
+Parts 2 and 3 need to look at one particular process: the agent of one run. **Do not look for it with
+`pgrep -f claude`, and never end one with `pkill -f claude`.** On a machine where Claude Code is
+running, both match Claude Code itself and every shell it has started — its own path contains
+`.claude/`. `pgrep` would then never print nothing however well RUNS-006 worked, and `pkill` would
+end the owner's own session.
+
+Ask the store instead, which is where RUNS-006 records the identity anyway:
+
+```bash
+STATE=local/state                     # whatever --state / GRIMOIRE_STATE points at
+agent() { sqlite3 "$STATE/submissions.db" \
+  "select agent_process_id from runs order by started_at desc limit 1;"; }
+
+ps -p "$(agent)"                      # the newest run's agent: alive, or nothing
+```
+
+`ps -p` prints a header and nothing else when that process is gone, which is the "prints nothing"
+every step below means.
+
 Everything else is as `001-first-ingest` listed it: the .NET 10 SDK, a signed-in `claude` on `PATH`,
 the Playwright browsers for the E2E suite, a real wiki, a purpose description, and a pinned model
 id. Still no `ANTHROPIC_API_KEY` (DEC-001).
@@ -57,8 +78,9 @@ order the texts were made; each row recognisable by its own opening words.
 ### Part 2 — a failure holds the queue
 
 6. Submit two more texts. Make the first of them fail — the simplest way is a text that sends the
-   run past a ceiling, or stopping its agent by hand (`pkill -f claude` while it is running, which
-   ends the run failed through its non-zero exit).
+   run past a ceiling, or ending its agent by hand while it runs, which fails the run through its
+   non-zero exit: `kill -9 "$(agent)"`, with `agent` as defined above. **Not `pkill -f claude`** —
+   see the note in the prerequisites.
 7. Wait. **Nothing starts.** The text behind it stays reading `submitted` (RUNS-003).
 8. Acknowledge the failed run in the browser.
    - The waiting text's run starts.
@@ -83,9 +105,11 @@ submissions surviving has proven half of what the feature promises:
 
 9. Wait until the queue is empty: every row reads `done` or `failed`, and nothing reads `running`.
    Then submit two texts. The first starts; the second reads `submitted` and is waiting behind it.
-10. While the first run is under way, **stop the hub with Ctrl-C**.
-    - No agent is left behind: `pgrep -f claude` prints nothing (RUNS-006). This is the one
-      observation Pass B cannot make.
+10. While the first run is under way, note `agent` and then **stop the hub with Ctrl-C**.
+    - No agent is left behind: `ps -p <that pid>` prints nothing (RUNS-006). This is the one
+      observation Pass B cannot make. It is quick — measured at **under two seconds** on
+      2026-09-24, because the interrupt of DEC-016 ends the turn and the ten-second kill backstop
+      is never reached. If the process is still there after half a minute, that is the finding.
 11. Start the hub again with the same `--state`.
     - Every submission the owner ever made is still listed, with the state it carried.
     - The run that was under way reads `failed`.
@@ -107,13 +131,14 @@ agent that survives with it has to be dealt with on the way back in.
 14. **Kill the hub outright**: `pgrep -f Grimoire.Hub` for the process id, then `kill -9 <pid>`.
     Nothing is sent to the agent and nothing is written on the way out; no shutdown step runs at
     all. That is the whole point of this pass.
-    - **Check that the agent survived**: `pgrep -f claude` prints a process. It should — a `SIGKILL`
-      gives Grimoire no chance to act, so nothing stopped it. **Leave it running.** Note the number.
+    - **Check that the agent survived**: `ps -p "$(agent)"` prints a process. It should — a
+      `SIGKILL` gives Grimoire no chance to act, so nothing stopped it. **Leave it running.** Note
+      the number; the store keeps it, so it is still readable after the restart.
 15. Start the hub again with the same `--state`.
-    - **First, before looking at the browser**: `pgrep -f claude` prints nothing. The agent noted at
-      step 14 is gone — Grimoire found it by the process identity recorded with its run and
-      terminated it as it came up, before that run read `failed` and before anything else started
-      (RUNS-006). This is the observation Pass B exists for.
+    - **First, before looking at the browser**: `ps -p <the number from step 14>` prints nothing.
+      The agent noted at step 14 is gone — Grimoire found it by the process identity recorded with
+      its run and terminated it as it came up, before that run read `failed` and before anything
+      else started (RUNS-006). This is the observation Pass B exists for.
     - Every submission is still listed, with the state it carried — including the one submitted at
       step 13, seconds before the kill.
     - The run that was under way when the kill landed reads `failed`.
@@ -126,7 +151,7 @@ agent that survives with it has to be dealt with on the way back in.
 
 **What must be seen**: the six-step chain above, whole, in **both** passes — a stopped run reading
 `failed` after the restart, a text still waiting behind it, nothing started until the owner
-acknowledges, and then the waiting text starting. And, in both passes, **no `claude` process alive
+acknowledges, and then the waiting text starting. And, in both passes, **the run's own agent gone
 once Grimoire is running again**: in Pass A because the stop took it, in Pass B because the next
 start-up did (RUNS-006). At the end, a wiki holding every text that was submitted, each with its
 source page, as OUT-01 asks.
@@ -136,7 +161,7 @@ Two ways this run fails even if everything looks right on the page:
 - **Pass B loses the text submitted at step 13.** RUNS-004 is not met however well Pass A went: that
   text was accepted with a `202` and a kill followed, which is exactly the stop the clarify session
   said RUNS-004 is for.
-- **Pass B step 15 still shows a `claude` process.** Then an agent with the granted tools is writing
+- **Pass B step 15 still shows that agent alive.** Then an agent with the granted tools is writing
   into the wiki with no ceiling on it, beside whatever Grimoire starts next — which is the hole
   RUNS-006 was extended to close.
 
