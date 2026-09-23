@@ -135,6 +135,11 @@ feature (Constitution II.1).
 - [ ] T0NN Reconcile `docs/capabilities/<capability>.md` with this feature's requirements as added,
       changed, or removed; retired ones move under "Retired" keeping their IDs — **Req:** Principle IV.2
 - [ ] T0NN Merge this feature's binding decisions into `docs/decisions.md` — **Req:** Principle II.6
+- [ ] T0NN Classify the survivors from the mutation artifact of the PR to main, into
+      `specs/[###-feature]/mutation.md`: per survivor, the test that should have killed it and does
+      not, or the reason none should. A survivor becomes a test only where it names a requirement
+      the suite does not actually verify; nothing here is a threshold and nothing is run locally —
+      CI's `mutation` job is the measurement — **Req:** Principle III.1
 - [ ] T0NN The owner reads what each review-proven requirement is about — **Req:** Principle I.9
 - [ ] T0NN The owner exercises the outcome once with the real external systems in place, per the
       acceptance run in plan.md and `quickstart.md`. This is the last task of the feature; without
@@ -169,7 +174,7 @@ feature (Constitution II.1).
 2. User Story 1 → validate independently. This is the MVP.
 3. Add stories in priority order, each validated on its own.
 4. Closing phase: capability files, `trace-check`, `docs/trace.md`, `docs/product.md`, checklist,
-   then the owner's acceptance run as the last task.
+   the mutation survivors of the PR to main, then the owner's acceptance run as the last task.
 
 ## Notes
 
