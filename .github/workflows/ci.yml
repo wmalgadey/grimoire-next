@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -110,16 +111,14 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    # Two pushes to main in quick succession would otherwise measure main twice at once, and both
-    # runs force-push the same branch: whichever finished last would win, so an older commit's
-    # numbers could end up on the badges. One group for the whole repository, and the newer run
-    # cancels the older, so what the badges show is always the newest measurement that completed.
-    concurrency:
-      group: metrics-badges
-      cancel-in-progress: true
+    # Every job that force-pushes the `badges` branch shares this group — this one and `mutation`.
+    # One at a time, so no measurement can overwrite a newer one, and a queued run replaces the one
+    # queued before it, so what the badges show is the newest measurement that started last. No
+    # cancel-in-progress: a running measurement is minutes of work and cancelling it discards it.
+    concurrency: badges
 
-    # The one job in this workflow that may write, and it writes to the `badges` branch alone.
-    # Nothing here commits to main.
+    # One of the two jobs in this workflow that may write — `mutation-badge` is the other — and it
+    # writes to the `badges` branch alone. Nothing here commits to main.
     permissions:
       contents: write
 
@@ -152,7 +151,18 @@ jobs:
           ./scripts/metrics.sh > "$RUNNER_TEMP/metrics.md"
           cat "$RUNNER_TEMP/metrics.md" >> "$GITHUB_STEP_SUMMARY"
 
-      # The three endpoint documents README.md's badges read. A fresh repository in the directory
+      # The mutation badge document belongs to the `mutation` job below. The push under this step
+      # replaces the branch wholesale, so what that job last published is read back in here and
+      # carried forward. Neither failure is one: on the first run the branch does not exist, and
+      # until the first mutation run on main the document does not either.
+      - name: Carry the mutation badge document forward
+        run: |
+          git fetch --depth=1 origin badges 2>/dev/null || exit 0
+          if git show origin/badges:mutation.json > "$RUNNER_TEMP/mutation.json" 2>/dev/null; then
+            mv "$RUNNER_TEMP/mutation.json" artifacts/metrics/badges/mutation.json
+          fi
+
+      # The endpoint documents README.md's badges read. A fresh repository in the directory
       # that holds them, force-pushed: the branch is orphan by construction and carries one commit,
       # so the badge history never grows and no measurement can reach a branch anyone develops on.
       - name: Publish the badge documents
@@ -163,7 +173,182 @@ jobs:
           git init --quiet --initial-branch=badges
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add requirements.json coverage.json readtime.json
+          git add --all
           git commit --quiet --message "metrics of ${GITHUB_SHA}"
           git push --quiet --force \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
+
+  # The mutation measurement: `scripts/mutation.sh`, one Stryker run per project in scope, the Fast
+  # suite alone. It produces the reports a person reads to classify the survivors — which is why the
+  # reports are uploaded whole, and why the job summary is four lines of arithmetic over them and
+  # nothing more. Nothing here classifies anything.
+  #
+  # Not a gate. There is no threshold in this job and no comparison with a previous run: it fails
+  # when the measurement is invalid, never because a score is low. Two things make it invalid, and
+  # both are read out of the report with jq (Constitution II.3 — the existing tool; nothing of ours
+  # beyond mutation.sh):
+  #
+  #   - a project in scope with no tested mutant at all. Stryker then reports a score computed over
+  #     nothing, or none, and the run said nothing about that project.
+  #   - a `--mutate` entry in mutation.sh naming a file that no longer exists. Stryker lists every
+  #     source file of the project it runs on, whether the entry selected it or excluded it, so a
+  #     named file missing from the report is a scope entry that has stopped selecting anything —
+  #     silently, and in the direction of measuring less.
+  #
+  # On pull requests to main and on workflow_dispatch, and on no other event. A Stryker run costs
+  # minutes per project; on every push it would be paid for on every commit of every branch, for a
+  # number nobody reads until the PR. It is not in `build-and-test` for the same reason the metrics
+  # are not: a measurement must not hold up the gates.
+  mutation:
+    needs: build-and-test
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main')
+
+    runs-on: ubuntu-latest
+
+    # This job runs the code of the branch under review. It keeps the workflow's read-only token
+    # and does not persist it, so nothing a pull request brings with it — `scripts/mutation.sh`
+    # included — can reach a credential that could write to this repository. Publishing the badge
+    # needs a write token and is therefore a job of its own, below, that never runs on a branch.
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      # Stryker builds the solution it mutates itself (Grimoire.Mutation.slnx, from
+      # stryker-config.json), so there is no `dotnet build` here and no --no-build to pass. The
+      # script restores the local tools.
+      - name: The mutation measurement
+        run: ./scripts/mutation.sh
+
+      # The artifact the closing task of a feature classifies its survivors from. Uploaded whether
+      # or not the checks below pass — an invalid measurement is still the thing you have to look at
+      # to see why.
+      - name: Upload the mutation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-reports
+          path: StrykerOutput/*/reports/mutation-report.json
+          if-no-files-found: error
+
+      # Created is every mutant in the report, the ones a scope entry excluded included; tested is
+      # the ones a test actually ran against (killed, survived, timed out); not covered is the ones
+      # no test reaches. Score is Stryker's own: detected over valid, where detected is killed plus
+      # timed out and valid is those plus survived plus not covered.
+      - name: The table
+        run: |
+          {
+            echo "| Project | Created | Tested | Not covered | Score |"
+            echo "| --- | ---: | ---: | ---: | ---: |"
+            for report in StrykerOutput/*/reports/mutation-report.json; do
+              jq -r --arg project "$(basename "$(dirname "$(dirname "$report")")")" '
+                [.files[].mutants[].status] as $status
+                | ($status | map(select(. == "Killed")) | length) as $killed
+                | ($status | map(select(. == "Timeout")) | length) as $timeout
+                | ($status | map(select(. == "Survived")) | length) as $survived
+                | ($status | map(select(. == "NoCoverage")) | length) as $uncovered
+                | ($killed + $timeout + $survived + $uncovered) as $valid
+                | "| \($project) | \($status | length) | \($killed + $timeout + $survived) | \($uncovered) | "
+                  + (if $valid == 0 then "none" else "\((($killed + $timeout) * 1000 / $valid | round) / 10)%" end)
+                  + " |"
+              ' "$report"
+            done
+            echo
+            echo "A measurement, not a gate: no value here can fail this job."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The measurement is valid
+        run: |
+          invalid=0
+
+          for report in StrykerOutput/*/reports/mutation-report.json; do
+            project=$(basename "$(dirname "$(dirname "$report")")")
+            tested=$(jq '[.files[].mutants[].status
+                          | select(. == "Killed" or . == "Timeout" or . == "Survived")] | length' "$report")
+            if [ "$tested" -eq 0 ]; then
+              echo "::error::$project is in scope and no mutant of it was tested"
+              invalid=1
+            fi
+          done
+
+          jq -r '.files | keys[]' StrykerOutput/*/reports/mutation-report.json > "$RUNNER_TEMP/mutated.txt"
+
+          # Every --mutate entry of mutation.sh that names a .cs file, selecting it or excluding it.
+          grep -oE -- "--mutate '!?\*\*/[^']+\.cs'" scripts/mutation.sh \
+            | sed -E "s|.*'!?\*\*/(.+)'|\1|" \
+            | while read -r entry; do
+                grep -q "/$entry\$" "$RUNNER_TEMP/mutated.txt" \
+                  || echo "::error::scripts/mutation.sh names $entry, which no project reports"
+              done > "$RUNNER_TEMP/missing.txt"
+
+          cat "$RUNNER_TEMP/missing.txt"
+          [ ! -s "$RUNNER_TEMP/missing.txt" ] || invalid=1
+
+          exit "$invalid"
+
+  # The fourth endpoint document README.md's badges read, in the same flat colour as the other
+  # three: a colour scale would say a score is good or bad, which is what turns a measurement into
+  # a target. Only on main — which, given the job above, means a workflow_dispatch of this workflow
+  # on main; a pull request's score belongs to the pull request.
+  #
+  # Its own job because it is the only part of the measurement that needs a token that can write,
+  # and the measurement itself runs the code of the branch under review. This job checks nothing
+  # out: it reads the reports from the artifact and computes the score from them with jq.
+  mutation-badge:
+    needs: mutation
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    # The same group as `metrics`, for the same reason: both force-push the `badges` branch.
+    concurrency: badges
+
+    # `contents` to push the branch, `actions` to read the artifact the job above uploaded: the
+    # workflow's top-level block grants `contents: read` and nothing else, so both are named here.
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mutation-reports
+          path: reports
+
+      # The `metrics` job owns the other three documents and force-pushes the same branch, so this
+      # step reads them back in and carries them forward, exactly as that job does for this one.
+      # `|| true`: before the first run of `metrics` the branch does not exist.
+      - name: Publish the mutation badge document
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          jq -n --arg color "blue" '
+            [inputs | .files[].mutants[].status] as $status
+            | ($status | map(select(. == "Killed" or . == "Timeout")) | length) as $detected
+            | ($detected + ($status | map(select(. == "Survived" or . == "NoCoverage")) | length)) as $valid
+            | {schemaVersion: 1, label: "mutation score",
+               message: (if $valid == 0 then "none" else "\(($detected * 1000 / $valid | round) / 10)%" end),
+               color: $color}
+          ' reports/*/reports/mutation-report.json > "$RUNNER_TEMP/mutation.json"
+
+          mkdir -p "$RUNNER_TEMP/badges"
+          cd "$RUNNER_TEMP/badges"
+          git init --quiet --initial-branch=badges
+          git remote add origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --quiet --depth=1 origin badges 2>/dev/null \
+            && git archive FETCH_HEAD | tar -x \
+            || true
+
+          cp "$RUNNER_TEMP/mutation.json" mutation.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit --quiet --message "mutation score of ${GITHUB_SHA}"
+          git push --quiet --force origin badges
