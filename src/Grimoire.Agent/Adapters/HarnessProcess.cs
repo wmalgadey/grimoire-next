@@ -128,6 +128,11 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             running[dispatch.RunId] = process;
         }
 
+        // Reported before a single byte is written to the child, because a kill an instant later
+        // is exactly the case this identity is kept for: an agent nobody wrote down cannot be
+        // found again at the next start-up (RUNS-006, research.md R-11).
+        report.AgentProcessIs(dispatch.SubmissionId, IdentityOf(process));
+
         // stderr is redirected, so somebody has to read it: a pipe nobody drains fills at about
         // 64 KiB, and the CLI then blocks on its own diagnostics — stdout stops, the run stalls,
         // and no ceiling can tell that from a slow model. Nothing is done with the lines; what the
@@ -283,6 +288,73 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
         catch (Exception e) when (e is InvalidOperationException or NotSupportedException)
         {
             // It ended between the two calls, or it was never ours to kill.
+        }
+    }
+
+    /// <summary>
+    /// The identifier and the moment the process started — the pair, because the identifier alone
+    /// is not an identity (research.md R-11). <c>StartTime</c> is local, and everything Grimoire
+    /// compares is UTC.
+    /// </summary>
+    private static AgentProcessIdentity IdentityOf(Process process) =>
+        new(process.Id, new DateTimeOffset(process.StartTime).ToUniversalTime());
+
+    /// <summary>
+    /// End an agent that outlived a stop Grimoire could not act on — and only that agent
+    /// (RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// The whole pair has to match. A process that is gone, or one that carries the number but
+    /// started at another moment, is left alone: those numbers are reused, and after a reboot one
+    /// almost certainly belongs to something else on the owner's machine (research.md R-11). The
+    /// kill is the tree kill this adapter already performs at a ceiling, so the act is not new;
+    /// no interrupt precedes it, because there is nothing left to interrupt — the Grimoire that
+    /// could have read the answer is gone.
+    /// <para>
+    /// <b>What this does not close</b>: the check and the kill are two operations, so a process
+    /// that exits between them could in principle have its number taken by another before the
+    /// signal lands. Binding the two together needs a per-operating-system primitive — Linux has
+    /// <c>pidfd</c>, macOS has no equivalent — and research.md R-11 already turned such primitives
+    /// down for that reason. The window is the microseconds between two calls and closing it needs
+    /// the whole number space to wrap inside them; leaving the process alone instead, which is the
+    /// only other portable answer, would leave an agent writing into the wiki with no ceiling on
+    /// it and nothing left to end it. The narrower risk is the one taken.
+    /// </para>
+    /// </remarks>
+    public void Terminate(AgentProcessIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+
+        Process process;
+
+        try
+        {
+            process = Process.GetProcessById(identity.ProcessId);
+        }
+        catch (ArgumentException)
+        {
+            // Nothing is running under that number. The run reads failed as it would have anyway.
+            return;
+        }
+
+        using (process)
+        {
+            try
+            {
+                if (process.HasExited || IdentityOf(process) != identity)
+                {
+                    // Alive, but not this run's agent. Left alone — this is the guard that keeps
+                    // Grimoire from killing an unrelated program.
+                    return;
+                }
+
+                process.Kill(entireProcessTree: true);
+            }
+            catch (Exception e) when (e is InvalidOperationException or NotSupportedException or SystemException)
+            {
+                // It ended between the check and the kill, or its start time cannot be read at
+                // all — a process this Grimoire has no business ending either way.
+            }
         }
     }
 

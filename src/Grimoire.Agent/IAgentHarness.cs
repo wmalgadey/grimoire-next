@@ -1,5 +1,18 @@
 namespace Grimoire.Agent;
 
+/// <summary>
+/// Which process a run's agent is: its identifier <em>and</em> the moment that process started.
+/// </summary>
+/// <remarks>
+/// The pair, never the identifier alone. Operating systems reuse those numbers, and after a reboot
+/// one almost certainly belongs to something else — terminating it would kill an unrelated program
+/// on the owner's machine, which is the one failure in this feature that does damage outside
+/// Grimoire. Two processes sharing an identifier <em>and</em> a start time to the tick do not
+/// occur, and a reboot changes every start time, so the pair also handles the reboot case with no
+/// rule of its own (RUNS-006, research.md R-11).
+/// </remarks>
+public sealed record AgentProcessIdentity(int ProcessId, DateTimeOffset StartedAt);
+
 /// <summary>How a run ended, as the hub decides it. The harness reports; it decides nothing.</summary>
 public enum RunOutcome
 {
@@ -55,12 +68,18 @@ public sealed record AgentDispatch(Guid RunId, Guid SubmissionId, string Prompt,
 /// The run is over without a process exit to read — a dispatch that never started one, or a
 /// surface refused before the first model call.
 /// </param>
+/// <param name="AgentProcessIs">
+/// Which process this run's agent is, reported as soon as the child exists and before anything is
+/// written to it. That moment is the point: a kill an instant later is the case the identity is
+/// kept for, and one that was never written down cannot be found again (RUNS-006).
+/// </param>
 public sealed record RunReport(
     Action<Guid> AgentReportedIn,
     Action<Guid, long> CostSoFar,
     Func<Guid, bool, Task> AgentStopped,
     Action<Guid, int> AgentExited,
-    Action<Guid, RunOutcome> RunEnded);
+    Action<Guid, RunOutcome> RunEnded,
+    Action<Guid, AgentProcessIdentity> AgentProcessIs);
 
 /// <summary>
 /// The port to the agent. Its one adapter is <c>HarnessProcess</c>, which with <c>AgentTranscript</c>
@@ -97,4 +116,23 @@ public interface IAgentHarness
     /// <see cref="RunReport.AgentExited"/>.
     /// </remarks>
     Task NothingFurtherAsync(Guid runId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// End a process that outlived a stop Grimoire could not act on — but only where it is still
+    /// that run's agent (RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Called at start-up, for every run read as having been in progress, before that run reads
+    /// failed and before any further run starts. Both halves of the identity must match a live
+    /// process: an identifier alone is not an identity, and acting on one that has been reused
+    /// would kill an unrelated program on the owner's machine (research.md R-11).
+    /// </para>
+    /// <para>
+    /// A process that is already gone, or that carries the identifier but not the start time, is
+    /// left alone and is not an error. Synchronous because it is one act on the operating system,
+    /// and because it happens before the hub serves anything.
+    /// </para>
+    /// </remarks>
+    void Terminate(AgentProcessIdentity identity);
 }

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Grimoire.Agent;
 using Grimoire.Hub;
 using Grimoire.Hub.Api;
+using Grimoire.Runs.Adapters;
 using Grimoire.Wiki.Adapters;
 using Microsoft.AspNetCore.Builder;
 
@@ -39,14 +40,49 @@ internal sealed class DrivableHarness : IAgentHarness
 
     public Task NothingFurtherAsync(Guid runId, CancellationToken cancellationToken) => Task.CompletedTask;
 
+    /// <summary>
+    /// The agents this harness was asked to terminate at start-up (RUNS-006). Recorded and not
+    /// acted on: there is no real process behind a drivable run.
+    /// </summary>
+    public List<AgentProcessIdentity> Terminated { get; } = [];
+
+    public void Terminate(AgentProcessIdentity identity) => Terminated.Add(identity);
+
     /// <summary>What the CLI's <c>system/init</c> does to the run: submitted becomes running.</summary>
-    public void ReportIn(Guid submissionId) => reports[submissionId].AgentReportedIn(submissionId);
+    public void ReportIn(Guid submissionId) => Of(submissionId).AgentReportedIn(submissionId);
 
     /// <summary>The run is over, one way or the other.</summary>
-    public void End(Guid submissionId, RunOutcome outcome) => reports[submissionId].RunEnded(submissionId, outcome);
+    public void End(Guid submissionId, RunOutcome outcome) => Of(submissionId).RunEnded(submissionId, outcome);
 
     /// <summary>The run's process is gone, with this exit code. Where a run ends.</summary>
-    public void Exit(Guid submissionId, int exitCode) => reports[submissionId].AgentExited(submissionId, exitCode);
+    public void Exit(Guid submissionId, int exitCode) => Of(submissionId).AgentExited(submissionId, exitCode);
+
+    /// <summary>
+    /// The run for this submission, waited for rather than assumed.
+    /// </summary>
+    /// <remarks>
+    /// A submission does not start its run at the moment it is accepted: it starts when the queue
+    /// reaches it, which for a text waiting behind a failure is after the acknowledgement the
+    /// browser sent, on the hub's own thread and after the response was written (RUNS-002,
+    /// RUNS-003). A test drives the agent from outside, so it waits for the run the way the page's
+    /// own polling waits for the state.
+    /// </remarks>
+    private RunReport Of(Guid submissionId)
+    {
+        var giveUpAt = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+
+        while (!reports.TryGetValue(submissionId, out var report))
+        {
+            if (DateTime.UtcNow > giveUpAt)
+            {
+                throw new InvalidOperationException($"no run was ever dispatched for submission {submissionId}");
+            }
+
+            Thread.Sleep(20);
+        }
+
+        return reports[submissionId];
+    }
 }
 
 /// <summary>
@@ -57,12 +93,19 @@ internal sealed class HubUnderTest : IAsyncDisposable
 {
     private readonly WebApplication app;
     private readonly HttpClient client;
-    private readonly string startUpInputs;
+    private readonly string directory;
 
-    private HubUnderTest(WebApplication app, DrivableHarness agent, string startUpInputs, string address)
+    /// <summary>
+    /// Whether this hub is the one that made the directory. A hub started again over another's
+    /// state shares it and must not take it away underneath it.
+    /// </summary>
+    private readonly bool ownsTheDirectory;
+
+    private HubUnderTest(WebApplication app, DrivableHarness agent, string directory, string address, bool ownsTheDirectory)
     {
         this.app = app;
-        this.startUpInputs = startUpInputs;
+        this.directory = directory;
+        this.ownsTheDirectory = ownsTheDirectory;
         Agent = agent;
         Address = address;
         client = new HttpClient { BaseAddress = new Uri(address) };
@@ -73,11 +116,39 @@ internal sealed class HubUnderTest : IAsyncDisposable
     /// <summary>The run the hub dispatched to, which a test drives from state to state.</summary>
     public DrivableHarness Agent { get; }
 
-    public static async Task<HubUnderTest> StartAsync(CancellationToken cancellationToken)
+    public static Task<HubUnderTest> StartAsync(CancellationToken cancellationToken) =>
+        StartAsync(Directory.CreateTempSubdirectory("grimoire-e2e-").FullName, ownsTheDirectory: true, cancellationToken);
+
+    /// <summary>
+    /// Grimoire stopped and started again over the same state, which is what a restart is — a
+    /// second process reading what the first one left (RUNS-004). A new agent adapter comes with
+    /// it, as a new process's does: nothing of the first hub is shared but the directory.
+    /// </summary>
+    public static async Task<HubUnderTest> RestartedAsync(HubUnderTest stopped, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(stopped);
+
+        await stopped.StopAsync(cancellationToken).ConfigureAwait(false);
+
+        return await StartAsync(stopped.directory, ownsTheDirectory: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The hub goes down, and its directory stays where it is.</summary>
+    public Task StopAsync(CancellationToken cancellationToken) => app.StopAsync(cancellationToken);
+
+    private static async Task<HubUnderTest> StartAsync(
+        string directory, bool ownsTheDirectory, CancellationToken cancellationToken)
     {
         // Both texts every run receives (V.1). Their content does not matter here — the browser
         // door is ACCESS-001 and ACCESS-002; what a run is given is INGEST-002, proven a level down.
-        var directory = Directory.CreateTempSubdirectory("grimoire-e2e-").FullName;
+        //
+        // The wiki and the queue are siblings, never one inside the other: the wiki store lists
+        // every non-hidden file it finds, so a queue kept inside the wiki would be served to the
+        // agent as a page (contracts/submission-store.md). The hub refuses that arrangement at
+        // start-up, and a fixture that used it would be testing something the product forbids.
+        var wiki = Path.Combine(directory, "wiki");
+        var state = Path.Combine(directory, "state");
+        Directory.CreateDirectory(wiki);
         var instruction = Path.Combine(directory, "ingest.md");
         var purpose = Path.Combine(directory, "purpose.md");
         await File.WriteAllTextAsync(instruction, "# Instruction", cancellationToken).ConfigureAwait(false);
@@ -87,14 +158,15 @@ internal sealed class HubUnderTest : IAsyncDisposable
 
         var app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, purpose, WikiRoot: directory, Model: "claude-opus-4-5-20251101"),
+            new HubOptions(instruction, purpose, WikiRoot: wiki, Model: "claude-opus-4-5-20251101"),
             agent,
-            new FileSystemWikiStore(directory),
+            new FileSystemWikiStore(wiki),
+            new SqliteSubmissionStore(state),
             TimeProvider.System);
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);
 
-        return new HubUnderTest(app, agent, directory, app.Urls.First());
+        return new HubUnderTest(app, agent, directory, app.Urls.First(), ownsTheDirectory);
     }
 
     /// <summary>
@@ -133,6 +205,10 @@ internal sealed class HubUnderTest : IAsyncDisposable
     {
         client.Dispose();
         await app.DisposeAsync().ConfigureAwait(false);
-        Directory.Delete(startUpInputs, recursive: true);
+
+        if (ownsTheDirectory)
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 }

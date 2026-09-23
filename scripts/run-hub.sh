@@ -7,7 +7,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 env_file="$root/.env"
 
-readonly KNOWN_KEYS="GRIMOIRE_WIKI GRIMOIRE_PURPOSE GRIMOIRE_MODEL GRIMOIRE_URLS GRIMOIRE_INSTRUCTION"
+readonly KNOWN_KEYS="GRIMOIRE_WIKI GRIMOIRE_PURPOSE GRIMOIRE_MODEL GRIMOIRE_URLS GRIMOIRE_INSTRUCTION GRIMOIRE_STATE"
 readonly REQUIRED_KEYS="GRIMOIRE_WIKI GRIMOIRE_PURPOSE GRIMOIRE_MODEL"
 
 usage() {
@@ -26,6 +26,7 @@ Start the hub against the wiki named in .env, for trying an ingest by hand.
   GRIMOIRE_MODEL        a pinned model id, never an alias       (required)
   GRIMOIRE_URLS         where the hub listens; loopback only    (optional)
   GRIMOIRE_INSTRUCTION  Grimoire's own instruction              (optional)
+  GRIMOIRE_STATE        where the queue is kept across a stop   (optional)
 
 A relative path is taken from the repository root. .env and local/ are ignored by
 git, so what you try here stays yours; .env-example is a copy to start from.
@@ -115,11 +116,20 @@ if [[ -n "${GRIMOIRE_INSTRUCTION:-}" ]]; then
   [[ -f "$instruction" ]] || die "No instruction at $instruction."
 fi
 
+# Where the submissions and their states outlive a stop (RUNS-004). Beside the hub by
+# default; never inside the wiki, because Grimoire's bookkeeping does not belong in the
+# history that is the user's only undo (docs/product.md §4).
+if [[ -n "${GRIMOIRE_STATE:-}" ]]; then
+  state="$(absolute "$GRIMOIRE_STATE")"
+  [[ -e "$state" && ! -d "$state" ]] && die "$state is not a directory, so the queue cannot be kept in it."
+fi
+
 [[ -e "$wiki" && ! -d "$wiki" ]] && die "$wiki is not a directory, so it cannot be a wiki."
 
 # Throwing the wiki away is how a changed instruction gets a clean reading: a run cannot
 # delete or move what an earlier one wrote (GUARD-002), so an abandoned section stays in
-# the tree and in the root index until someone removes it by hand.
+# the tree and in the root index until someone removes it by hand. The queue is not
+# touched: --fresh is about the wiki, and the submissions are a record of what was asked.
 if [[ "$fresh" == true && -d "$wiki" ]]; then
   # Refuse the paths where a mistyped GRIMOIRE_WIKI does real damage. A wiki is a
   # directory of its own, and none of these is that.
@@ -160,6 +170,7 @@ command -v claude >/dev/null || echo "Warning: no claude on PATH — a submissio
 arguments=(--wiki "$wiki" --purpose "$purpose" --model "$GRIMOIRE_MODEL")
 [[ -n "${GRIMOIRE_URLS:-}" ]] && arguments+=(--urls "$GRIMOIRE_URLS")
 [[ -n "${GRIMOIRE_INSTRUCTION:-}" ]] && arguments+=(--instruction "$instruction")
+[[ -n "${GRIMOIRE_STATE:-}" ]] && arguments+=(--state "$state")
 
 echo "wiki    $wiki"
 echo "purpose $purpose"

@@ -12,6 +12,11 @@ that names SQLite (Constitution V.2). The Fast suite has an in-memory adapter at
 1. **A change is on disk before the call that made it returns.** There is no flush, no
    `SaveChanges`, and no write at close. RUNS-004 covers a stop that gives Grimoire no chance to act,
    so nothing may be waiting to be written.
+
+   The operations below are therefore **synchronous**, unlike every other port in the tree. Two
+   reasons, and neither is convenience: the board writes each change under the one lock it decides
+   the queue rule with, and a lock cannot be held across an await; and SQLite's provider writes
+   synchronously underneath, so an async signature would promise a yielding call that never yields.
 2. **What was written is what is read back**, by a process that never saw the one that wrote it.
 3. **Nothing is removed and no text is rewritten.** The store has no delete and no way to change a
    submission's text — the same shape `IWikiStore` has, for the same reason: nothing in this feature
@@ -25,12 +30,12 @@ that names SQLite (Constitution V.2). The Fast suite has an in-memory adapter at
 
 | Operation | Called when | Effect |
 | --- | --- | --- |
-| `LoadAsync` | the hub starts, before anything is served | Every submission with its state, its run's record where it has one, and its acknowledgement where it has one. Ordered by `SubmittedAt`, oldest first — the queue's order |
-| `AddAsync(submission)` | a text is accepted, **before the user is answered** | The submission: id, text, when it was made, state `submitted`, no run, no acknowledgement |
-| `AssignRunAsync(submissionId, run)` | the board hands a submission out | The run's identifier onto the submission, and the run's own record: identifier, submission, when it started, and the tools it was granted |
-| `RecordAgentProcessAsync(runId, identity)` | the agent's child process exists | Which process this run's agent is — its identifier and the moment it started. Written as soon as the child exists, because a kill a moment later is exactly the case it is for (RUNS-006) |
-| `SetStateAsync(submissionId, state)` | the agent reports in; the run ends | The submission's state. The store does not check the transition — RUNS-001 is the board's |
-| `AcknowledgeAsync(submissionId, at)` | a failure is acknowledged | When it was acknowledged |
+| `Load` | the hub starts, before anything is served | Every submission with its state, its run's record where it has one, and its acknowledgement where it has one. In the order they were accepted, oldest first — the queue's order. **Not** ordered by `SubmittedAt`: that clock is not monotonic, and a correction between two submissions would hand them back the wrong way round (RUNS-002) |
+| `Add(submission)` | a text is accepted, **before the user is answered** | The submission: id, text, when it was made, state `submitted`, no run, no acknowledgement |
+| `AssignRun(submissionId, run)` | the board hands a submission out | The run's identifier onto the submission, and the run's own record: identifier, submission, when it started, and the tools it was granted |
+| `RecordAgentProcess(runId, identity)` | the agent's child process exists | Which process this run's agent is — its identifier and the moment it started. Written as soon as the child exists, because a kill a moment later is exactly the case it is for (RUNS-006) |
+| `SetState(submissionId, state)` | the agent reports in; the run ends | The submission's state. The store does not check the transition — RUNS-001 is the board's |
+| `Acknowledge(submissionId, at)` | a failure is acknowledged | When it was acknowledged |
 
 ---
 
@@ -84,7 +89,7 @@ version history, which `docs/product.md` §4 leaves to them.
 
 ## What the restart reads, and what the board does with it
 
-`LoadAsync` returns facts. The rule that turns them into states is the board's (`Restore`):
+`Load` returns facts. The rule that turns them into states is the board's (`Restore`):
 
 | What the store holds | What the board makes of it | Requirement |
 | --- | --- | --- |
@@ -108,7 +113,7 @@ Nothing is resumed and nothing is retried; what an interrupted run wrote stays i
   and its state;
 - a run assigned through one connection comes back with its identifier and its granted tools;
 - an acknowledgement comes back;
-- `LoadAsync` returns submissions oldest first.
+- `Load` returns submissions in the order they were accepted, oldest first — including where a clock correction left a later submission carrying an earlier `SubmittedAt`.
 
 **Does not prove**: that a committed SQLite transaction survives a process being killed. That is
 SQLite's decision and its own test suite's business, and III.8 says we test the decisions we made.

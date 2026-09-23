@@ -32,7 +32,16 @@ Thumbs.db
 .env
 .env.*
 
+# The queue as it survives a stop (RUNS-004) — this machine's submissions, not the
+# repository's. The hub's default is state/ beside its own build output, which bin/ above
+# already covers; this is for a GRIMOIRE_STATE pointed somewhere else.
+state/
+
 # A wiki and a purpose description to try ingests against, and whatever else is only this
 # machine's. Grimoire writes into the wiki; keeping it out of this repository is what stops a
 # run's output turning up in a pull request.
 local/
+
+# Worktrees an agent session made for itself. They are git repositories of their own and
+# belong to this machine, not to this one's history.
+.claude/worktrees/

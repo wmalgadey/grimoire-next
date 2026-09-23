@@ -208,68 +208,69 @@ gone, and that the waiting ones start in the order they were made once the failu
 
 ### Tests for User Story 3
 
-- [ ] T022 [P] [US3] A board restored from stored facts: every submission comes back with the state
+- [X] T022 [P] [US3] A board restored from stored facts: every submission comes back with the state
       it carried, and one with a run identifier and a non-terminal state reads failed, in
       `tests/Grimoire.Fast.Tests/RestartTests.cs` — **Req:** RUNS-004 | **Level:** Fast — **Why not lower:** there is no level below Fast; the rule that turns stored facts into states is the
       board's, and the file behind it is T025.
-- [ ] T023 [US3] After a restore the waiting submissions start in the order they were made once
+- [X] T023 [US3] After a restore the waiting submissions start in the order they were made once
       no failure blocks, and an acknowledgement made before the stop still blocks nothing, in
       `tests/Grimoire.Fast.Tests/RestartTests.cs` — **Req:** RUNS-004, RUNS-002, RUNS-003 |
       **Level:** Fast — **Why not lower:** there is no level below Fast.
-- [ ] T024 [P] [US3] A run under way is stopped when the hub is told to stop, and at start-up the
+- [X] T024 [P] [US3] A run under way is stopped when the hub is told to stop, and at start-up the
       agent of a run that was in progress is terminated **before** that run reads failed and
       **before** any further run starts, in `tests/Grimoire.Fast.Tests/AgentLifetimeTests.cs` against
       a harness that records the order it was asked in — **Req:** RUNS-006 | **Level:** Fast —
       **Why not lower:** the ordering is a decision of ours and needs no real process to observe;
       that a real process actually dies is T026.
-- [ ] T025 [P] [US3] The SQLite adapter against a real file in a temp directory: what was written
+- [X] T025 [P] [US3] The SQLite adapter against a real file in a temp directory: what was written
       through one connection is read back through a new one — submission, state, run record with its
       granted tools, acknowledgement — and `LoadAsync` returns submissions oldest first, in
       `tests/Grimoire.Contract.Tests/SqliteSubmissionStoreTests.cs` — **Req:** RUNS-004 | **Level:**
       Contract — **Why not lower:** Fast uses an in-memory adapter, which cannot show that a change
       reached a file a second process can read; the real external thing decides the outcome.
-- [ ] T026 [P] [US3] Terminating a real child process the test starts: the recorded identity is
+- [X] T026 [P] [US3] Terminating a real child process the test starts: the recorded identity is
       terminated and the process is gone; an identity whose process is already gone terminates
       nothing and does not throw; and a **live process whose identifier matches but whose start time
       does not is left alone**, in `tests/Grimoire.Contract.Tests/AgentProcessTests.cs`. No sign-in,
       so no `[Trait("requires", "signin")]` and it runs in CI — **Req:** RUNS-006 | **Level:**
       Contract — **Why not lower:** terminating a process is an act on the operating system, and no
       in-memory adapter can make it true or make the pid-reuse guard real.
-- [ ] T027 [US3] The hub started, stopped and started again over one store shows every submission
+- [X] T027 [US3] The hub started, stopped and started again over one store shows every submission
       with the state it carried and the interrupted run reading failed, in
       `tests/Grimoire.E2E.Tests/RestartTests.cs` — **Req:** RUNS-004 | **Level:** E2E — **Why not lower:** Fast proves the rule and Contract the file; only a real hub started twice shows that
       the two are wired to each other. One scenario of the two this story is allowed.
 
 ### Implementation for User Story 3
 
-- [ ] T028 [US3] `ISubmissionStore` — `LoadAsync`, `AddAsync`, `AssignRunAsync`,
-      `RecordAgentProcessAsync`, `SetStateAsync`, `AcknowledgeAsync`, each returning only once the
-      change is on disk; no flush, no close-time write, no delete — in
+- [X] T028 [US3] `ISubmissionStore` — `Load`, `Add`, `AssignRun`, `RecordAgentProcess`, `SetState`,
+      `Acknowledge`, each returning only once the change is on disk; synchronous, because the board
+      writes each change under the lock it decides the queue rule with and a lock cannot be held
+      across an await; no flush, no close-time write, no delete — in
       `src/Grimoire.Runs/ISubmissionStore.cs`, with an in-memory adapter at the same port in
       `tests/Grimoire.Fast.Tests/InMemorySubmissionStore.cs` — **Req:** RUNS-004 | Principle III.9
-- [ ] T029 [US3] `SqliteSubmissionStore`: the `submissions` and `runs` tables exactly as
+- [X] T029 [US3] `SqliteSubmissionStore`: the `submissions` and `runs` tables exactly as
       `contracts/submission-store.md` specifies, raw SQL, times as ISO 8601 UTC text, created on
       first use; `Microsoft.Data.Sqlite` as a `PackageVersion` in `Directory.Packages.props` and a
       bare `PackageReference` in `src/Grimoire.Runs/Grimoire.Runs.csproj`. The only file in the tree
       that names SQLite, in `src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs` — **Req:**
       RUNS-004 | Principle V.2
-- [ ] T030 [US3] The board writes through to the store on every change — accepted, handed out, the
+- [X] T030 [US3] The board writes through to the store on every change — accepted, handed out, the
       agent reported in, ended, acknowledged — before the change is visible, and `Restore` turns
       what `LoadAsync` returned into states per `contracts/submission-store.md`, in
       `src/Grimoire.Runs/SubmissionBoard.cs` — **Req:** RUNS-004
-- [ ] T031 [US3] `AgentProcessIdentity(int ProcessId, DateTimeOffset StartedAt)` at the agent port:
+- [X] T031 [US3] `AgentProcessIdentity(int ProcessId, DateTimeOffset StartedAt)` at the agent port:
       `RunReport` gains one report, made as soon as the child exists, and `IAgentHarness` one
       operation that terminates a recorded identity **only** where a live process carries that
       identifier *and* that start time. `HarnessProcess` supplies both from
       `System.Diagnostics.Process` and reuses its `Kill(entireProcessTree: true)`, in
       `src/Grimoire.Agent/IAgentHarness.cs` and
       `src/Grimoire.Agent/Adapters/HarnessProcess.cs` — **Req:** RUNS-006 | Principle V.2
-- [ ] T032 [US3] Both ends of the lifecycle: `RunConductor.StopEverythingAsync` stops the run in
+- [X] T032 [US3] Both ends of the lifecycle: `RunConductor.StopEverythingAsync` stops the run in
       progress the way a ceiling does, called from `IHostApplicationLifetime.ApplicationStopping`;
       and the start-up order — read the store, terminate the agents of runs that were in progress,
       mark those runs failed, then pump the queue — in `src/Grimoire.Hub/RunConductor.cs` and
       `src/Grimoire.Hub/HubApplication.cs` — **Req:** RUNS-006, RUNS-004
-- [ ] T033 [US3] `--state <path>` with its default of `state/` beside the hub, in
+- [X] T033 [US3] `--state <path>` with its default of `state/` beside the hub, in
       `src/Grimoire.Hub/Program.cs`; `GRIMOIRE_STATE` beside the other keys in
       `scripts/run-hub.sh` and `.env-example` — **Req:** RUNS-004
 

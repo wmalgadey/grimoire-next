@@ -29,14 +29,14 @@ public sealed class RunConductor(
     private sealed record Watched(Run Run, ITimer Deadline);
 
     /// <summary>
-    /// A run for this submission, with its grant and both ceilings recorded on it. The identifier
-    /// is the one the board marked the submission with, so that the run the queue handed out and
-    /// the run watched here are the same run (research.md R-04).
+    /// A run for this submission, with its grant and both ceilings recorded on it. Called by the
+    /// board, under its lock, at the moment it hands the submission out: the run it returns is the
+    /// one the submission is marked with and the one recorded in the store (research.md R-04).
     /// </summary>
-    public Run Begin(Guid submissionId, Guid runId)
+    public Run Begin(Guid submissionId)
     {
         var run = new Run(
-            runId,
+            Guid.NewGuid(),
             submissionId,
             clock.GetUtcNow(),
             ToolGrant.Ingest(clock),
@@ -64,7 +64,39 @@ public sealed class RunConductor(
         CostSoFar: CostSoFar,
         AgentStopped: AgentStoppedAsync,
         AgentExited: AgentExited,
-        RunEnded: RunEnded);
+        RunEnded: RunEnded,
+        AgentProcessIs: board.AgentProcessIs);
+
+    /// <summary>
+    /// The hub is going down, so the run under way goes with it: no agent goes on working on a run
+    /// Grimoire has ended (RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// Stopped exactly as a ceiling stops it — the interrupt first, the process kill behind it —
+    /// because DEC-016 settled that mechanism with evidence and this is the same act at a different
+    /// moment (Constitution II.1). The run then ends failed, which is what it reads after the
+    /// restart too (RUNS-004).
+    /// <para>
+    /// Where the stop gives Grimoire no chance to act — a kill it cannot catch, a power cut — this
+    /// never runs, and the agent outlives it until the next start-up terminates it by the identity
+    /// recorded with its run (research.md R-05, R-11).
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// Drained rather than snapshotted once. Stopping a run ends it, and an ending is one of the
+    /// events that pump the queue — so with admission still open a run could be dispatched behind
+    /// the snapshot and outlive the hub. Admission is closed first, by
+    /// <see cref="HubApplication.StopEverythingAsync"/>, and this then goes round until nothing is
+    /// under way; every pass ends the runs it took, so it cannot go round for ever.
+    /// </remarks>
+    public async Task StopEverythingAsync()
+    {
+        while (runs.ToArray() is { Length: > 0 } underWay)
+        {
+            await Task.WhenAll(underWay.Select(u => StopAtACeilingAsync(u.Value.Run, u.Key)))
+                .ConfigureAwait(false);
+        }
+    }
 
     private void AgentReportedIn(Guid submissionId) => board.ReportedIn(submissionId);
 

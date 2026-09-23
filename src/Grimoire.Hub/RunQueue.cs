@@ -37,6 +37,25 @@ public sealed class RunQueue(
     private readonly Lock gate = new();
     private bool pumping;
     private bool askedAgain;
+    private bool closed;
+
+    /// <summary>
+    /// No further run starts, whatever asks. Called as the hub goes down, before the runs under way
+    /// are stopped (RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// Without this, stopping is a race it can lose: a run ends because it was stopped, that ending
+    /// pumps the queue, and a waiting submission is dispatched behind the shutdown — an agent
+    /// started by a Grimoire that is already leaving, and so one nothing will ever stop. Closed
+    /// here and never reopened: a process that has begun to stop does not resume.
+    /// </remarks>
+    public void StopStartingRuns()
+    {
+        lock (gate)
+        {
+            closed = true;
+        }
+    }
 
     /// <summary>
     /// Start whatever may start, and keep starting until nothing may.
@@ -58,6 +77,11 @@ public sealed class RunQueue(
     {
         lock (gate)
         {
+            if (closed)
+            {
+                return;
+            }
+
             if (pumping)
             {
                 askedAgain = true;
@@ -75,7 +99,7 @@ public sealed class RunQueue(
 
                 lock (gate)
                 {
-                    if (!askedAgain)
+                    if (!askedAgain || closed)
                     {
                         pumping = false;
                         return;
@@ -107,33 +131,34 @@ public sealed class RunQueue(
     {
         while (true)
         {
-            // The run's identifier is made here and given to the board, so that the submission is
-            // marked with the very run it is about to be dispatched to: a submission handed out
-            // and a run begun are one step, not two (research.md R-04).
-            var runId = Guid.NewGuid();
-
-            if (board.TakeNext(runId) is not { } next)
+            // The board decides, and asks the conductor for the run only once it has: handing a
+            // submission out, marking it with that run and recording both are one step under one
+            // lock, so a stop between deciding and recording cannot exist (research.md R-04).
+            if (board.TakeNext(conductor.Begin) is not { } run)
             {
                 return;
             }
 
-            await StartAsync(next, runId).ConfigureAwait(false);
+            await StartAsync(run).ConfigureAwait(false);
         }
     }
 
-    private async Task StartAsync(Submission submission, Guid runId)
+    private async Task StartAsync(Run run)
     {
-        var run = conductor.Begin(submission.Id, runId);
-
         try
         {
+            if (board.TextOf(run.SubmissionId) is not { } text)
+            {
+                return;
+            }
+
             // Assembling the prompt is inside this try and not above it. It reads the instruction
             // from disk, so it can throw for a reason that has nothing to do with the run — a file
             // deleted between start-up and now — and the run is already registered by then.
             var dispatch = new AgentDispatch(
                 run.Id,
-                submission.Id,
-                assemblePrompt(submission.Text, run.Id),
+                run.SubmissionId,
+                assemblePrompt(text, run.Id),
                 run.Grant,
                 model);
 
@@ -164,7 +189,7 @@ public sealed class RunQueue(
             // submission being dispatched is not necessarily the one just submitted, and answering
             // one user's request with another submission's failure would say something untrue
             // about theirs (RUNS-002).
-            conductor.Report().RunEnded(submission.Id, RunOutcome.Failed);
+            conductor.Report().RunEnded(run.SubmissionId, RunOutcome.Failed);
         }
     }
 }
