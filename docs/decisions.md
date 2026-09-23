@@ -181,4 +181,20 @@
 
 **Made by**: owner, after feature 001.
 
+## DEC-023 — The submissions live in SQLite, behind a port of the RUNS context
+
+**Decision**: `Microsoft.Data.Sqlite`, raw SQL over two tables in one file inside a directory Grimoire owns (`--state <path>`, defaulting to `state/` beside the hub), behind `ISubmissionStore` declared by the RUNS context with `SqliteSubmissionStore` under `Grimoire.Runs/Adapters/`. No ORM and no migration framework. The port's members are synchronous, unlike every other port in the tree.
+
+**Reason**: RUNS-004 covers *any* stop — a crash, a forced kill, a power cut — so nothing may depend on a shutdown step having run: every change has to be on disk before Grimoire answers for it. Getting that right by hand means fsync ordering and torn-record recovery, which are decisions a dependency has already made, and III.8 says we test our decisions rather than a dependency's. `Microsoft.Data.Sqlite` is first-party, with no native install step and no server. An ORM was rejected because it brings a migration mechanism for two tables that never change shape here, which is a mechanism with no consumer (II.1); a journal of our own was rejected as storage tooling where an existing thing does the job (II.3). The port is synchronous because the board writes each change under the one lock it decides the queue rule with, and a lock cannot be held across an await — and because SQLite's provider writes synchronously underneath, so an async signature would promise a yielding call that never yields. The file is not inside the wiki: the queue writes nothing into the wiki, and Grimoire's bookkeeping in the user's repository would show up in the version history that is their only undo.
+
+**Made by**: plan `002-ingest-queue` (research.md R-01, R-02).
+
+## DEC-024 — A run's agent is recognised by its process identifier *and* its start time
+
+**Decision**: The pair is recorded with the run as soon as the child exists, and at start-up a process is terminated only where a live process carries that identifier **and** that start time. Both halves come from `System.Diagnostics.Process`; the act reuses the tree kill `HarnessProcess` already performs, and it sits at the agent port because only that adapter knows what a process is.
+
+**Reason**: RUNS-006 has Grimoire terminate an agent that outlived a stop it could not act on, and an identifier alone is not an identity: operating systems reuse those numbers, and after a reboot one almost certainly belongs to something else — terminating it would kill an unrelated program on the owner's machine, which is the one failure in this feature that does damage outside Grimoire. Two processes sharing an identifier *and* a start time to the tick do not occur, and a reboot changes every start time, so the pair handles the reboot case with no rule of its own. Matching the process name as well would work but would make the proof need a real `claude` and therefore a sign-in (DEC-021), putting it outside CI; the pair is already exact.
+
+**Made by**: plan `002-ingest-queue` (research.md R-11).
+
 ## Superseded

@@ -44,6 +44,12 @@ internal sealed class FastHub
         Intake = new SubmissionIntake(Board, Queue);
 
         HubApplication.RestoreAfterAStop(store, Board, Harness);
+
+        // And then the queue is pumped, which is what the hub does once it is listening: a
+        // submission that was waiting when Grimoire stopped starts by itself, with nobody
+        // submitting anything (research.md R-03, the fourth of the four events). There is no
+        // server here to wait for, so it happens straight after the restore.
+        Queue.PumpAsync().GetAwaiter().GetResult();
     }
 
     /// <summary>

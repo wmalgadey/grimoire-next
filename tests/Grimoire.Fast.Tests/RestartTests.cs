@@ -103,6 +103,37 @@ public sealed class RestartTests
 
     [Fact]
     [Trait("req", "RUNS-004")]
+    [Trait("req", "RUNS-002")]
+    public void Restart_StartsTheWaitingSubmissions_InTheOrderTheyWereMade()
+    {
+        // Two texts accepted and neither handed out — the state a stop leaves between a submission
+        // being written down and the queue reaching it, and the one state where a restart finds
+        // something waiting with nothing blocking it. Seeded through the store rather than driven
+        // through a board, because a board that is still running would have dispatched the first.
+        var journal = new HubJournal();
+        var store = new InMemorySubmissionStore(journal);
+        var first = Waiting("The first text nobody got to.", FastSuite.Start);
+        var second = Waiting("The second text nobody got to.", FastSuite.Start.AddMinutes(1));
+        store.Add(first);
+        store.Add(second);
+
+        var after = new FastHub(store, journal);
+
+        // Started by the hub coming up, with nobody submitting anything — the fourth of the four
+        // events that pump the queue (research.md R-03) — and started in the order they were made
+        // rather than the order they were written down (RUNS-002).
+        Assert.Equal([first.Id], after.Harness.Dispatched.Select(d => d.SubmissionId));
+
+        after.Harness.End(first.Id, RunOutcome.Done);
+
+        Assert.Equal([first.Id, second.Id], after.Harness.Dispatched.Select(d => d.SubmissionId));
+    }
+
+    private static StoredSubmission Waiting(string text, DateTimeOffset submittedAt) =>
+        new(Guid.NewGuid(), text, submittedAt, SubmissionState.Submitted, Run: null, AcknowledgedAt: null);
+
+    [Fact]
+    [Trait("req", "RUNS-004")]
     [Trait("req", "RUNS-003")]
     public async Task Restart_BlocksNothing_WhenTheFailureWasAcknowledgedBeforeTheStop()
     {
