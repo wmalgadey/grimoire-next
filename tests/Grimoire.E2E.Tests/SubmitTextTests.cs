@@ -19,6 +19,6 @@ public sealed class SubmitTextTests : PageTest
         await Page.FillAsync("#text", "Ada Lovelace wrote the first program.");
         await Page.ClickAsync("#submit");
 
-        await Expect(Page.Locator("#message")).ToHaveTextAsync("Submission accepted. A run is under way.");
+        await Expect(Page.Locator("#message")).ToHaveTextAsync("Submission accepted.");
     }
 }

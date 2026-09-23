@@ -15,7 +15,6 @@ public enum Refusal
     InstructionMissing,
     PurposeDescriptionMissing,
     TextEmpty,
-    RunInProgress,
 }
 
 /// <summary>The answer to a submission: it was accepted, or it was refused for one reason.</summary>
@@ -72,9 +71,9 @@ public sealed class SubmissionBoard(TimeProvider clock)
     /// </summary>
     /// <remarks>
     /// The order is the contract's: both start-up inputs before the text, and the instruction
-    /// before the purpose description, so each refusal names exactly one missing file. The text
-    /// is judged before the moment — a request that is wrong is told so, rather than being told
-    /// to come back later and then refused again (contracts/hub-http-api.md).
+    /// before the purpose description, so each refusal names exactly one missing file. What is
+    /// under way does not enter into it: a text is accepted whatever else is running and waits its
+    /// turn (RUNS-002). Refusing one for the moment was INGEST-005, retired with this feature.
     /// </remarks>
     public SubmissionResult Accept(string text, StartUpInputs inputs)
     {
@@ -95,11 +94,6 @@ public sealed class SubmissionBoard(TimeProvider clock)
 
         lock (gate)
         {
-            if (submissions.Exists(s => s.State is SubmissionState.Submitted or SubmissionState.Running))
-            {
-                return SubmissionResult.RefusedWith(Refusal.RunInProgress);
-            }
-
             var submission = new Submission(Guid.NewGuid(), text, clock.GetUtcNow(), gate);
             submissions.Add(submission);
             return SubmissionResult.Of(submission);

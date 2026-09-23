@@ -171,7 +171,7 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
     /// What either ceiling does: the interrupt first, and then the ending. Both go through here so
     /// that neither can stop a run without also ending it — a stop that the agent does not answer
     /// would otherwise leave the submission reading running, and the board refuses every later
-    /// text while one does (GUARD-004, INGEST-005).
+    /// text while one does (GUARD-004, RUNS-002).
     /// </summary>
     private async Task StopAtACeilingAsync(Run run, Guid submissionId)
     {

@@ -15,6 +15,14 @@ Grimoire has no access control of its own: it assumes it runs inside a network t
 | --- | --- | --- |
 | ACCESS-001 | Users MUST be able to enter a text and submit it from a page in the browser. | test |
 | ACCESS-002 | The browser MUST show, for every submission, exactly one of submitted, running, done or failed, and no further detail about the run. | test |
+| ACCESS-003 | Users MUST be able to acknowledge a failed run in the browser. | test |
+| ACCESS-004 | The browser MUST show, for every submission, the opening of the text that was submitted, cut to the same length for every submission, and when the submission was made, so that the user can tell one submission from another. | test |
 
 ACCESS-002 has two halves and is proven at two levels: the response carries the state and nothing
 else (Fast), and the browser renders it (E2E).
+
+ACCESS-004 is what a user tells one submission from another by, and ACCESS-003 is the one action
+they can take on one. Neither reaches past ACCESS-002: the opening of the user's own text and the
+moment they submitted it are facts about the submission, and that an acknowledgement is available
+says an action can be taken, not what the run did. The acknowledgement names the submission, which
+has exactly one run (INGEST-002); no run identifier reaches the browser.

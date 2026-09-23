@@ -16,14 +16,14 @@ public enum SubmissionState
 /// <summary>
 /// A text the user handed to Grimoire and that was <em>accepted</em>, together with its state.
 /// A refused text never becomes one: nothing about it is stored and it carries no state
-/// (INGEST-003, INGEST-004, INGEST-005).
+/// (INGEST-003, INGEST-004).
 /// </summary>
 public sealed class Submission
 {
     /// <summary>
     /// The board's lock, shared with every submission on it. One lock rather than one per object:
     /// the single-run rule is decided by reading the states of all of them together
-    /// (INGEST-005), so a state that could change while that read is under way would let two runs
+    /// (RUNS-002), so a state that could change while that read is under way would let two runs
     /// start at once. The harness reports from whatever thread its adapter reads on, which is why
     /// this is not theoretical.
     /// </summary>

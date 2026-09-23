@@ -105,13 +105,6 @@ public static class SubmissionsEndpoints
                 "text-empty",
                 "There is no text to submit."),
 
-            // 409 rather than 422: nothing is wrong with the request, only with the moment. The
-            // same text submitted again once the run has ended is accepted.
-            Refusal.RunInProgress => (
-                StatusCodes.Status409Conflict,
-                "run-in-progress",
-                "A run is in progress. Submit this text again once it has ended."),
-
             _ => throw new ArgumentOutOfRangeException(nameof(refusal), refusal, "no such refusal"),
         };
 

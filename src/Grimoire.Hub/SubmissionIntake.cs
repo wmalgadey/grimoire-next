@@ -65,7 +65,7 @@ public sealed class SubmissionIntake(
         {
             // A run that never began must not leave its submission reading Submitted: the board
             // counts that as a run in progress, so every later text would be refused for as long
-            // as the process lives (INGEST-001, INGEST-005). It ended, and it ended failed.
+            // as the process lives (INGEST-001, RUNS-002). It ended, and it ended failed.
             conductor.Report().RunEnded(submission.Id, RunOutcome.Failed);
             throw;
         }

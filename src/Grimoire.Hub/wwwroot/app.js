@@ -42,13 +42,14 @@ form.addEventListener("submit", async (event) => {
   // 202 means the submission is accepted and a run is under way; the user waits for none of it.
   if (response.status === 202) {
     text.value = "";
-    show("accepted", "Submission accepted. A run is under way.");
+    show("accepted", "Submission accepted.");
     refresh();
     return;
   }
 
-  // 422 names what was wrong with the submission, 409 that a run is already in progress. Both
-  // carry a message written for the person who submitted (contracts/hub-http-api.md).
+  // 422 names what was wrong with the submission, and carries a message written for the person
+  // who submitted it. There is no refusal for a run being in progress: a text submitted while one
+  // is under way is accepted and waits its turn (RUNS-002, contracts/hub-http-api.md).
   show("refused", body?.message ?? "The submission was refused.");
 });
 
