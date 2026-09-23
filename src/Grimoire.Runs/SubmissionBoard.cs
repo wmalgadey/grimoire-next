@@ -1,3 +1,5 @@
+using Grimoire.Agent;
+
 namespace Grimoire.Runs;
 
 /// <summary>
@@ -48,8 +50,15 @@ public sealed record SubmissionResult
 /// (research.md R-03).
 /// </para>
 /// </remarks>
-public sealed class SubmissionBoard(TimeProvider clock)
+public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
 {
+    /// <summary>
+    /// A run for this submission, made by whoever knows what a run is given — the hub. The board
+    /// asks for one only once it has decided that this submission may start, so that deciding,
+    /// marking and recording are one step under one lock.
+    /// </summary>
+    public delegate Run RunForSubmission(Guid submissionId);
+
     /// <summary>
     /// One lock for the board and every submission on it, so that a state cannot change while the
     /// single-run rule is being decided from those same states. <see cref="Submission"/> takes
@@ -100,6 +109,17 @@ public sealed class SubmissionBoard(TimeProvider clock)
         {
             var submission = new Submission(Guid.NewGuid(), text, clock.GetUtcNow(), gate);
             submissions.Add(submission);
+
+            // On disk before the user is answered: a user told their text was accepted and then
+            // losing power finds it after the restart (RUNS-004).
+            store.Add(new StoredSubmission(
+                submission.Id,
+                submission.Text,
+                submission.SubmittedAt,
+                SubmissionState.Submitted,
+                Run: null,
+                AcknowledgedAt: null));
+
             return SubmissionResult.Of(submission);
         }
     }
@@ -114,8 +134,10 @@ public sealed class SubmissionBoard(TimeProvider clock)
     /// and a run that has just ended — cannot both be handed one, because the first marks what it
     /// took before the second reads (research.md R-03).
     /// </remarks>
-    public Submission? TakeNext(Guid runId)
+    public Run? TakeNext(RunForSubmission newRun)
     {
+        ArgumentNullException.ThrowIfNull(newRun);
+
         lock (gate)
         {
             if (submissions.Exists(s => s.IsUnderWay))
@@ -136,9 +158,77 @@ public sealed class SubmissionBoard(TimeProvider clock)
             // step, or the owner putting the machine's time back — would give a later submission
             // an earlier stamp and let it jump the queue. The list is appended to under this same
             // lock, so its order is the acceptance order and nothing can reorder it.
-            var next = submissions.Find(s => s.IsWaiting);
-            next?.HandedTo(runId);
-            return next;
+            if (submissions.Find(s => s.IsWaiting) is not { } next)
+            {
+                return null;
+            }
+
+            var run = newRun(next.Id);
+            next.HandedTo(run.Id);
+            store.AssignRun(next.Id, StoredRun.Of(run));
+            return run;
+        }
+    }
+
+    /// <summary>The text this run is to be given, or null where the submission is gone.</summary>
+    public string? TextOf(Guid submissionId)
+    {
+        lock (gate)
+        {
+            return Located(submissionId)?.Text;
+        }
+    }
+
+    /// <summary>
+    /// Which process this submission's agent is (RUNS-006). Recorded against the run, because that
+    /// is what a start-up reads it back for.
+    /// </summary>
+    public void AgentProcessIs(Guid submissionId, AgentProcessIdentity identity)
+    {
+        lock (gate)
+        {
+            if (Located(submissionId)?.RunId is { } run)
+            {
+                store.RecordAgentProcess(run, identity);
+            }
+        }
+    }
+
+    /// <summary>
+    /// What the store held, made into submissions and their states again (RUNS-004).
+    /// </summary>
+    /// <remarks>
+    /// A submission with a run and a state that is not terminal was in progress when Grimoire
+    /// stopped, and reads <c>failed</c> — which then holds the queue until the user acknowledges
+    /// it, exactly as a failure that happened while Grimoire was running does (RUNS-003). Nothing
+    /// is resumed and nothing is retried, and everything such a run had already written stays in
+    /// the wiki (WIKI-003).
+    /// <para>
+    /// The agents of those runs are terminated <b>before</b> this is called: the browser must never
+    /// show failed while the agent is still at work, and no second run may begin beside a first
+    /// that is still writing (RUNS-006, research.md R-11).
+    /// </para>
+    /// </remarks>
+    public void Restore(IReadOnlyList<StoredSubmission> stored)
+    {
+        ArgumentNullException.ThrowIfNull(stored);
+
+        lock (gate)
+        {
+            // Oldest first, which is the order the store hands them back and the order the queue
+            // will take them in.
+            foreach (var held in stored.OrderBy(s => s.SubmittedAt))
+            {
+                var submission = new Submission(held.Id, held.Text, held.SubmittedAt, gate);
+                submission.Restored(held);
+                submissions.Add(submission);
+
+                if (held.WasUnderWay)
+                {
+                    submission.Ended(SubmissionState.Failed);
+                    store.SetState(held.Id, SubmissionState.Failed);
+                }
+            }
         }
     }
 
@@ -157,7 +247,12 @@ public sealed class SubmissionBoard(TimeProvider clock)
         {
             if (Located(submissionId) is { IsUnacknowledgedFailure: true } failure)
             {
-                failure.Acknowledged(clock.GetUtcNow());
+                var at = clock.GetUtcNow();
+                failure.Acknowledged(at);
+
+                // On disk before the queue moves, so that a restart does not re-block a queue the
+                // user has already cleared (RUNS-003, RUNS-004).
+                store.Acknowledge(submissionId, at);
             }
         }
     }
@@ -169,7 +264,13 @@ public sealed class SubmissionBoard(TimeProvider clock)
     {
         lock (gate)
         {
-            Located(submissionId)?.ReportedIn();
+            if (Located(submissionId) is not { } submission)
+            {
+                return;
+            }
+
+            submission.ReportedIn();
+            store.SetState(submissionId, SubmissionState.Running);
         }
     }
 
@@ -178,7 +279,13 @@ public sealed class SubmissionBoard(TimeProvider clock)
     {
         lock (gate)
         {
-            Located(submissionId)?.Ended(terminal);
+            if (Located(submissionId) is not { } submission)
+            {
+                return;
+            }
+
+            submission.Ended(terminal);
+            store.SetState(submissionId, terminal);
         }
     }
 

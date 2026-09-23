@@ -194,6 +194,18 @@ public sealed partial class Submission
     internal bool IsWaiting => runId is null && state == SubmissionState.Submitted;
 
     /// <summary>
+    /// What the store held, put back as it was. The rule that turns it into a state — a run that
+    /// was in progress reads failed — is the board's, and is applied after this (RUNS-004).
+    /// Assumes the board's lock.
+    /// </summary>
+    internal void Restored(StoredSubmission held)
+    {
+        state = held.State;
+        runId = held.Run?.Id;
+        acknowledgedAt = held.AcknowledgedAt;
+    }
+
+    /// <summary>
     /// The board has handed this submission out to a run. Assumes the board's lock, which is what
     /// makes handing the same submission out twice impossible rather than unlikely.
     /// </summary>

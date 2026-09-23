@@ -14,8 +14,9 @@ namespace Grimoire.Fast.Tests;
 /// <see cref="ToolGrant.IsTheSurface"/> — a double that decided that for itself would prove
 /// nothing.
 /// </remarks>
-internal sealed class InMemoryAgentHarness : IAgentHarness
+internal sealed class InMemoryAgentHarness(HubJournal? journal = null) : IAgentHarness
 {
+    private readonly List<AgentProcessIdentity> terminated = [];
     private readonly List<AgentDispatch> dispatched = [];
     private readonly List<Guid> nudged = [];
     private readonly List<Guid> stopped = [];
@@ -24,6 +25,15 @@ internal sealed class InMemoryAgentHarness : IAgentHarness
 
     /// <summary>Every dispatch this harness was given, in the order it was given them.</summary>
     public IReadOnlyList<AgentDispatch> Dispatched => dispatched;
+
+    /// <summary>The agents this harness was asked to terminate at start-up (RUNS-006).</summary>
+    public IReadOnlyList<AgentProcessIdentity> Terminated => terminated;
+
+    /// <summary>
+    /// Which process a dispatched run's agent is, as the real adapter reports it the moment the
+    /// child exists. Left unset, no child is reported and no identity is recorded.
+    /// </summary>
+    public AgentProcessIdentity? AgentProcess { get; set; }
 
     public IReadOnlyList<Guid> Nudged => nudged;
 
@@ -68,6 +78,12 @@ internal sealed class InMemoryAgentHarness : IAgentHarness
 
         dispatched.Add(dispatch);
         RunUnderWay = true;
+        journal?.Record($"dispatched {dispatch.SubmissionId}");
+
+        if (AgentProcess is { } identity)
+        {
+            report.AgentProcessIs(dispatch.SubmissionId, identity);
+        }
 
         if (ReportedSurface is { } surface && !dispatch.Grant.IsTheSurface(surface))
         {
@@ -78,6 +94,16 @@ internal sealed class InMemoryAgentHarness : IAgentHarness
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// An agent that outlived a stop. Recorded rather than acted on: that a real process actually
+    /// dies is the Contract suite's, against a real one (research.md R-11).
+    /// </summary>
+    public void Terminate(AgentProcessIdentity identity)
+    {
+        terminated.Add(identity);
+        journal?.Record($"terminated {identity.ProcessId}");
     }
 
     public Task NudgeAsync(Guid runId, CancellationToken cancellationToken)

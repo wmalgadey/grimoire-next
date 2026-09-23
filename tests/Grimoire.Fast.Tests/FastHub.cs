@@ -12,9 +12,28 @@ namespace Grimoire.Fast.Tests;
 internal sealed class FastHub
 {
     public FastHub()
+        : this(new HubJournal())
     {
+    }
+
+    /// <summary>One journal, written to by both doubles, so that they share a timeline.</summary>
+    private FastHub(HubJournal journal)
+        : this(new InMemorySubmissionStore(journal), journal)
+    {
+    }
+
+    /// <summary>
+    /// A hub over a store that already holds something — which is what a restart is. It runs the
+    /// same start-up the composition root runs, so the order RUNS-006 asks for is the real one and
+    /// not a copy of it (HubApplication.RestoreAfterAStop).
+    /// </summary>
+    public FastHub(InMemorySubmissionStore store, HubJournal journal)
+    {
+        Store = store;
+        Journal = journal;
+        Harness = new InMemoryAgentHarness(journal);
         Clock = FastSuite.Clock();
-        Board = new SubmissionBoard(Clock);
+        Board = new SubmissionBoard(Clock, store);
 
         // The same knot the composition root ties: a run that ends lets the next one start
         // (HubApplication.Build).
@@ -23,13 +42,26 @@ internal sealed class FastHub
         queue = new RunQueue(Board, Conductor, Harness, Prompt, Model);
         Queue = queue;
         Intake = new SubmissionIntake(Board, Queue);
+
+        HubApplication.RestoreAfterAStop(store, Board, Harness);
     }
+
+    /// <summary>
+    /// Grimoire stopped and started again over the same store. The clock starts afresh, as a new
+    /// process's does.
+    /// </summary>
+    public FastHub Restarted() => new(Store, Journal);
 
     public const string Model = "claude-opus-4-5-20251101";
 
+    public InMemorySubmissionStore Store { get; }
+
+    /// <summary>What both doubles did, in the order they did it.</summary>
+    public HubJournal Journal { get; }
+
     public FakeTimeProvider Clock { get; }
 
-    public InMemoryAgentHarness Harness { get; } = new();
+    public InMemoryAgentHarness Harness { get; }
 
     public InMemoryWikiStore Wiki { get; } = new();
 

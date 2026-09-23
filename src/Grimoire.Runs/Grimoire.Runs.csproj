@@ -7,4 +7,11 @@
     <ProjectReference Include="../Grimoire.Agent/Grimoire.Agent.csproj" />
   </ItemGroup>
 
+  <!-- Where the submissions live so that they survive a stop (RUNS-004, DEC-023). A first-party
+       package with no native install step and no server; it appears in SqliteSubmissionStore and
+       nowhere else (Constitution V.2). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
 </Project>

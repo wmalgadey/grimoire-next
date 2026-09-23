@@ -17,7 +17,7 @@ given, and whether that run's failure has been acknowledged. A refused text neve
 | --- | --- | --- | --- |
 | `Id` | `Guid` | — | Identifies the submission. The browser's row key |
 | `Text` | `string` | — | The text as the user gave it, whole and untidied. Every run receives it (INGEST-002), which is why it has to survive a stop: a submission that waits across a restart still has its run ahead of it |
-| `SubmittedAt` | `DateTimeOffset` | — | When it was made. **The queue's order** (RUNS-002), and shown in the browser (ACCESS-004) |
+| `SubmittedAt` | `DateTimeOffset` | — | When it was made, and shown in the browser (ACCESS-004). **Not** what the queue is ordered by: the clock is not monotonic, so the order is the order they were accepted in — the board's own list, and `rowid` in the store (RUNS-002) |
 | `State` | `SubmissionState` | — | Exactly one of the four (RUNS-001) |
 | `RunId` | `Guid?` | **new** | The run this submission was given, set at the moment the board hands it out. `null` while it waits its turn (R-04) |
 | `AcknowledgedAt` | `DateTimeOffset?` | **new** | When the user acknowledged this submission's failed run. `null` otherwise. Not a state — RUNS-001's four stay four |
@@ -106,14 +106,15 @@ What has to survive, and nothing more. Declared by the RUNS context, adapted by
 
 | Operation | Called when |
 | --- | --- |
-| `LoadAsync()` | the hub starts, before anything is served |
-| `AddAsync(submission)` | a text is accepted — **before** the user is answered |
-| `AssignRunAsync(submissionId, run)` | the board hands a submission out, with the run's record |
-| `SetStateAsync(submissionId, state)` | the agent reports in, and where the run ends |
-| `AcknowledgeAsync(submissionId, at)` | a failure is acknowledged |
+| `Load()` | the hub starts, before anything is served |
+| `Add(submission)` | a text is accepted — **before** the user is answered |
+| `AssignRun(submissionId, run)` | the board hands a submission out, with the run's record |
+| `SetState(submissionId, state)` | the agent reports in, and where the run ends |
+| `Acknowledge(submissionId, at)` | a failure is acknowledged |
 
-Every call returns only when the change is on disk. There is no `Flush`, no `SaveChanges` and no
-close-time write: RUNS-004 covers a stop that gives Grimoire no chance to act, so nothing may be
+Every call returns only when the change is on disk, and every call is synchronous: the board writes
+under the one lock it decides the queue rule with, and a lock cannot be held across an await. There
+is no `Flush`, no `SaveChanges` and no close-time write: RUNS-004 covers a stop that gives Grimoire no chance to act, so nothing may be
 waiting to be written (R-02).
 
 **No delete and no update of a text.** The store mirrors `IWikiStore`'s shape for the same reason:

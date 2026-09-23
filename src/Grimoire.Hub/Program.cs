@@ -1,11 +1,12 @@
 using Grimoire.Agent.Adapters;
 using Grimoire.Hub;
+using Grimoire.Runs.Adapters;
 using Grimoire.Wiki.Adapters;
 using Microsoft.AspNetCore.Builder;
 
-// The hub's entry point, and the only place the two real adapters are put at their ports: the
-// filesystem wiki store, and the `claude` process (Constitution V.2). Every suite builds the same
-// application through `HubApplication.Build` with in-memory adapters at those same two ports
+// The hub's entry point, and the only place the three real adapters are put at their ports: the
+// filesystem wiki store, the `claude` process, and the SQLite submission store (Constitution V.2).
+// Every suite builds the same application through `HubApplication.Build` with in-memory adapters
 // (III.9), which is why nothing here is covered by a test: dependency wiring and argument reading
 // are not tested (III.8). What exercises this file is the owner's acceptance run (quickstart.md).
 
@@ -23,6 +24,7 @@ var app = HubApplication.Build(
     startUp.Options,
     new HarnessProcess(HarnessSettings.Default(startUp.Address)),
     new FileSystemWikiStore(startUp.Options.WikiRoot),
+    new SqliteSubmissionStore(startUp.StateDirectory),
     TimeProvider.System);
 
 app.Run();
@@ -34,8 +36,15 @@ return 0;
 /// and the model — and the instruction is Grimoire's own, versioned in this repository, so it has a
 /// default and changing it is an owner decision named in the PR (Constitution V.1).
 /// </summary>
-internal sealed record StartUp(HubOptions Options, Uri Address)
+internal sealed record StartUp(HubOptions Options, Uri Address, string StateDirectory)
 {
+    /// <summary>
+    /// Where the queue is kept so that it survives a stop (RUNS-004). Beside the hub rather than
+    /// inside the wiki: the queue writes nothing into the wiki, and Grimoire's bookkeeping in the
+    /// user's repository would show up in their version history (contracts/submission-store.md).
+    /// </summary>
+    public static string DefaultStateDirectory => Path.Combine(AppContext.BaseDirectory, "state");
+
     /// <summary>
     /// Loopback, because the run's tool endpoint carries no token: the hub sits inside a network
     /// the user trusts and has no access control of its own (`docs/product.md` §2, DEC-014).
@@ -49,6 +58,8 @@ internal sealed record StartUp(HubOptions Options, Uri Address)
           --purpose <path>      the hand-written description of what the wiki is for   (required)
           --model <id>          a pinned model id, never an alias                      (required)
           --instruction <path>  Grimoire's own instruction  (default: instructions/ingest.md)
+          --state <path>        where the queue is kept, so that it survives a stop
+                                (default: state/ beside the hub)
           --urls <url>          where the hub listens; loopback only
                                 (default: http://127.0.0.1:5057)
         """;
@@ -86,7 +97,10 @@ internal sealed record StartUp(HubOptions Options, Uri Address)
             return null;
         }
 
-        return new StartUp(new HubOptions(instruction, purpose, wiki, model), address);
+        return new StartUp(
+            new HubOptions(instruction, purpose, wiki, model),
+            address,
+            given.GetValueOrDefault("state") ?? DefaultStateDirectory);
     }
 
     /// <summary>
