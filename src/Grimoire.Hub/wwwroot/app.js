@@ -84,7 +84,36 @@ function row(submission) {
   state.textContent = submission.state;
 
   item.append(when, " ", excerpt, " ", state);
+
+  // One control, and only on the row whose failure is still waiting to be acknowledged. A row
+  // without it offers nothing: a control that did nothing would be a lie to the user (ACCESS-003,
+  // research.md R-06). No identifier is rendered — neither the submission's nor, since it never
+  // arrives, the run's.
+  if (submission.awaitingAcknowledgement) {
+    const acknowledge = document.createElement("button");
+    acknowledge.type = "button";
+    acknowledge.className = "acknowledge";
+    acknowledge.textContent = "Acknowledge";
+    acknowledge.addEventListener("click", () => acknowledged(submission.id));
+    item.append(" ", acknowledge);
+  }
+
   return item;
+}
+
+// Acknowledging a failure is what lets the queue move on (RUNS-003). The list is refreshed
+// straight afterwards rather than waited for: the acknowledged row still reads failed, and the
+// control it offered is gone, which is the user's confirmation.
+async function acknowledged(id) {
+  try {
+    await fetch(`/api/submissions/${id}/acknowledgement`, { method: "POST" });
+  } catch {
+    // Grimoire could not be reached. Nothing was acknowledged, the row still offers the control,
+    // and the next poll puts back what is true.
+    return;
+  }
+
+  refresh();
 }
 
 async function refresh() {

@@ -22,14 +22,31 @@ public sealed record SubmissionView(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("state")] string State,
     [property: JsonPropertyName("submittedAt")] DateTimeOffset SubmittedAt,
-    [property: JsonPropertyName("excerpt")] string Excerpt)
+    [property: JsonPropertyName("excerpt")] string Excerpt,
+    [property: JsonPropertyName("awaitingAcknowledgement")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? AwaitingAcknowledgement)
 {
-    public static SubmissionView Of(Submission submission) =>
-        new(
+    public static SubmissionView Of(Submission submission)
+    {
+        ArgumentNullException.ThrowIfNull(submission);
+
+        // One reading of both, under the board's lock. Asked separately, a run ending between the
+        // two answers would put `running` beside an offered acknowledgement — a pair this contract
+        // says cannot occur, and a control on a row whose run is still under way.
+        var status = submission.Status;
+
+        return new SubmissionView(
             submission.Id.ToString(),
-            WireNameOf(submission.State),
+            WireNameOf(status.State),
             submission.SubmittedAt,
-            submission.Excerpt);
+            submission.Excerpt,
+
+            // Absent rather than false where there is nothing to acknowledge, so that a row either
+            // offers the control or says nothing at all about it. `failed` alone cannot say: an
+            // acknowledged failure still reads failed and must not offer it again (RUNS-003).
+            status.AwaitingAcknowledgement ? true : null);
+    }
 
     /// <summary>Exactly one of <c>submitted</c> · <c>running</c> · <c>done</c> · <c>failed</c> (RUNS-001).</summary>
     public static string WireNameOf(SubmissionState state) => state switch
@@ -71,9 +88,11 @@ public static class SubmissionsEndpoints
         this IEndpointRouteBuilder endpoints,
         SubmissionIntake intake,
         SubmissionBoard board,
+        RunQueue queue,
         StartUpInputsCheck startUpInputs)
     {
         ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(queue);
 
         endpoints.MapPost("/api/submissions", async (SubmissionRequest? request) =>
         {
@@ -94,6 +113,24 @@ public static class SubmissionsEndpoints
         // (Constitution II.1), and everything more about a run is OUT-02's.
         endpoints.MapGet("/api/submissions", () =>
             new SubmissionListView([.. board.All.Select(SubmissionView.Of)]));
+
+        // The acknowledgement addresses a submission, which has exactly one run (INGEST-002), so
+        // naming it names its failed run — and no run identifier has to reach the browser for the
+        // user to clear one (research.md R-06).
+        endpoints.MapPost("/api/submissions/{id:guid}/acknowledgement", async (Guid id) =>
+        {
+            board.Acknowledge(id);
+
+            // Asked either way. The board decides whether anything may start, and an
+            // acknowledgement that cleared nothing simply leaves it deciding no.
+            await queue.PumpAsync().ConfigureAwait(false);
+
+            // One status for both cases, deliberately: a page loaded before the last run failed
+            // can acknowledge a failure that has already been cleared, and answering that with an
+            // error would put a failure on the user's screen for a request that did exactly what
+            // it should — nothing (contracts/hub-http-api.md).
+            return Results.NoContent();
+        });
 
         return endpoints;
     }

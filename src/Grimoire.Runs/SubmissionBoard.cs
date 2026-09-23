@@ -123,6 +123,13 @@ public sealed class SubmissionBoard(TimeProvider clock)
                 return null;
             }
 
+            // A failure holds the queue until the user says they have seen it, so that the run
+            // behind it does not work on a wiki the failed run left half-written (RUNS-003).
+            if (submissions.Exists(s => s.IsUnacknowledgedFailure))
+            {
+                return null;
+            }
+
             // The first waiting one in the list, which is the order they were accepted in and so
             // the order the user made them in (RUNS-002). Deliberately not the earliest
             // `SubmittedAt`: the clock those come from is not monotonic, and a correction — an NTP
@@ -132,6 +139,26 @@ public sealed class SubmissionBoard(TimeProvider clock)
             var next = submissions.Find(s => s.IsWaiting);
             next?.HandedTo(runId);
             return next;
+        }
+    }
+
+    /// <summary>
+    /// The user has acknowledged this submission's failed run, which is the only thing that lifts
+    /// the block a failure puts on the queue (RUNS-003).
+    /// </summary>
+    /// <remarks>
+    /// A submission that is not an unacknowledged failure changes nothing — already acknowledged,
+    /// never failed, or not one this Grimoire knows. A page loaded before the last run failed can
+    /// send exactly that, and the answer to it is that nothing happens (contracts/hub-http-api.md).
+    /// </remarks>
+    public void Acknowledge(Guid submissionId)
+    {
+        lock (gate)
+        {
+            if (Located(submissionId) is { IsUnacknowledgedFailure: true } failure)
+            {
+                failure.Acknowledged(clock.GetUtcNow());
+            }
         }
     }
 

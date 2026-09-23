@@ -48,6 +48,16 @@ internal sealed class FastHub
     public Task<SubmissionResult> SubmitAsync(string text, StartUpInputs? inputs = null) =>
         Intake.SubmitAsync(text, inputs ?? StartUpInputs.BothPresent);
 
+    /// <summary>
+    /// A failure acknowledged, the way the endpoint does it: the board is told, and the queue is
+    /// asked either way (ACCESS-003, contracts/hub-http-api.md).
+    /// </summary>
+    public Task AcknowledgeAsync(Guid submissionId)
+    {
+        Board.Acknowledge(submissionId);
+        return Queue.PumpAsync();
+    }
+
     /// <summary>A submission that was accepted, with its run under way.</summary>
     public async Task<Submission> AcceptedAsync(string text = "A text.") =>
         (await SubmitAsync(text)).Accepted!;

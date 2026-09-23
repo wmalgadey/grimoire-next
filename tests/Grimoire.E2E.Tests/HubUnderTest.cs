@@ -115,6 +115,20 @@ internal sealed class HubUnderTest : IAsyncDisposable
         return Guid.Parse(accepted!.Id);
     }
 
+    /// <summary>
+    /// A failure acknowledged the way the page acknowledges it, so that the queue moves on
+    /// (ACCESS-003, RUNS-003). That a person can reach this from the browser is
+    /// <see cref="AcknowledgementTests"/>; here it is a step on the way to somewhere else.
+    /// </summary>
+    public async Task AcknowledgeAsync(Guid submission, CancellationToken cancellationToken)
+    {
+        var response = await client
+            .PostAsync(new Uri($"/api/submissions/{submission}/acknowledgement", UriKind.Relative), null, cancellationToken)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+    }
+
     public async ValueTask DisposeAsync()
     {
         client.Dispose();

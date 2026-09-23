@@ -91,10 +91,14 @@ public sealed class SubmissionAcceptanceTests
         Assert.Equal(SubmissionState.Failed, first.Accepted!.State);
 
         hub.Harness.DispatchFailure = null;
+        var second = await hub.SubmitAsync("The second text.");
+        Assert.NotNull(second.Accepted);
 
-        // A run that never began is not a run in progress. Were the submission left under way,
-        // nothing behind it would ever start again (RUNS-002).
-        Assert.NotNull((await hub.SubmitAsync("The second text.")).Accepted);
+        // A run that never began is a run that ended failed, and it holds the queue like any other
+        // failure until the user acknowledges it (RUNS-003). What it must not do is leave its
+        // submission under way, because then nothing behind it would ever start again (RUNS-002).
+        await hub.AcknowledgeAsync(first.Accepted.Id);
         Assert.True(hub.Harness.RunUnderWay);
+        Assert.Equal([second.Accepted!.Id], hub.Harness.Dispatched.Select(d => d.SubmissionId));
     }
 }

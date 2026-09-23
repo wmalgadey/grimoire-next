@@ -39,6 +39,10 @@ public sealed class SubmissionStatesTests : PageTest
         hub.Agent.ReportIn(failed);
         hub.Agent.End(failed, RunOutcome.Failed);
 
+        // Acknowledged, so that the queue moves on and a third submission can reach a state at all:
+        // a failure nobody has seen holds it (RUNS-003). The row still reads failed.
+        await hub.AcknowledgeAsync(failed, token);
+
         // Accepted, and the agent has not reported in yet: that is where submitted begins and ends.
         var underWay = await hub.SubmitAsync("Alan Turing described a universal machine.", token);
 

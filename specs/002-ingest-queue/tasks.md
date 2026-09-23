@@ -151,41 +151,41 @@ Needs no restart.
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] After a run ends failed no further run starts, and the waiting submissions stay
+- [X] T013 [P] [US2] After a run ends failed no further run starts, and the waiting submissions stay
       waiting and still read submitted, in
       `tests/Grimoire.Fast.Tests/AcknowledgementTests.cs` — **Req:** RUNS-003 | **Level:** Fast —
       **Why not lower:** there is no level below Fast.
-- [ ] T014 [US2] Acknowledging starts the next waiting submission and leaves the acknowledged run
+- [X] T014 [US2] Acknowledging starts the next waiting submission and leaves the acknowledged run
       reading failed, in `tests/Grimoire.Fast.Tests/AcknowledgementTests.cs` — **Req:** RUNS-003 |
       **Level:** Fast — **Why not lower:** there is no level below Fast.
-- [ ] T015 [US2] Acknowledging a submission that is not an unacknowledged failure — already
+- [X] T015 [US2] Acknowledging a submission that is not an unacknowledged failure — already
       acknowledged, not failed, or unknown — starts nothing and changes no state, in
       `tests/Grimoire.Fast.Tests/AcknowledgementTests.cs` — **Req:** RUNS-003 | **Level:** Fast —
       **Why not lower:** there is no level below Fast.
-- [ ] T016 [P] [US2] `awaitingAcknowledgement` is carried only where a submission reads failed and
+- [X] T016 [P] [US2] `awaitingAcknowledgement` is carried only where a submission reads failed and
       has not been acknowledged, and no run identifier is carried at all, in
       `tests/Grimoire.Fast.Tests/SubmissionStateTests.cs` — **Req:** ACCESS-003, ACCESS-002 |
       **Level:** Fast — **Why not lower:** the response shape is a decision of ours that a real
       browser would only obscure; what the browser does with it is T017.
-- [ ] T017 [US2] The user acknowledges a failed run in the browser and the next waiting submission
+- [X] T017 [US2] The user acknowledges a failed run in the browser and the next waiting submission
       starts, in `tests/Grimoire.E2E.Tests/AcknowledgementTests.cs` — **Req:** ACCESS-003, RUNS-003 |
       **Level:** E2E — **Why not lower:** ACCESS-003 says "in the browser", so nothing below a real
       browser can prove that the user can reach it. One scenario of the two this story is allowed.
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] `Submission.AcknowledgedAt` (`DateTimeOffset?`, not a state — RUNS-001's four stay
+- [X] T018 [US2] `Submission.AcknowledgedAt` (`DateTimeOffset?`, not a state — RUNS-001's four stay
       four) and `SubmissionBoard.Acknowledge(Guid submissionId)`; `TakeNext` hands out nothing while
       any submission reads failed with `AcknowledgedAt` null, in `src/Grimoire.Runs/Submission.cs`
       and `src/Grimoire.Runs/SubmissionBoard.cs` — **Req:** RUNS-003
-- [ ] T019 [US2] `POST /api/submissions/{id}/acknowledgement`, no request body and no response body,
+- [X] T019 [US2] `POST /api/submissions/{id}/acknowledgement`, no request body and no response body,
       answering `204 No Content` in both cases of `contracts/hub-http-api.md` — the failure cleared,
       and nothing to clear — and then asking the queue for the next run, in
       `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs` — **Req:** ACCESS-003
-- [ ] T020 [US2] `awaitingAcknowledgement` on `SubmissionView`, present only where the submission
+- [X] T020 [US2] `awaitingAcknowledgement` on `SubmissionView`, present only where the submission
       reads failed and is unacknowledged and then always `true`; no run identifier is added, in
       `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs` — **Req:** ACCESS-003
-- [ ] T021 [US2] One control on a row carrying `awaitingAcknowledgement`, which posts to that row's
+- [X] T021 [US2] One control on a row carrying `awaitingAcknowledgement`, which posts to that row's
       own submission and refreshes; a row without it offers nothing, and no identifier is rendered,
       in `src/Grimoire.Hub/wwwroot/app.js` and `src/Grimoire.Hub/wwwroot/index.html` — **Req:**
       ACCESS-003

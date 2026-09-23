@@ -16,6 +16,19 @@ public enum SubmissionState
 }
 
 /// <summary>
+/// What a submission reads at one instant: its state, and whether its failure is still waiting to
+/// be acknowledged.
+/// </summary>
+/// <remarks>
+/// The two travel together because they have to be <em>read</em> together. Asked for one after the
+/// other, a submission ending between the two answers would report <c>running</c> beside an
+/// acknowledgement that is available — a pair the browser's contract says cannot occur, and one
+/// that would put a control on a row whose run is still under way
+/// (contracts/hub-http-api.md, ACCESS-003).
+/// </remarks>
+public sealed record SubmissionStatus(SubmissionState State, bool AwaitingAcknowledgement);
+
+/// <summary>
 /// A text the user handed to Grimoire and that was <em>accepted</em>, together with its state and
 /// the run it has been given. A refused text never becomes one: nothing about it is stored and it
 /// carries no state (INGEST-003, INGEST-004).
@@ -46,6 +59,7 @@ public sealed partial class Submission
 
     private SubmissionState state = SubmissionState.Submitted;
     private Guid? runId;
+    private DateTimeOffset? acknowledgedAt;
 
     internal Submission(Guid id, string text, DateTimeOffset submittedAt, Lock gate)
     {
@@ -107,6 +121,31 @@ public sealed partial class Submission
     }
 
     /// <summary>
+    /// This submission's run failed and the user has not acknowledged it yet — the one thing that
+    /// holds the queue (RUNS-003), and the one row in the browser that offers the control
+    /// (ACCESS-003). It says an action is available, not what the run did.
+    /// </summary>
+    public bool AwaitingAcknowledgement => Status.AwaitingAcknowledgement;
+
+    /// <summary>
+    /// The state and the acknowledgement as of one instant, read under the one lock. What the
+    /// browser is told is built from this rather than from the two properties in turn, so that the
+    /// pair it renders is a pair that actually existed (<see cref="SubmissionStatus"/>).
+    /// </summary>
+    public SubmissionStatus Status
+    {
+        get
+        {
+            lock (gate)
+            {
+                return new SubmissionStatus(
+                    state,
+                    state == SubmissionState.Failed && acknowledgedAt is null);
+            }
+        }
+    }
+
+    /// <summary>
     /// Whitespace collapsed, trimmed, and cut to <see cref="ExcerptLength"/> with an ellipsis where
     /// it was cut. Collapsing is what makes the first line of a pasted document read as a sentence
     /// rather than as an indented fragment; a text at or under the length is returned whole, with
@@ -131,6 +170,17 @@ public sealed partial class Submission
     /// <summary>Every run of whitespace, newlines and tabs among it, as one thing to replace.</summary>
     [GeneratedRegex(@"\s+")]
     private static partial Regex Whitespace();
+
+    /// <summary>
+    /// Blocking: a failure nobody has acknowledged. Assumes the board's lock.
+    /// </summary>
+    internal bool IsUnacknowledgedFailure => state == SubmissionState.Failed && acknowledgedAt is null;
+
+    /// <summary>
+    /// The user has seen that this submission's run failed. Not a state, and no state changes: the
+    /// acknowledged run still reads failed (RUNS-003). Assumes the board's lock.
+    /// </summary>
+    internal void Acknowledged(DateTimeOffset at) => acknowledgedAt = at;
 
     /// <summary>
     /// Under way: the board has handed this submission out and its run has not ended. The one

@@ -77,7 +77,7 @@ Unchanged as an object. What is new is that a run's record **outlives its proces
 
 | Field | Type | Stored? | Meaning |
 | --- | --- | --- | --- |
-| `Id` | `Guid` | yes | The run. Named in the wiki's log (RUNS-005), addresses the tool endpoint (DEC-013), and is what an acknowledgement names (ACCESS-003) |
+| `Id` | `Guid` | yes | The run. Named in the wiki's log (RUNS-005) and addresses the tool endpoint (DEC-013). **Not** what an acknowledgement names — that is the submission's identifier, and no run identifier reaches the browser (ACCESS-003, spec §Clarifications "after the plan", R-06) |
 | `SubmissionId` | `Guid` | yes | The submission it works |
 | `StartedAt` | `DateTimeOffset` | yes | When it began |
 | `Grant` | `ToolGrant` | yes — the tool names and `RecordedAt` | The tools this run was given (GUARD-002, GUARD-003). Stored because GUARD-003's record would otherwise be weaker than the state around it once RUNS-004 lands (R-08) |
