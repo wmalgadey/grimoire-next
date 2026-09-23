@@ -13,8 +13,10 @@ data-model.md, contracts/
 **Outcome advanced**: OUT-01 — submit a text in the browser and afterwards find new, linked pages
 including a source page in the wiki
 
-**Budget**: about 40 tasks (Constitution I.7). **39 tasks.** Inside the budget, but only just — the
-plan's budget note says where the growth went and why nothing was found to cut.
+**Budget**: about 40 tasks (Constitution I.7). **42 tasks.** The list was 39; T040–T041 came from
+`/speckit-converge` and T042 from `origin/main`'s new CI job, neither of which the budget could
+foresee. The plan's budget note says where the original growth went and why nothing was found to
+cut.
 
 ## Format
 
@@ -296,6 +298,14 @@ owner's, and I.9 makes it the last task of the feature rather than a formality a
 - [X] T037 Walk `docs/review-checklist.md`, and run `/speckit-converge` once, classifying every
       finding before acting on it: code defect → task, spec defect → `/speckit-clarify`, else
       dropped — **Req:** Principle Gov.2
+- [ ] T042 Classify the survivors from the mutation artifact of the PR to main, into
+      `specs/002-ingest-queue/mutation.md`: per survivor, the test that should have killed it and
+      does not, or the reason none should. A survivor becomes a test only where it names a
+      requirement the suite does not actually verify; nothing here is a threshold and nothing is run
+      locally — CI's `mutation` job is the measurement. **Numbered after the list rather than into
+      it**: the task arrived with `origin/main`'s CI job and the template change behind it (#39),
+      merged into this branch after the list was written, and no id here is renumbered — **Req:**
+      Principle III.1
 - [X] T038 Reconcile `docs/capabilities/` with what was built — RUNS-002/003/004/006 and
       ACCESS-003/004 added, INGEST-001 changed, INGEST-005 under "Retired" keeping its ID — and
       merge this feature's binding decisions into `docs/decisions.md` as `DEC-023` (SQLite behind a
