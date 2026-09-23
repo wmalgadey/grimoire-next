@@ -33,8 +33,16 @@
         justify-content: space-between;
         padding: 0.5rem 0;
       }
-      #submissions time { font-variant-numeric: tabular-nums; }
-      .state { font-weight: 600; }
+      #submissions time { flex: none; font-variant-numeric: tabular-nums; }
+      /* One row per submission however long the text was: the opening is cut to the same length
+         for every one of them, and what still will not fit is ended here (ACCESS-004). */
+      .excerpt {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .state { flex: none; font-weight: 600; }
     </style>
   </head>
   <body>
@@ -53,7 +61,9 @@
     <h2>What became of each submission</h2>
 
     <!-- Exactly one of the four states per submission, and no further detail about the run
-         (ACCESS-002). Everything more — steps, reasoning, duration, cost, history — is OUT-02. -->
+         (ACCESS-002). Everything more — steps, reasoning, duration, cost, history — is OUT-02.
+         Beside the state: when the submission was made and the opening of its text, which is what
+         one submission is told from another by (ACCESS-004). -->
     <ul id="submissions"></ul>
 
     <script src="app.js"></script>

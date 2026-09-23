@@ -42,24 +42,29 @@ form.addEventListener("submit", async (event) => {
   // 202 means the submission is accepted and a run is under way; the user waits for none of it.
   if (response.status === 202) {
     text.value = "";
-    show("accepted", "Submission accepted. A run is under way.");
+    show("accepted", "Submission accepted.");
     refresh();
     return;
   }
 
-  // 422 names what was wrong with the submission, 409 that a run is already in progress. Both
-  // carry a message written for the person who submitted (contracts/hub-http-api.md).
+  // 422 names what was wrong with the submission, and carries a message written for the person
+  // who submitted it. There is no refusal for a run being in progress: a text submitted while one
+  // is under way is accepted and waits its turn (RUNS-002, contracts/hub-http-api.md).
   show("refused", body?.message ?? "The submission was refused.");
 });
 
-// UTC to the minute. The wiki's own times are UTC, and a submission is placed by the hour it was
-// made rather than by the second.
+// UTC to the second. The wiki's own times are UTC too. To the second rather than to the minute,
+// because the queue makes two submissions in one minute ordinary — and two texts that open with
+// the same words would then be one row repeated, which is the opposite of what ACCESS-004 asks
+// the time and the opening to do.
 function whenSubmitted(submittedAt) {
-  return `${new Date(submittedAt).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  return `${new Date(submittedAt).toISOString().slice(0, 19).replace("T", " ")} UTC`;
 }
 
-// Each submission becomes one row: when it was made, and its state. Nothing else about the run
-// is here to render — the response carries no more (ACCESS-002).
+// Each submission becomes one row: when it was made, the opening of the text, and its state.
+// Nothing about the run is here to render — the response carries no more (ACCESS-002). The
+// opening is what lets the user tell one row from another, and which text a failed run was
+// working on (ACCESS-004).
 function row(submission) {
   const item = document.createElement("li");
   item.dataset.id = submission.id;
@@ -68,11 +73,17 @@ function row(submission) {
   when.dateTime = submission.submittedAt;
   when.textContent = whenSubmitted(submission.submittedAt);
 
+  // textContent, never innerHTML: this is the user's own text coming back, and the server sends
+  // it as it was given.
+  const excerpt = document.createElement("span");
+  excerpt.className = "excerpt";
+  excerpt.textContent = submission.excerpt;
+
   const state = document.createElement("span");
   state.className = "state";
   state.textContent = submission.state;
 
-  item.append(when, " ", state);
+  item.append(when, " ", excerpt, " ", state);
   return item;
 }
 

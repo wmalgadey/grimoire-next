@@ -15,7 +15,6 @@ public enum Refusal
     InstructionMissing,
     PurposeDescriptionMissing,
     TextEmpty,
-    RunInProgress,
 }
 
 /// <summary>The answer to a submission: it was accepted, or it was refused for one reason.</summary>
@@ -37,13 +36,17 @@ public sealed record SubmissionResult
 }
 
 /// <summary>
-/// The submissions and their states, for as long as the process runs.
+/// The submissions and their states, and the whole of the queue rule (RUNS-002).
 /// </summary>
 /// <remarks>
-/// A plain object: no interface, no port, no store. There is no second implementation and nothing
-/// outside the process behind it (Constitution II.4), and a store would have no consumer here —
-/// surviving a restart is RUNS-004, which the split moved to the follow-up feature (research.md
-/// R-08). A stop loses everything here, which the spec says and the owner accepted.
+/// A plain object rather than a port: there is no second implementation and nothing outside the
+/// process behind it (Constitution II.4). What is outside the process is where the submissions are
+/// kept, and that is a port of its own behind this one.
+/// <para>
+/// Every judgment about a run is made in this context (plan.md, Structure Decision), which is why
+/// the queue rule is here and not in the hub: what dispatches asks and acts, and decides nothing
+/// (research.md R-03).
+/// </para>
 /// </remarks>
 public sealed class SubmissionBoard(TimeProvider clock)
 {
@@ -72,9 +75,9 @@ public sealed class SubmissionBoard(TimeProvider clock)
     /// </summary>
     /// <remarks>
     /// The order is the contract's: both start-up inputs before the text, and the instruction
-    /// before the purpose description, so each refusal names exactly one missing file. The text
-    /// is judged before the moment — a request that is wrong is told so, rather than being told
-    /// to come back later and then refused again (contracts/hub-http-api.md).
+    /// before the purpose description, so each refusal names exactly one missing file. What is
+    /// under way does not enter into it: a text is accepted whatever else is running and waits its
+    /// turn (RUNS-002). Refusing one for the moment was INGEST-005, retired with this feature.
     /// </remarks>
     public SubmissionResult Accept(string text, StartUpInputs inputs)
     {
@@ -95,14 +98,60 @@ public sealed class SubmissionBoard(TimeProvider clock)
 
         lock (gate)
         {
-            if (submissions.Exists(s => s.State is SubmissionState.Submitted or SubmissionState.Running))
-            {
-                return SubmissionResult.RefusedWith(Refusal.RunInProgress);
-            }
-
             var submission = new Submission(Guid.NewGuid(), text, clock.GetUtcNow(), gate);
             submissions.Add(submission);
             return SubmissionResult.Of(submission);
+        }
+    }
+
+    /// <summary>
+    /// The queue rule, whole: the next submission to run, marked with the run it is being given,
+    /// or null where none may start (RUNS-002).
+    /// </summary>
+    /// <remarks>
+    /// Decided under the one lock, which is what makes "at most one run in progress" true against
+    /// a race rather than by luck: two callers asking at the same moment — an accepted submission
+    /// and a run that has just ended — cannot both be handed one, because the first marks what it
+    /// took before the second reads (research.md R-03).
+    /// </remarks>
+    public Submission? TakeNext(Guid runId)
+    {
+        lock (gate)
+        {
+            if (submissions.Exists(s => s.IsUnderWay))
+            {
+                return null;
+            }
+
+            // The first waiting one in the list, which is the order they were accepted in and so
+            // the order the user made them in (RUNS-002). Deliberately not the earliest
+            // `SubmittedAt`: the clock those come from is not monotonic, and a correction — an NTP
+            // step, or the owner putting the machine's time back — would give a later submission
+            // an earlier stamp and let it jump the queue. The list is appended to under this same
+            // lock, so its order is the acceptance order and nothing can reorder it.
+            var next = submissions.Find(s => s.IsWaiting);
+            next?.HandedTo(runId);
+            return next;
+        }
+    }
+
+    /// <summary>
+    /// The agent of this submission's run has reported in: submitted becomes running (RUNS-001).
+    /// </summary>
+    public void ReportedIn(Guid submissionId)
+    {
+        lock (gate)
+        {
+            Located(submissionId)?.ReportedIn();
+        }
+    }
+
+    /// <summary>This submission's run has ended, done or failed (RUNS-001).</summary>
+    public void Ended(Guid submissionId, SubmissionState terminal)
+    {
+        lock (gate)
+        {
+            Located(submissionId)?.Ended(terminal);
         }
     }
 
@@ -111,7 +160,10 @@ public sealed class SubmissionBoard(TimeProvider clock)
     {
         lock (gate)
         {
-            return submissions.Find(s => s.Id == id);
+            return Located(id);
         }
     }
+
+    /// <summary>Assumes the lock: every caller here is already inside it.</summary>
+    private Submission? Located(Guid id) => submissions.Find(s => s.Id == id);
 }

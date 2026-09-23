@@ -15,8 +15,14 @@ internal sealed class FastHub
     {
         Clock = FastSuite.Clock();
         Board = new SubmissionBoard(Clock);
-        Conductor = new RunConductor(Board, Harness, Wiki, Clock);
-        Intake = new SubmissionIntake(Board, Harness, Conductor, Prompt, Model);
+
+        // The same knot the composition root ties: a run that ends lets the next one start
+        // (HubApplication.Build).
+        RunQueue? queue = null;
+        Conductor = new RunConductor(Board, Harness, Wiki, Clock, () => queue!.PumpAsync());
+        queue = new RunQueue(Board, Conductor, Harness, Prompt, Model);
+        Queue = queue;
+        Intake = new SubmissionIntake(Board, Queue);
     }
 
     public const string Model = "claude-opus-4-5-20251101";
@@ -30,6 +36,8 @@ internal sealed class FastHub
     public SubmissionBoard Board { get; }
 
     public RunConductor Conductor { get; }
+
+    public RunQueue Queue { get; }
 
     public SubmissionIntake Intake { get; }
 

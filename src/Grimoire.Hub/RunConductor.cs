@@ -10,18 +10,33 @@ namespace Grimoire.Hub;
 /// run's state, and RUNS-005's single nudge; the harness reports facts and acts on what it is told
 /// (<c>contracts/agent-cli-protocol.md</c>).
 /// </summary>
-public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, IWikiStore wiki, TimeProvider clock)
+public sealed class RunConductor(
+    SubmissionBoard board,
+    IAgentHarness harness,
+    IWikiStore wiki,
+    TimeProvider clock,
+    RunConductor.NextRunMayStart nextRunMayStart)
 {
+    /// <summary>
+    /// A run has ended, so whatever was waiting behind it may now go. One of the four events that
+    /// pump the queue (research.md R-03); the hub's <see cref="RunQueue"/> is what answers it.
+    /// </summary>
+    public delegate Task NextRunMayStart();
+
     private readonly ConcurrentDictionary<Guid, Watched> runs = new();
 
     /// <summary>A run under way, together with the timer that holds it to its elapsed ceiling.</summary>
     private sealed record Watched(Run Run, ITimer Deadline);
 
-    /// <summary>A run for this submission, with its grant and both ceilings recorded on it.</summary>
-    public Run Begin(Guid submissionId)
+    /// <summary>
+    /// A run for this submission, with its grant and both ceilings recorded on it. The identifier
+    /// is the one the board marked the submission with, so that the run the queue handed out and
+    /// the run watched here are the same run (research.md R-04).
+    /// </summary>
+    public Run Begin(Guid submissionId, Guid runId)
     {
         var run = new Run(
-            Guid.NewGuid(),
+            runId,
             submissionId,
             clock.GetUtcNow(),
             ToolGrant.Ingest(clock),
@@ -51,7 +66,7 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
         AgentExited: AgentExited,
         RunEnded: RunEnded);
 
-    private void AgentReportedIn(Guid submissionId) => board.Find(submissionId)?.AgentReportedIn();
+    private void AgentReportedIn(Guid submissionId) => board.ReportedIn(submissionId);
 
     /// <summary>
     /// The cost ceiling, watched as the run spends. At either ceiling the run is stopped at once,
@@ -141,8 +156,14 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
 
         watched.Deadline.Dispose();
 
-        board.Find(submissionId)?.Ended(
+        board.Ended(
+            submissionId,
             outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed);
+
+        // The queue moves. Nothing awaits this: a run ends on whatever thread the harness reads
+        // on, and the run being reported is over either way — what happens behind it is the
+        // queue's, and it cannot fail in a way this caller could answer for (RUNS-002).
+        _ = nextRunMayStart();
     }
 
     /// <summary>
@@ -171,7 +192,7 @@ public sealed class RunConductor(SubmissionBoard board, IAgentHarness harness, I
     /// What either ceiling does: the interrupt first, and then the ending. Both go through here so
     /// that neither can stop a run without also ending it — a stop that the agent does not answer
     /// would otherwise leave the submission reading running, and the board refuses every later
-    /// text while one does (GUARD-004, INGEST-005).
+    /// text while one does (GUARD-004, RUNS-002).
     /// </summary>
     private async Task StopAtACeilingAsync(Run run, Guid submissionId)
     {
