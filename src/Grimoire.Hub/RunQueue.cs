@@ -48,6 +48,11 @@ public sealed class RunQueue(
     /// The request is not dropped either: it is remembered, and the loop below goes round once more
     /// for it. Dropping it would strand a waiting submission behind a run that ended in the moment
     /// between the last ask and this returning.
+    /// <para>
+    /// Reading that request and giving up the pump are <b>one</b> critical section. Apart, a run
+    /// ending in between would set a flag this pump has already read and the next pump would never
+    /// be started — the same stranding, moved one step later, and with no event left to undo it.
+    /// </para>
     /// </remarks>
     public async Task PumpAsync()
     {
@@ -64,31 +69,32 @@ public sealed class RunQueue(
 
         try
         {
-            do
+            while (true)
             {
+                await StartWhatIsWaitingAsync().ConfigureAwait(false);
+
                 lock (gate)
                 {
+                    if (!askedAgain)
+                    {
+                        pumping = false;
+                        return;
+                    }
+
                     askedAgain = false;
                 }
-
-                await StartWhatIsWaitingAsync().ConfigureAwait(false);
             }
-            while (AskedAgain());
         }
-        finally
+        catch (Exception)
         {
+            // The pump is given up on the way out too. Held, it would be held for the life of the
+            // process, and no later event could start anything again.
             lock (gate)
             {
                 pumping = false;
             }
-        }
-    }
 
-    private bool AskedAgain()
-    {
-        lock (gate)
-        {
-            return askedAgain;
+            throw;
         }
     }
 
@@ -135,6 +141,21 @@ public sealed class RunQueue(
         }
         catch (Exception)
         {
+            // A dispatch does not fail only before its agent exists: the adapter starts the
+            // process and records it, and the prompt written to it afterwards can still fault. So
+            // the agent is stopped before the run is ended — nothing is left watching such a
+            // process, because the reader that would have reported its exit was never started, and
+            // an agent left alive would hold the granted tools with no ceiling on it (RUNS-006).
+            try
+            {
+                await harness.StopAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Whether the stop reached anything or not, the run is over and the ending below
+                // has to happen: a submission left under way strands everything behind it.
+            }
+
             // A run that never began must not leave its submission under way: the board counts one
             // as a run in progress, so nothing behind it would ever start again. It ended, and it
             // ended failed — which is what the browser then shows for it.

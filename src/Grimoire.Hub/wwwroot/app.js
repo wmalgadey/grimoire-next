@@ -53,10 +53,12 @@ form.addEventListener("submit", async (event) => {
   show("refused", body?.message ?? "The submission was refused.");
 });
 
-// UTC to the minute. The wiki's own times are UTC, and a submission is placed by the hour it was
-// made rather than by the second.
+// UTC to the second. The wiki's own times are UTC too. To the second rather than to the minute,
+// because the queue makes two submissions in one minute ordinary — and two texts that open with
+// the same words would then be one row repeated, which is the opposite of what ACCESS-004 asks
+// the time and the opening to do.
 function whenSubmitted(submittedAt) {
-  return `${new Date(submittedAt).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  return `${new Date(submittedAt).toISOString().slice(0, 19).replace("T", " ")} UTC`;
 }
 
 // Each submission becomes one row: when it was made, the opening of the text, and its state.

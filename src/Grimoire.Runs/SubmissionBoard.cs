@@ -123,9 +123,13 @@ public sealed class SubmissionBoard(TimeProvider clock)
                 return null;
             }
 
-            // The earliest by when it was made, which is the order the user made them in
-            // (RUNS-002). Two made in the same instant keep the order they were accepted in.
-            var next = submissions.Where(s => s.IsWaiting).MinBy(s => s.SubmittedAt);
+            // The first waiting one in the list, which is the order they were accepted in and so
+            // the order the user made them in (RUNS-002). Deliberately not the earliest
+            // `SubmittedAt`: the clock those come from is not monotonic, and a correction — an NTP
+            // step, or the owner putting the machine's time back — would give a later submission
+            // an earlier stamp and let it jump the queue. The list is appended to under this same
+            // lock, so its order is the acceptance order and nothing can reorder it.
+            var next = submissions.Find(s => s.IsWaiting);
             next?.HandedTo(runId);
             return next;
         }

@@ -29,6 +29,22 @@ public sealed class SubmissionAcceptanceTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-006")]
+    public async Task DispatchFails_StopsTheRunThatCouldNotStart()
+    {
+        hub.Harness.DispatchFailure = new IOException("the prompt could not be written to the agent");
+
+        await hub.SubmitAsync("The text whose dispatch failed.");
+
+        // A dispatch does not fail only before its agent exists: the adapter starts the process
+        // and records it, and the prompt written to it afterwards can still fault. Nothing is left
+        // watching such a process — the reader that would have reported its exit was never
+        // started — so it is stopped rather than abandoned: no agent goes on working on a run
+        // Grimoire has ended (RUNS-006).
+        Assert.Single(hub.Harness.Stopped);
+    }
+
+    [Fact]
     [Trait("req", "INGEST-001")]
     public async Task Submit_IsAccepted_WithoutWaitingForTheRunToEnd()
     {

@@ -71,7 +71,7 @@ public sealed class SubmissionStatesTests : PageTest
         // state. No identifier, no step, no reasoning, no duration, no cost, no history — OUT-02
         // owns everything more.
         await Expect(Row(submission)).ToHaveTextAsync(
-            new Regex(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC Ada Lovelace wrote the first program\. done$"));
+            new Regex(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC Ada Lovelace wrote the first program\. done$"));
 
         await Expect(Page.Locator("#submissions li")).ToHaveCountAsync(1);
     }

@@ -118,6 +118,25 @@ public sealed class QueueTests
 
     [Fact]
     [Trait("req", "RUNS-002")]
+    public async Task RunsStart_InTheOrderTheSubmissionsWereMade_AfterTheClockWasPutBack()
+    {
+        var first = await SubmittedAsync("The first text.");
+
+        // The machine's clock is corrected backwards between the two — an NTP step, or the owner
+        // changing the time — so the second submission carries the earlier stamp of the two. The
+        // order they were made in has not changed, and neither may the order they run in.
+        hub.Clock.AdjustTime(FastSuite.Start.AddMinutes(-10));
+        var second = await SubmittedAsync("The second text.");
+
+        Assert.True(second.SubmittedAt < first.SubmittedAt);
+
+        hub.Harness.End(first.Id, RunOutcome.Done);
+
+        Assert.Equal([first.Id, second.Id], hub.Harness.Dispatched.Select(d => d.SubmissionId));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-002")]
     public async Task RunEnds_StartsNothing_WithNothingWaiting()
     {
         var only = await SubmittedAsync("The only text.");
