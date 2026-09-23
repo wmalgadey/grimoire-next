@@ -111,16 +111,14 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    # Two pushes to main in quick succession would otherwise measure main twice at once, and both
-    # runs force-push the same branch: whichever finished last would win, so an older commit's
-    # numbers could end up on the badges. One group for the whole repository, and the newer run
-    # cancels the older, so what the badges show is always the newest measurement that completed.
-    concurrency:
-      group: metrics-badges
-      cancel-in-progress: true
+    # Every job that force-pushes the `badges` branch shares this group — this one and `mutation`.
+    # One at a time, so no measurement can overwrite a newer one, and a queued run replaces the one
+    # queued before it, so what the badges show is the newest measurement that started last. No
+    # cancel-in-progress: a running measurement is minutes of work and cancelling it discards it.
+    concurrency: badges
 
-    # The one job in this workflow that may write, and it writes to the `badges` branch alone.
-    # Nothing here commits to main.
+    # One of the two jobs in this workflow that may write — `mutation-badge` is the other — and it
+    # writes to the `badges` branch alone. Nothing here commits to main.
     permissions:
       contents: write
 
@@ -153,11 +151,10 @@ jobs:
           ./scripts/metrics.sh > "$RUNNER_TEMP/metrics.md"
           cat "$RUNNER_TEMP/metrics.md" >> "$GITHUB_STEP_SUMMARY"
 
-      # The mutation badge document belongs to the `mutation` job below, which runs on a different
-      # trigger and writes to the same branch. The push under this step replaces that branch
-      # wholesale, so whatever that job last published is read back in here and carried forward.
-      # Neither failure is one: on the first run the branch does not exist, and until the first
-      # mutation run on main the document does not either.
+      # The mutation badge document belongs to the `mutation` job below. The push under this step
+      # replaces the branch wholesale, so what that job last published is read back in here and
+      # carried forward. Neither failure is one: on the first run the branch does not exist, and
+      # until the first mutation run on main the document does not either.
       - name: Carry the mutation badge document forward
         run: |
           git fetch --depth=1 origin badges 2>/dev/null || exit 0
@@ -210,13 +207,14 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    # Written to only by the badge step below, and only on main. Every other run of this job pushes
-    # nothing.
-    permissions:
-      contents: write
-
+    # This job runs the code of the branch under review. It keeps the workflow's read-only token
+    # and does not persist it, so nothing a pull request brings with it — `scripts/mutation.sh`
+    # included — can reach a credential that could write to this repository. Publishing the badge
+    # needs a write token and is therefore a job of its own, below, that never runs on a branch.
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@v5
         with:
@@ -294,23 +292,42 @@ jobs:
 
           exit "$invalid"
 
-      # The fourth endpoint document README.md's badges read, in the same flat colour as the other
-      # three: a colour scale would say a score is good or bad, which is what turns a measurement
-      # into a target. Only on main — which, given the triggers above, means a workflow_dispatch of
-      # this workflow on main; a pull request's score belongs to the pull request.
-      #
+  # The fourth endpoint document README.md's badges read, in the same flat colour as the other
+  # three: a colour scale would say a score is good or bad, which is what turns a measurement into
+  # a target. Only on main — which, given the job above, means a workflow_dispatch of this workflow
+  # on main; a pull request's score belongs to the pull request.
+  #
+  # Its own job because it is the only part of the measurement that needs a token that can write,
+  # and the measurement itself runs the code of the branch under review. This job checks nothing
+  # out: it reads the reports from the artifact and computes the score from them with jq.
+  mutation-badge:
+    needs: mutation
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    # The same group as `metrics`, for the same reason: both force-push the `badges` branch.
+    concurrency: badges
+
+    # `contents` to push the branch, `actions` to read the artifact the job above uploaded: the
+    # workflow's top-level block grants `contents: read` and nothing else, so both are named here.
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mutation-reports
+          path: reports
+
       # The `metrics` job owns the other three documents and force-pushes the same branch, so this
       # step reads them back in and carries them forward, exactly as that job does for this one.
+      # `|| true`: before the first run of `metrics` the branch does not exist.
       - name: Publish the mutation badge document
-        if: github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p "$RUNNER_TEMP/badges"
-          git fetch --depth=1 origin badges 2>/dev/null \
-            && git archive origin/badges | tar -x -C "$RUNNER_TEMP/badges" \
-            || true
-
           jq -n --arg color "blue" '
             [inputs | .files[].mutants[].status] as $status
             | ($status | map(select(. == "Killed" or . == "Timeout")) | length) as $detected
@@ -318,13 +335,20 @@ jobs:
             | {schemaVersion: 1, label: "mutation score",
                message: (if $valid == 0 then "none" else "\(($detected * 1000 / $valid | round) / 10)%" end),
                color: $color}
-          ' StrykerOutput/*/reports/mutation-report.json > "$RUNNER_TEMP/badges/mutation.json"
+          ' reports/*/reports/mutation-report.json > "$RUNNER_TEMP/mutation.json"
 
+          mkdir -p "$RUNNER_TEMP/badges"
           cd "$RUNNER_TEMP/badges"
           git init --quiet --initial-branch=badges
+          git remote add origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --quiet --depth=1 origin badges 2>/dev/null \
+            && git archive FETCH_HEAD | tar -x \
+            || true
+
+          cp "$RUNNER_TEMP/mutation.json" mutation.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add --all
           git commit --quiet --message "mutation score of ${GITHUB_SHA}"
-          git push --quiet --force \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
+          git push --quiet --force origin badges

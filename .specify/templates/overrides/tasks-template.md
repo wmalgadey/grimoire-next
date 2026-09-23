@@ -139,7 +139,7 @@ feature (Constitution II.1).
       `specs/[###-feature]/mutation.md`: per survivor, the test that should have killed it and does
       not, or the reason none should. A survivor becomes a test only where it names a requirement
       the suite does not actually verify; nothing here is a threshold and nothing is run locally —
-      CI's `mutation` job is the measurement (DEC-023) — **Req:** Principle III.1
+      CI's `mutation` job is the measurement — **Req:** Principle III.1
 - [ ] T0NN The owner reads what each review-proven requirement is about — **Req:** Principle I.9
 - [ ] T0NN The owner exercises the outcome once with the real external systems in place, per the
       acceptance run in plan.md and `quickstart.md`. This is the last task of the feature; without
