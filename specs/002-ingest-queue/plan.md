@@ -171,13 +171,23 @@ Only `002-ingest-queue` merges to `main`, and only when the feature is done (I.9
 
 | Phase | Tasks | Branch | PR |
 | --- | --- | --- | --- |
-| 1 The queue rule (US1) | T001–T012 | `002-ingest-queue-phase-1-queue-rule` | not opened yet |
-| 2 The acknowledgement gate (US2) | T013–T021 | `002-ingest-queue-phase-2-acknowledgement` | not opened yet |
-| 3 Surviving a stop (US3) | T022–T033 | `002-ingest-queue-phase-3-surviving-a-stop` | not opened yet |
-| 4 Closing the feature | T034–T039 | `002-ingest-queue-phase-4-close` | not opened yet |
+| 1 The queue rule (US1) | T001–T012 | `002-ingest-queue-phase-1-queue-rule` | #36, merged |
+| 2 The acknowledgement gate (US2) | T013–T021 | `002-ingest-queue-phase-2-acknowledgement` | #37, merged |
+| 3 Surviving a stop (US3) | T022–T033 | `002-ingest-queue-phase-3-surviving-a-stop` | #38, merged |
+| 4 Closing the feature, with convergence | T034–T041 | `002-ingest-queue-phase-5-convergence` | #40 |
 
 Task ranges are filled in by `/speckit-tasks`; the phases, their order and their branches are fixed
 here.
+
+**What the last row records rather than prescribes.** `/speckit-converge` runs in the closing phase
+(Governance 2) and found one gap — the hub coming up is the fourth of the four events that pump the
+queue (research.md R-03), and nothing proved it. Its remedy is T040–T041, which `tasks.md` carries
+as a Convergence phase of its own, because converge appends rather than rewrites. A phase found by
+converge cannot be named here before implementation starts, which is what converge is for; what
+I.10 asks — that it be a branch off the feature branch, reviewed and green, merged before anything
+follows it — it keeps. It shipped together with the closing tasks in one PR rather than as a fifth
+branch, so the four phase PRs above are the whole record. The branch named `…-phase-4-close` was
+opened and then folded into that one; it carried no commits of its own.
 
 The order is the user stories' own priority, with two deliberate placements:
 

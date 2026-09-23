@@ -280,19 +280,23 @@ gone, and that the waiting ones start in the order they were made once the failu
 
 ## Phase 4: Closing the feature
 
-**Branch**: `002-ingest-queue-phase-4-close`
+**Branch**: `002-ingest-queue-phase-5-convergence` — shipped together with the Convergence phase
+below, in one PR (see `plan.md`, Phase PRs).
 
-- [ ] T034 Run the Contract and E2E suites; both must pass, Contract within its 90 s budget. The
+**The feature is not closed until T039 is done.** Everything above it can be, and is; T039 is the
+owner's, and I.9 makes it the last task of the feature rather than a formality after it.
+
+- [X] T034 Run the Contract and E2E suites; both must pass, Contract within its 90 s budget. The
       default run is Fast only, so this is the one place they are exercised before the PR. The three
       sign-in tests of DEC-021 are run by hand here too — **Req:** Principle III.7
-- [ ] T035 Run `trace-check`, including `--complete`; both pass — **Req:** Principle IV.3
-- [ ] T036 Regenerate and commit `docs/trace.md`, and set the outcome status and spec reference for
+- [X] T035 Run `trace-check`, including `--complete`; both pass — **Req:** Principle IV.3
+- [X] T036 Regenerate and commit `docs/trace.md`, and set the outcome status and spec reference for
       OUT-01 in `docs/product.md` — the only two edits an agent makes to that file — **Req:**
       Principle IV.4
-- [ ] T037 Walk `docs/review-checklist.md`, and run `/speckit-converge` once, classifying every
+- [X] T037 Walk `docs/review-checklist.md`, and run `/speckit-converge` once, classifying every
       finding before acting on it: code defect → task, spec defect → `/speckit-clarify`, else
       dropped — **Req:** Principle Gov.2
-- [ ] T038 Reconcile `docs/capabilities/` with what was built — RUNS-002/003/004/006 and
+- [X] T038 Reconcile `docs/capabilities/` with what was built — RUNS-002/003/004/006 and
       ACCESS-003/004 added, INGEST-001 changed, INGEST-005 under "Retired" keeping its ID — and
       merge this feature's binding decisions into `docs/decisions.md` as `DEC-023` (SQLite behind a
       submission store) and `DEC-024` (recognising a process by the identifier *and* its start
@@ -364,3 +368,26 @@ its own (I.10).
   otherwise it becomes the smallest code change that resolves it, or is dropped.
 - **E2E scenario budget** (III.4, at most two per user story): US1 uses none beyond the row
   assertion T012 updates, US2 one (T017), US3 one (T027). Three of a possible six.
+
+---
+
+## Phase 5: Convergence
+
+**Branch**: `002-ingest-queue-phase-5-convergence` — the same branch and PR as the closing phase
+above. A phase found by converge cannot be named in `plan.md` before implementation starts, which
+is what converge is for; `plan.md`'s Phase PRs table records it.
+
+One gap, found by `/speckit-converge` against the spec, the plan and the code. `research.md` R-03
+names the four events that pump the queue — an accepted submission, a run that ended, an
+acknowledgement, and the hub starting. The first three are proven; **the fourth is not**, and the
+Fast suite cannot prove it as it stands, because `FastHub` restores from the store without doing
+what the hub does once it is listening.
+
+- [X] T040 [P] A submission that was waiting when Grimoire stopped starts by itself after the
+      restart, with no failure blocking and nobody submitting anything, and several start in the
+      order they were made, in `tests/Grimoire.Fast.Tests/RestartTests.cs` — **Req:** RUNS-004,
+      RUNS-002 | **Level:** Fast — **Why not lower:** there is no level below Fast; the start-up
+      pump is a decision of ours and needs neither a browser nor a file to observe.
+- [X] T041 `FastHub` pumps the queue after restoring, as `HubApplication.Build` does once the
+      server is listening, so that the suite's restart is the hub's restart and not two of its three
+      steps, in `tests/Grimoire.Fast.Tests/FastHub.cs` — **Req:** RUNS-004
