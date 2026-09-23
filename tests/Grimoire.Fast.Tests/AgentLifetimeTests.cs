@@ -29,7 +29,7 @@ public sealed class AgentLifetimeTests
         before.Harness.ReportIn(submission.Id);
         var run = before.Conductor.Of(submission.Id)!;
 
-        await before.Conductor.StopEverythingAsync();
+        await before.StopEverythingAsync();
 
         // Stopped the way a ceiling stops it — the interrupt, with the kill behind it (DEC-016) —
         // and ended with it, so no agent is left working on a run Grimoire has ended.
@@ -44,10 +44,29 @@ public sealed class AgentLifetimeTests
         var submission = await before.AcceptedAsync("The text whose run already ended.");
         before.Harness.End(submission.Id, RunOutcome.Done);
 
-        await before.Conductor.StopEverythingAsync();
+        await before.StopEverythingAsync();
 
         Assert.Empty(before.Harness.Stopped);
         Assert.Equal(SubmissionState.Done, submission.State);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public async Task HubStops_StartsNothingBehindIt_WithASubmissionWaiting()
+    {
+        var underWay = await before.AcceptedAsync("The text being worked when Grimoire stops.");
+        before.Harness.ReportIn(underWay.Id);
+        before.Clock.Advance(TimeSpan.FromMinutes(1));
+        var waiting = await before.AcceptedAsync("The text waiting behind it.");
+
+        await before.StopEverythingAsync();
+
+        // Stopping a run ends it, and an ending is what lets the next one start — so a hub that
+        // stopped without closing the queue first would dispatch this one on its way out, and that
+        // agent would be started by a Grimoire already leaving and stopped by nothing.
+        Assert.Equal([underWay.Id], before.Harness.Dispatched.Select(d => d.SubmissionId));
+        Assert.Equal(SubmissionState.Submitted, waiting.State);
+        Assert.Null(waiting.RunId);
     }
 
     [Fact]

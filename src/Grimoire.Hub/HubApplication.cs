@@ -68,6 +68,25 @@ public static class HubApplication
         board.Restore(held);
     }
 
+    /// <summary>
+    /// The hub is going down: nothing further may start, and what is under way is stopped with it
+    /// (RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// The order is the point. Stopping a run ends it, and an ending lets the next one start — so
+    /// stopping first and closing admission afterwards would dispatch an agent behind the
+    /// shutdown, started by a Grimoire that is already leaving and stopped by nothing.
+    /// </remarks>
+    public static Task StopEverythingAsync(RunQueue queue, RunConductor conductor)
+    {
+        ArgumentNullException.ThrowIfNull(queue);
+        ArgumentNullException.ThrowIfNull(conductor);
+
+        queue.StopStartingRuns();
+
+        return conductor.StopEverythingAsync();
+    }
+
     public static WebApplication Build(
         string[] args,
         HubOptions options,
@@ -154,7 +173,7 @@ public static class HubApplication
 
         // No agent goes on working on a run Grimoire has ended (RUNS-006). The hook itself is
         // framework wiring and is not tested; what it calls is (Constitution III.8, research.md R-05).
-        app.Lifetime.ApplicationStopping.Register(() => conductor.StopEverythingAsync().GetAwaiter().GetResult());
+        app.Lifetime.ApplicationStopping.Register(() => StopEverythingAsync(queue, conductor).GetAwaiter().GetResult());
 
         return app;
     }

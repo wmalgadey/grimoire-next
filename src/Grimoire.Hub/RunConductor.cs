@@ -82,8 +82,21 @@ public sealed class RunConductor(
     /// recorded with its run (research.md R-05, R-11).
     /// </para>
     /// </remarks>
-    public Task StopEverythingAsync() =>
-        Task.WhenAll(runs.ToArray().Select(under => StopAtACeilingAsync(under.Value.Run, under.Key)));
+    /// <remarks>
+    /// Drained rather than snapshotted once. Stopping a run ends it, and an ending is one of the
+    /// events that pump the queue — so with admission still open a run could be dispatched behind
+    /// the snapshot and outlive the hub. Admission is closed first, by
+    /// <see cref="HubApplication.StopEverythingAsync"/>, and this then goes round until nothing is
+    /// under way; every pass ends the runs it took, so it cannot go round for ever.
+    /// </remarks>
+    public async Task StopEverythingAsync()
+    {
+        while (runs.ToArray() is { Length: > 0 } underWay)
+        {
+            await Task.WhenAll(underWay.Select(u => StopAtACeilingAsync(u.Value.Run, u.Key)))
+                .ConfigureAwait(false);
+        }
+    }
 
     private void AgentReportedIn(Guid submissionId) => board.ReportedIn(submissionId);
 

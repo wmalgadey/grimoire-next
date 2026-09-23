@@ -49,9 +49,16 @@ internal sealed class HubJournal
 /// It keeps rows, not objects: what <see cref="Load"/> hands back is built afresh, so a Fast test
 /// that restarts the hub over this store gets what a second process would get, and cannot pass by
 /// sharing an object with the board it came from.
+/// <para>
+/// It keeps them in the order they were added, which is the order the port promises and the order
+/// the real adapter reads back (by `rowid`). Sorted by `SubmittedAt` instead, a Fast restart would
+/// quietly reorder the queue where a clock correction had moved a stamp — and hide the very bug
+/// the real adapter is written to avoid.
+/// </para>
 /// </remarks>
 internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISubmissionStore
 {
+    private readonly List<Guid> accepted = [];
     private readonly Dictionary<Guid, StoredSubmission> held = [];
     private readonly Dictionary<Guid, StoredRun> runs = [];
     private readonly Lock gate = new();
@@ -62,8 +69,8 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
         {
             return
             [
-                .. held.Values
-                    .OrderBy(s => s.SubmittedAt)
+                .. accepted
+                    .Select(id => held[id])
                     .Select(s => s with { Run = s.Run is null ? null : runs[s.Run.Id] }),
             ];
         }
@@ -73,6 +80,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
     {
         lock (gate)
         {
+            accepted.Add(submission.Id);
             held[submission.Id] = submission;
             journal?.Record($"added {submission.Id}");
         }

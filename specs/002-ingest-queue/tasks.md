@@ -242,9 +242,10 @@ gone, and that the waiting ones start in the order they were made once the failu
 
 ### Implementation for User Story 3
 
-- [X] T028 [US3] `ISubmissionStore` — `LoadAsync`, `AddAsync`, `AssignRunAsync`,
-      `RecordAgentProcessAsync`, `SetStateAsync`, `AcknowledgeAsync`, each returning only once the
-      change is on disk; no flush, no close-time write, no delete — in
+- [X] T028 [US3] `ISubmissionStore` — `Load`, `Add`, `AssignRun`, `RecordAgentProcess`, `SetState`,
+      `Acknowledge`, each returning only once the change is on disk; synchronous, because the board
+      writes each change under the lock it decides the queue rule with and a lock cannot be held
+      across an await; no flush, no close-time write, no delete — in
       `src/Grimoire.Runs/ISubmissionStore.cs`, with an in-memory adapter at the same port in
       `tests/Grimoire.Fast.Tests/InMemorySubmissionStore.cs` — **Req:** RUNS-004 | Principle III.9
 - [X] T029 [US3] `SqliteSubmissionStore`: the `submissions` and `runs` tables exactly as

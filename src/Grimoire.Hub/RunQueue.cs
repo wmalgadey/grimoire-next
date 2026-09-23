@@ -37,6 +37,25 @@ public sealed class RunQueue(
     private readonly Lock gate = new();
     private bool pumping;
     private bool askedAgain;
+    private bool closed;
+
+    /// <summary>
+    /// No further run starts, whatever asks. Called as the hub goes down, before the runs under way
+    /// are stopped (RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// Without this, stopping is a race it can lose: a run ends because it was stopped, that ending
+    /// pumps the queue, and a waiting submission is dispatched behind the shutdown — an agent
+    /// started by a Grimoire that is already leaving, and so one nothing will ever stop. Closed
+    /// here and never reopened: a process that has begun to stop does not resume.
+    /// </remarks>
+    public void StopStartingRuns()
+    {
+        lock (gate)
+        {
+            closed = true;
+        }
+    }
 
     /// <summary>
     /// Start whatever may start, and keep starting until nothing may.
@@ -58,6 +77,11 @@ public sealed class RunQueue(
     {
         lock (gate)
         {
+            if (closed)
+            {
+                return;
+            }
+
             if (pumping)
             {
                 askedAgain = true;
@@ -75,7 +99,7 @@ public sealed class RunQueue(
 
                 lock (gate)
                 {
-                    if (!askedAgain)
+                    if (!askedAgain || closed)
                     {
                         pumping = false;
                         return;

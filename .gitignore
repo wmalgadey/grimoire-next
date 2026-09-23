@@ -41,3 +41,7 @@ state/
 # machine's. Grimoire writes into the wiki; keeping it out of this repository is what stops a
 # run's output turning up in a pull request.
 local/
+
+# Worktrees an agent session made for itself. They are git repositories of their own and
+# belong to this machine, not to this one's history.
+.claude/worktrees/

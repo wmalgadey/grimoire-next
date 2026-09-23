@@ -47,6 +47,13 @@ internal sealed class FastHub
     }
 
     /// <summary>
+    /// The hub told to stop, exactly as the composition root tells it
+    /// (HubApplication.StopEverythingAsync): admission closed first, then what is under way
+    /// stopped with it.
+    /// </summary>
+    public Task StopEverythingAsync() => HubApplication.StopEverythingAsync(Queue, Conductor);
+
+    /// <summary>
     /// Grimoire stopped and started again over the same store. The clock starts afresh, as a new
     /// process's does.
     /// </summary>

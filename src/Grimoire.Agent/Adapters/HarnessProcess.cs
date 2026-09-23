@@ -310,6 +310,16 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
     /// kill is the tree kill this adapter already performs at a ceiling, so the act is not new;
     /// no interrupt precedes it, because there is nothing left to interrupt — the Grimoire that
     /// could have read the answer is gone.
+    /// <para>
+    /// <b>What this does not close</b>: the check and the kill are two operations, so a process
+    /// that exits between them could in principle have its number taken by another before the
+    /// signal lands. Binding the two together needs a per-operating-system primitive — Linux has
+    /// <c>pidfd</c>, macOS has no equivalent — and research.md R-11 already turned such primitives
+    /// down for that reason. The window is the microseconds between two calls and closing it needs
+    /// the whole number space to wrap inside them; leaving the process alone instead, which is the
+    /// only other portable answer, would leave an agent writing into the wiki with no ceiling on
+    /// it and nothing left to end it. The narrower risk is the one taken.
+    /// </para>
     /// </remarks>
     public void Terminate(AgentProcessIdentity identity)
     {

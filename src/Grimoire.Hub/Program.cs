@@ -97,10 +97,35 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
             return null;
         }
 
+        var state = given.GetValueOrDefault("state") ?? DefaultStateDirectory;
+
+        if (IsInside(state, wiki))
+        {
+            // Refused rather than obeyed, because both consequences are the user's to live with:
+            // the wiki store lists every non-hidden file it finds, so the queue would be served to
+            // the agent as a page — and `run-hub.sh --fresh` deletes the wiki, which would take
+            // every submission the user ever made with it (contracts/submission-store.md).
+            Console.Error.WriteLine("The queue is Grimoire's own bookkeeping and is not kept inside the wiki. Give --state a directory outside it.");
+            return null;
+        }
+
         return new StartUp(
             new HubOptions(instruction, purpose, wiki, model),
             address,
-            given.GetValueOrDefault("state") ?? DefaultStateDirectory);
+            state);
+    }
+
+    /// <summary>
+    /// Whether one path lies within the other, the wiki itself counting as inside. Compared as
+    /// full paths, so that `../` and a trailing separator cannot walk around it.
+    /// </summary>
+    private static bool IsInside(string path, string directory)
+    {
+        var inside = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        var outer = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+
+        return string.Equals(inside, outer, StringComparison.Ordinal)
+            || inside.StartsWith(outer + Path.DirectorySeparatorChar, StringComparison.Ordinal);
     }
 
     /// <summary>

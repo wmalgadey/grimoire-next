@@ -215,9 +215,11 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
 
         lock (gate)
         {
-            // Oldest first, which is the order the store hands them back and the order the queue
-            // will take them in.
-            foreach (var held in stored.OrderBy(s => s.SubmittedAt))
+            // In the order the store hands them back, which the port promises is the order they
+            // were accepted (ISubmissionStore.Load). Sorting them again here by `SubmittedAt`
+            // would throw exactly that away: the clock is not monotonic, and a correction between
+            // two submissions would rebuild the queue in an order the last Grimoire never had.
+            foreach (var held in stored)
             {
                 var submission = new Submission(held.Id, held.Text, held.SubmittedAt, gate);
                 submission.Restored(held);

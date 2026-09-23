@@ -141,6 +141,14 @@ internal sealed class HubUnderTest : IAsyncDisposable
     {
         // Both texts every run receives (V.1). Their content does not matter here — the browser
         // door is ACCESS-001 and ACCESS-002; what a run is given is INGEST-002, proven a level down.
+        //
+        // The wiki and the queue are siblings, never one inside the other: the wiki store lists
+        // every non-hidden file it finds, so a queue kept inside the wiki would be served to the
+        // agent as a page (contracts/submission-store.md). The hub refuses that arrangement at
+        // start-up, and a fixture that used it would be testing something the product forbids.
+        var wiki = Path.Combine(directory, "wiki");
+        var state = Path.Combine(directory, "state");
+        Directory.CreateDirectory(wiki);
         var instruction = Path.Combine(directory, "ingest.md");
         var purpose = Path.Combine(directory, "purpose.md");
         await File.WriteAllTextAsync(instruction, "# Instruction", cancellationToken).ConfigureAwait(false);
@@ -150,10 +158,10 @@ internal sealed class HubUnderTest : IAsyncDisposable
 
         var app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, purpose, WikiRoot: directory, Model: "claude-opus-4-5-20251101"),
+            new HubOptions(instruction, purpose, WikiRoot: wiki, Model: "claude-opus-4-5-20251101"),
             agent,
-            new FileSystemWikiStore(directory),
-            new SqliteSubmissionStore(Path.Combine(directory, "state")),
+            new FileSystemWikiStore(wiki),
+            new SqliteSubmissionStore(state),
             TimeProvider.System);
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);
