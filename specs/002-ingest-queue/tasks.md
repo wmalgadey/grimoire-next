@@ -298,7 +298,7 @@ owner's, and I.9 makes it the last task of the feature rather than a formality a
 - [X] T037 Walk `docs/review-checklist.md`, and run `/speckit-converge` once, classifying every
       finding before acting on it: code defect → task, spec defect → `/speckit-clarify`, else
       dropped — **Req:** Principle Gov.2
-- [ ] T042 Classify the survivors from the mutation artifact of the PR to main, into
+- [X] T042 Classify the survivors from the mutation artifact of the PR to main, into
       `specs/002-ingest-queue/mutation.md`: per survivor, the test that should have killed it and
       does not, or the reason none should. A survivor becomes a test only where it names a
       requirement the suite does not actually verify; nothing here is a threshold and nothing is run
