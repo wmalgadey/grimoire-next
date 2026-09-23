@@ -64,7 +64,7 @@ public sealed class FileSystemWikiStore : IWikiStore
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
 
         // ensure the log files always ends with a single newline, so new log entries are separated by a blank line
-        await File.AppendAllTextAsync(file, entry.TrimEnd('\n') + '\n', cancellationToken).ConfigureAwait(false);
+        await File.AppendAllTextAsync(file, entry.TrimEnd('\n') + "\n\n", cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

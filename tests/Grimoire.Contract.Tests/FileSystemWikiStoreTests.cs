@@ -93,10 +93,10 @@ public sealed class FileSystemWikiStoreTests : IDisposable
     public async Task AppendLog_KeepsWhatEarlierRunsWrote()
     {
         await wiki.AppendLogAsync("First run.\n", TestContext.Current.CancellationToken);
-        await wiki.AppendLogAsync("Second run.\n", TestContext.Current.CancellationToken);
+        await wiki.AppendLogAsync("Second run.", TestContext.Current.CancellationToken);
 
         Assert.Equal(
-            "First run.\nSecond run.\n",
+            "First run.\n\nSecond run.\n\n",
             await wiki.ReadAsync("log.md", TestContext.Current.CancellationToken));
     }
 
