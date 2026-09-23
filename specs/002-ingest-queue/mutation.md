@@ -51,6 +51,35 @@ errors` are mutants Stryker generated and could not build, and count towards not
 in scope has tested mutants, and the CI job's own two checks — a project with no tested mutant, and
 a `--mutate` entry naming a file no report lists — both passed.
 
+### What this feature put into the Fast suite
+
+The 221 above are the whole suite. **39 of them are this feature's**, and what they carry is what
+gives the figures above their meaning: a score over a project whose new code no test names would be
+a number about the old code.
+
+| Requirement | Fast tests | Where |
+| --- | ---: | --- |
+| RUNS-002 | 9 | `QueueTests` (7), `RestartTests` (2) |
+| RUNS-003 | 10 | `AcknowledgementTests` (8), `RestartTests` (2) |
+| RUNS-004 | 6 | `RestartTests` |
+| RUNS-006 | 8 | `AgentLifetimeTests` (7), `SubmissionAcceptanceTests` (1) |
+| ACCESS-003 | 1 | `SubmissionStateTests` |
+| ACCESS-004 | 7 | `SubmissionExcerptTests` |
+| ACCESS-002 | 1 | `SubmissionStateTests` — that no run identifier reaches the browser |
+| INGEST-001 | 1 | `SubmissionAcceptanceTests` — a rename, not a new test: the scenario `WhenNoRunIsInProgress` stopped distinguishing anything once INGEST-005 was retired |
+
+43 rows over 39 methods: three tests carry more than one requirement, because a restart that keeps
+the queue's order and holds it at a failure is one observation of RUNS-002, RUNS-003 and RUNS-004 at
+once, and splitting it would assert the same state three times. Every one of the 39 is a `[Fact]`,
+so methods and cases are the same count here.
+
+All six requirements this feature registers are proven in the Fast suite, and four of them also
+above it: RUNS-004 and RUNS-006 carry Contract tests — against a real SQLite file and a real
+process — and RUNS-003, RUNS-004, ACCESS-003 and ACCESS-004 carry E2E scenarios. RUNS-004 is the
+one proven at all three levels, which is what a restart is: the rule is the board's, the file is the
+adapter's, and only a hub started twice over one store shows that the two are wired to each other.
+`docs/trace.md` is the full account.
+
 **These figures are not comparable row for row with `001-first-ingest/mutation.md`.** That
 measurement was local and taken before `main` moved (#33, #34, #35, #39); this is the first taken in
 CI. Where a count differs in code this feature does not touch, the difference belongs to whatever
@@ -74,19 +103,14 @@ mutant: what was added to it is a record and two members of an interface.
 
 ## The kinds
 
-The five of `001-first-ingest/mutation.md`, and one this measurement had to add:
+Defined once, in [`tests/README.md`](../../tests/README.md) under "How a surviving mutant is read":
+**(a)** sharpen a named test · **(a')** no test reaches the line · **(b)** no requirement asks for
+it, candidate for removal · **(b′)** a guard on an invariant its callers already keep · **(c)**
+equivalent · **(d)** not asserted by design.
 
-- **(a)** sharpen a named test — a registered requirement asks for the behaviour the mutant changes,
-  and a test that already exists is the one that should have caught it.
-- **(a')** no test reaches the line at all. The same reading, but the answer is a new test rather
-  than a sharper one, so the row names the level it would sit at.
-- **(b)** no requirement asks for this behaviour — candidate for removal.
-- **(b′)** *new here.* A guard on an invariant the type's own callers already keep, unreachable
-  through the public surface. It reads like (b) — no requirement asks for it — but "candidate for
-  removal" is the wrong half of (b) to apply: removing it removes an assertion, not a behaviour, and
-  no test can kill it without first putting the object into a state its only caller forbids.
-- **(c)** equivalent mutant.
-- **(d)** `tools/Grimoire.Trace` only; no row here.
+They are not restated here. A kind redefined per feature makes two measurements incomparable, which
+is what happened to (d) across `001-first-ingest`'s three readings; `tests/README.md` records that
+history and is what this measurement used.
 
 `Tests` is how many tests Stryker recorded as covering the line. A proposal is a reading, not a
 change.
@@ -95,12 +119,11 @@ change.
 
 ### Kind (a'), a line no test reaches
 
-| File | Line | Mutation | Tests | A new test would sit at | Why |
-| --- | ---: | --- | ---: | --- | --- |
-| `Submission.cs` | 247 | `throw new ArgumentOutOfRangeException(nameof(terminal)…` → `;` | 0 | Fast | The guard on `Ended`: a terminal that is neither `Done` nor `Failed` is refused. RUNS-001 says a run ends done or failed, and no test asks what the submission does when a third state arrives. Reaching it needs no adapter, no clock and no file — a Fast test calling `board.Ended(id, SubmissionState.Running)` is the whole of it. **This row is inherited**: `001-first-ingest/mutation.md` proposed exactly this test at line 91 of the same file and it was never written. It is not new work this feature created; it is work this feature did not do either. |
-| `Submission.cs` | 247 | `"a run ends done or failed"` → `""` | 0 | Fast | The same line and the same test. The message is the only thing that says which of the four the caller broke. |
+None. The one row that stood here — the `Ended` guard at `Submission.cs` 247 — was read as (a') in
+this document's first draft and by `001-first-ingest` before it. It is **(b′)** below, by the
+owner's decision recorded there.
 
-### Kind (b), no requirement asks for it
+### Kind (d), not asserted by design
 
 | File | Line | Mutation | Status | Tests | Reading |
 | --- | ---: | --- | --- | ---: | --- |
@@ -110,18 +133,14 @@ change.
 | `Submission.cs` | 232 | `$"a submission reading {state} cannot start running"` → `$""` | survived | 2 | The message of the `ReportedIn` guard. `SubmissionStateTests.Transition_IsRefused_WhenTheSubmissionIsAlreadyDoneOrFailed` reaches it and asserts the exception's type, which is what RUNS-001 asks; no requirement asks what it says. Carried over from `001-first-ingest` (line 76 of the same file), unchanged by this feature. |
 | `Submission.cs` | 255 | `$"{state} is terminal; a submission does not leave it"` → `$""` | survived | 2 | The same, for the terminal-transition guard. Carried over (line 101). |
 
-**None of these five is proposed for removal**, which is worth saying because that is (b)'s own
-wording. A message that no test reads is still what a person reads when the guard fires, and the
-three `ThrowIfNull`s turn a `NullReferenceException` somewhere later into a named argument at the
-boundary. What (b) records is the true half: no registered requirement asks for them, so no test
-here is missing.
-
 ### Kind (b′), a guard its only caller already keeps
 
 | File | Line | Mutation | Status | Tests | Reading |
 | --- | ---: | --- | --- | ---: | --- |
 | `Submission.cs` | 216 | `throw new InvalidOperationException($"submission {Id} already has run {runId}")` → `;` | not covered | 0 | `HandedTo` refusing a second run. Its only caller is `SubmissionBoard.TakeNext`, which reaches it *after* returning null for any submission that `IsUnderWay` — so handing the same submission out twice is a state the board forbids one line earlier. `HandedTo` is `internal` and the Fast suite is another assembly, so no test can call it directly either. RUNS-002 is what the guard defends, and the test that proves RUNS-002 is `QueueTests.RunEnds_StartsExactlyOneRun_WithSeveralSubmissionsWaiting` — proving it through the board, which is where it is decidable. |
 | `Submission.cs` | 216 | `$"submission {Id} already has run {runId}"` → `$""` | not covered | 0 | The same line. |
+| `Submission.cs` | 247 | `throw new ArgumentOutOfRangeException(nameof(terminal)…` → `;` | not covered | 0 | The guard on `Ended`: a terminal that is neither `Done` nor `Failed` is refused. **OWNER DECISION, 2026-09-24: the guard stays, as the idiom for exhaustiveness over the four states, and no test is asked for.** It is reachable — `SubmissionBoard.Ended` is public and a test could pass `Running` — which is why `001-first-ingest` read it as (a') and proposed a Fast test, and why this document's first draft repeated that proposal. The decision ends it: what the guard asserts is that `SubmissionState` has four members and two of them are terminal, which is RUNS-001 itself and is proven where it is decidable, in `SubmissionStateTests`. A test that handed the method a fifth state would be a test of the idiom rather than of the requirement. |
+| `Submission.cs` | 247 | `"a run ends done or failed"` → `""` | not covered | 0 | The same line, and the same decision. |
 
 ### Kind (c), equivalent
 
@@ -132,14 +151,19 @@ here is missing.
 
 ## What follows from this measurement
 
-**No test is added by it, and no code is changed by it.** The one row that names a missing test —
-`Submission.cs` 247, the `Ended` guard — is a row `001-first-ingest` had already read and proposed
-the same Fast test for, at a time when that file had the same guard three lines from the same place.
-It was not written then and it is not written here. Governance 3 is why: a review finding becomes a
-test only where it names a requirement the suite does not actually verify, and RUNS-001 *is*
-verified — `SubmissionStateTests` proves all four states and both terminal transitions. What the
-guard refuses is a fifth state that no caller in the process can produce, because `RunConductor` is
-the only caller and it passes `Done` or `Failed`.
+**No test is added by it, no code is changed by it, and nothing is proposed for removal.** Every
+row in this feature's code is (b′), (c) or (d), and none of those three asks for one. There is no
+(a) row and no (a') row: no registered requirement names behaviour the suite leaves unasserted.
 
-Recorded rather than acted on, so that the next measurement finds the same reading instead of
-proposing the same test a third time.
+The row that had been proposed twice — the `Ended` guard at line 247 — is settled rather than
+carried forward again. `001-first-ingest` read it as (a') and asked for a Fast test; this document's
+first draft repeated the proposal with a reason for not acting on it, which would have left the next
+measurement free to propose it a third time. The owner's decision above is what closes it: the guard
+is the idiom for exhaustiveness over the four states, RUNS-001 is proven where it is decidable, and
+a measurement that finds this row again should read it as (b′) and move on.
+
+The two claims this reading rests on were measured rather than assumed: that the build does not
+require the `ThrowIfNull` guards — removing one and building `Grimoire.Runs` produces no error, so
+CA1062 is not what put them there — and that the `IsWaiting` mutant cannot be told apart through the
+board, because `TakeNext` returns null at its first clause for the only state in which the two
+readings differ.
