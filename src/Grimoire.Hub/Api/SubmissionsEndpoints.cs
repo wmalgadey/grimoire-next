@@ -27,17 +27,26 @@ public sealed record SubmissionView(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     bool? AwaitingAcknowledgement)
 {
-    public static SubmissionView Of(Submission submission) =>
-        new(
+    public static SubmissionView Of(Submission submission)
+    {
+        ArgumentNullException.ThrowIfNull(submission);
+
+        // One reading of both, under the board's lock. Asked separately, a run ending between the
+        // two answers would put `running` beside an offered acknowledgement — a pair this contract
+        // says cannot occur, and a control on a row whose run is still under way.
+        var status = submission.Status;
+
+        return new SubmissionView(
             submission.Id.ToString(),
-            WireNameOf(submission.State),
+            WireNameOf(status.State),
             submission.SubmittedAt,
             submission.Excerpt,
 
             // Absent rather than false where there is nothing to acknowledge, so that a row either
             // offers the control or says nothing at all about it. `failed` alone cannot say: an
             // acknowledged failure still reads failed and must not offer it again (RUNS-003).
-            submission.AwaitingAcknowledgement ? true : null);
+            status.AwaitingAcknowledgement ? true : null);
+    }
 
     /// <summary>Exactly one of <c>submitted</c> · <c>running</c> · <c>done</c> · <c>failed</c> (RUNS-001).</summary>
     public static string WireNameOf(SubmissionState state) => state switch
