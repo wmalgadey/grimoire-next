@@ -2,7 +2,7 @@
 
 ## 1. Goal
 
-I maintain a wiki by only deciding which sources go into it and which questions I ask. The maintenance work (classifying, linking, updating, spotting contradictions) is done by an LLM agent. The wiki remains an artifact that is readable to me and usable without Grimoire, one that gets better with every source instead of being recreated from raw material with every question. It follows the Open Knowledge Format ([OKF 0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md)); which of the optional fields apply is defined by the requirements under WIKI (`docs/capabilities/`, still to be written).
+I maintain a wiki by only deciding which sources go into it and which questions I ask. The maintenance work (classifying, linking, updating, spotting contradictions) is done by an LLM agent. The wiki remains an artifact that is readable to me and usable without Grimoire, one that gets better with every source instead of being recreated from raw material with every question. It follows the Open Knowledge Format ([OKF 0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md)); which of the optional fields apply is defined by the requirements under WIKI in `docs/capabilities/`.
 
 The goal is reached when I trust the runs enough to let them run unattended and only review them afterwards.
 
@@ -34,6 +34,9 @@ As long as one person uses Grimoire, it needs no access control of its own: it a
 - Undo happens through the wiki's version control, not through Grimoire: Grimoire brings no undo
   of its own and never takes a run back, a failed one included. How far back the user can go is a
   property of the wiki's history, not a feature of Grimoire.
+- No approval before a run's changes land: trust is built by reviewing afterwards (§1), and the
+  history is the gate (§2). Approval exists only where a run itself proposes instead of acts
+  (OUT-08).
 - No general execution access for agents: an agent's abilities are exposed as narrowly scoped
   tools, never as a shell.
 - No configurable budgets or per-run tuning: a run has two fixed ceilings, wall-clock time and
@@ -47,9 +50,9 @@ As long as one person uses Grimoire, it needs no access control of its own: it a
 
 | Capability | Covers                                                                                                                             |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| INGEST     | Accept sources and work them into the wiki                                                                                         |
+| INGEST     | Accept sources in their forms, work them into the wiki, update or withdraw them                                                    |
 | QUERY      | Answer questions and requests from the wiki, feed insights back                                                                    |
-| LINT       | Check structure and consistency, propose or carry out changes                                                                      |
+| LINT       | Check structure, consistency and claims against their sources; propose or carry out changes                                        |
 | WIKI       | What the wiki is about and how it is shaped: purpose description, format, linking, provenance, sections and their indexes, run log |
 | RUNS       | Traceability: what a run did, why, how it ended, what it cost; approving lint proposals                                            |
 | ACCESS     | Who uses Grimoire and through which door: the browser UI, further paths, further people                                            |
@@ -58,29 +61,36 @@ As long as one person uses Grimoire, it needs no access control of its own: it a
 
 ## 6. Outcomes
 
-<!-- IDs: OUT-NN, in order of assignment. They are never renumbered and
-     never reused; Order of rows = priority. OUT is not a capability name.
-     Status: Now = gets specified next, Next = after that, without a condition,
-     Later = needs a trigger from §7. -->
-| ID     | I can ...                                                                                              | Status | Capabilities                  | Specs            |
-| ------ | ------------------------------------------------------------------------------------------------------ | ------ | ----------------------------- | ---------------- |
-| OUT-01 | submit a text in the browser and afterwards find new, linked pages including a source page in the wiki | Now    | INGEST,WIKI,GUARD,ACCESS,RUNS | 001-first-ingest, 002-ingest-queue |
-| OUT-02 | see for every run what it did, why it ended and what it cost                                           | Next   | RUNS                          |                  |
-| OUT-16 | I can watch what the agent is doing while a run is in progress                                         | Next   |                               | RUNS             |
-| OUT-03 | ask a question and get an answer with references to wiki pages                                         | Next   | QUERY                         |                  |
-| OUT-04 | trust that an agent only reaches what I have allowed                                                   | Later  | GUARD                         |                  |
-| OUT-05 | submit a URL instead of a text                                                                         | Later  | INGEST,WIKI                   |                  |
-| OUT-06 | have a high-value answer become a new wiki page, so that knowledge compounds                           | Later  | QUERY,WIKI                    |                  |
-| OUT-07 | have the wiki checked and see the proposals                                                            | Later  | LINT                          |                  |
-| OUT-08 | approve or reject the consequential proposals, while uncritical ones are carried out without asking    | Later  | LINT,RUNS,WIKI                |                  |
-| OUT-09 | let the agent research on the internet when needed                                                     | Later  | INGEST,QUERY                  |                  |
-| OUT-10 | run Grimoire permanently on my server                                                                  | Later  | OPS                           |                  |
-| OUT-11 | use Grimoire through a chat program                                                                    | Later  | ACCESS                        |                  |
-| OUT-17 | I am told when a run ends, without opening Grimoire                                                    | Later  |                               | RUNS             |
-| OUT-12 | share the wiki with further people                                                                     | Later  | ACCESS                        |                  |
-| OUT-13 | monitor the runs incl. detailed logs and metrics over time in a dashboard                              | Later  | RUNS                          |                  |
-| OUT-14 | have Grimoire help me phrase the wiki's description, while I make the change myself                    | Later  | WIKI                          |                  |
-| OUT-15 | stop committing by hand, because a run puts its own changes into the wiki's history                    | Later  | WIKI,RUNS                     |                  |
+<!-- IDs: OUT-NN, in order of assignment. They are never renumbered and never reused.
+     Order of rows = priority. OUT is not a capability name.
+     Status: Now = gets specified next; Next = after that, without a condition;
+     Later = needs a trigger from §7; Done = every spec in its row is merged and the
+     owner has exercised it; Never = excluded. -->
+
+| ID     | I can ...                                                                                               | Status | Capabilities                      | Specs                              |
+| ------ | ------------------------------------------------------------------------------------------------------- | ------ | --------------------------------- | ---------------------------------- |
+| OUT-01 | submit a text in the browser and afterwards find new, linked pages including a source page in the wiki  | Now    | INGEST, WIKI, GUARD, ACCESS, RUNS | 001-first-ingest, 002-ingest-queue |
+| OUT-02 | see for every run what it did, why it ended and what it cost                                            | Next   | RUNS                              |                                    |
+| OUT-16 | watch what the agent is doing while a run is in progress                                                | Next   | RUNS                              |                                    |
+| OUT-03 | ask a question and get an answer with references to wiki pages                                          | Next   | QUERY                             |                                    |
+| OUT-04 | trust that an agent only reaches what I have allowed                                                    | Later  | GUARD                             |                                    |
+| OUT-05 | submit a URL instead of a text                                                                          | Later  | INGEST, WIKI                      |                                    |
+| OUT-22 | submit a chat transcript as a source                                                                    | Later  | INGEST                            |                                    |
+| OUT-18 | follow every claim on a wiki page to the passage in its source page it rests on                         | Later  | WIKI, INGEST                      |                                    |
+| OUT-06 | have a high-value answer become a new wiki page, so that knowledge compounds                            | Later  | QUERY, WIKI                       |                                    |
+| OUT-19 | resubmit a changed source and see which pages derived from it are now stale                             | Later  | INGEST, LINT                      |                                    |
+| OUT-07 | have the wiki checked — structure, consistency, orphans, pages without a source — and see the proposals | Later  | LINT                              |                                    |
+| OUT-08 | approve or reject the consequential proposals, while uncritical ones are carried out without asking     | Later  | LINT, RUNS, WIKI                  |                                    |
+| OUT-20 | withdraw a source and have a run remove what exists only because of it                                  | Later  | INGEST, GUARD                     |                                    |
+| OUT-21 | have a sample of claims checked against their cited passages and see where they diverge                 | Later  | LINT                              |                                    |
+| OUT-09 | let the agent research on the internet when needed                                                      | Later  | INGEST, QUERY                     |                                    |
+| OUT-10 | run Grimoire permanently on my server                                                                   | Later  | OPS                               |                                    |
+| OUT-11 | use Grimoire through a chat program                                                                     | Later  | ACCESS                            |                                    |
+| OUT-17 | be told when a run ends, without opening Grimoire                                                       | Later  | RUNS                              |                                    |
+| OUT-12 | share the wiki with further people                                                                      | Later  | ACCESS                            |                                    |
+| OUT-13 | monitor the runs and the wiki's structural state over time in a dashboard                               | Later  | RUNS, LINT                        |                                    |
+| OUT-14 | have Grimoire help me phrase the wiki's description, while I make the change myself                     | Later  | WIKI                              |                                    |
+| OUT-15 | stop committing by hand, because a run puts its own changes into the wiki's history                     | Later  | WIKI, RUNS                        |                                    |
 
 Against the core loop (§3): steps 1 and 2 are OUT-01, step 3 is OUT-02, step 4 is OUT-03. The loop closes once Next is done, not with Now alone.
 
@@ -88,19 +98,26 @@ Against the core loop (§3): steps 1 and 2 are OUT-01, step 3 is OUT-02, step 4 
 
 A trigger moves an outcome from Later to Next.
 
-- OUT-04: whenever one of OUT-05, OUT-09 or an unattended OUT-10 is pulled in, OUT-04 is built before it. Without one of those occasions it stays where it is.
+- OUT-04: whenever one of OUT-05, OUT-09, OUT-20 or an unattended OUT-10 is pulled in, OUT-04 is built before it. Without one of those occasions it stays where it is.
 - OUT-05/OUT-09: as soon as OUT-01 and OUT-02 have been used regularly for two weeks and pasting text is the bottleneck.
 - OUT-06: as soon as I have carried an answer over into the wiki by hand for the second time.
-- OUT-07/OUT-08: as soon as the wiki has > 100 pages or I find the first contradiction by hand.
+- OUT-07/OUT-08: as soon as the wiki has > 100 pages or I find the first contradiction by hand. Before runs go unattended.
 - OUT-10: as soon as I have carried out at least ten ingests.
 - OUT-11: as soon as the browser on the go is demonstrably the reason that I submit nothing.
 - OUT-12: as soon as a concrete second person wants to use it.
 - OUT-13: as soon as I have needed to compare runs by hand more than twice.
 - OUT-14: as soon as I set up a second wiki.
 - OUT-15: as soon as ingest, query and the browser UI run stably and I trust the agent enough that I no longer need the history as my gate.
-- OUT-17: as soon as I have enough confidence in the process, so I do not need to watch the agents worl.
+- OUT-17: as soon as I trust the process enough that I no longer watch the agent work.
+- OUT-18: as soon as I find the first claim while reading that I cannot trace to a source. Before OUT-21.
+- OUT-19: as soon as I resubmit a source for the first time because it changed.
+- OUT-20: as soon as I remove the traces of a bad source by hand for the first time and it takes longer than 15 minutes.
+- OUT-21: after OUT-18 and before runs go unattended. Not earlier.
+- OUT-22: as soon as I paste chat excerpts as text for the third time in one week.
 
 ## 8. Open questions
 
 - How does a run tell a consequential lint change from an uncritical one, and who decides the criterion? (blocks OUT-08)
-- Who commits, the agent through a tool of its own or Grimoire at the run boundary? (blocks OUT-15)
+- Who commits, the agent through a tool of its own or Grimoire at the run boundary; and does a run's commit land on the wiki's main history or on a branch the user merges? (blocks OUT-15)
+- What counts as a "passage": line range, heading anchor or OKF footnote on `sources`? (blocks OUT-18)
+- Who records which page derives from which source beyond the page's own `sources` list: the agent in the frontmatter, or Grimoire from the run's tool calls? (blocks OUT-19, OUT-20)
