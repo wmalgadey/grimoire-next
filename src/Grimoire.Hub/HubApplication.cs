@@ -73,18 +73,21 @@ public static class HubApplication
     /// (RUNS-006).
     /// </summary>
     /// <remarks>
-    /// The order is the point. Stopping a run ends it, and an ending lets the next one start — so
-    /// stopping first and closing admission afterwards would dispatch an agent behind the
-    /// shutdown, started by a Grimoire that is already leaving and stopped by nothing.
+    /// The order is the point, and it is three steps rather than two. Stopping a run ends it, and
+    /// an ending lets the next one start — so stopping first would dispatch an agent behind the
+    /// shutdown. Closing admission alone is not enough either: a pump already past its own check
+    /// can be holding a submission the board has handed out, and that one would be dispatched into
+    /// a hub that had finished stopping, with nothing watching it. So: close, drain, then stop
+    /// (RUNS-006).
     /// </remarks>
-    public static Task StopEverythingAsync(RunQueue queue, RunConductor conductor)
+    public static async Task StopEverythingAsync(RunQueue queue, RunConductor conductor)
     {
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(conductor);
 
         queue.StopStartingRuns();
-
-        return conductor.StopEverythingAsync();
+        await queue.DrainAsync().ConfigureAwait(false);
+        await conductor.StopEverythingAsync().ConfigureAwait(false);
     }
 
     public static WebApplication Build(

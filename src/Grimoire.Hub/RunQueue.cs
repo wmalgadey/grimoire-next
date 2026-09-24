@@ -44,16 +44,65 @@ public sealed class RunQueue(
     /// are stopped (RUNS-006).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Without this, stopping is a race it can lose: a run ends because it was stopped, that ending
     /// pumps the queue, and a waiting submission is dispatched behind the shutdown — an agent
     /// started by a Grimoire that is already leaving, and so one nothing will ever stop. Closed
     /// here and never reopened: a process that has begun to stop does not resume.
+    /// </para>
+    /// <para>
+    /// Closing is only half of it. A pump already past its own check may hold a submission the
+    /// board has handed out, and ending that admission is <see cref="DrainAsync"/>'s: the caller
+    /// closes, drains, and only then stops what is under way
+    /// (<see cref="HubApplication.StopEverythingAsync"/>).
+    /// </para>
     /// </remarks>
     public void StopStartingRuns()
     {
         lock (gate)
         {
             closed = true;
+        }
+    }
+
+    /// <summary>
+    /// Wait until no pump is between taking a submission and dispatching it.
+    /// </summary>
+    /// <remarks>
+    /// Called after <see cref="StopStartingRuns"/> and before anything is stopped. Without it,
+    /// shutdown can drain the runs it can see while a pump is still holding one the board handed
+    /// out a moment earlier — and that one is then dispatched into a hub that has finished
+    /// stopping, with no conductor watching it and no ceiling on it (RUNS-006). A pump that is
+    /// still running here either dispatches its run, which puts it where the drain will find it,
+    /// or finds the queue closed and ends it without an agent.
+    /// </remarks>
+    public async Task DrainAsync()
+    {
+        while (Pumping)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(10)).ConfigureAwait(false);
+        }
+    }
+
+    private bool Pumping
+    {
+        get
+        {
+            lock (gate)
+            {
+                return pumping;
+            }
+        }
+    }
+
+    private bool Closed
+    {
+        get
+        {
+            lock (gate)
+            {
+                return closed;
+            }
         }
     }
 
@@ -139,6 +188,16 @@ public sealed class RunQueue(
                 return;
             }
 
+            // Asked again after the board has handed one out, because the hub may have begun to
+            // stop in between. Dispatching now would start an agent into a hub that is leaving:
+            // the drain above waits for this pump, but what it must find here is a run that was
+            // never given a process, not one that was (RUNS-006).
+            if (Closed)
+            {
+                conductor.Report().RunEnded(run.SubmissionId, RunOutcome.Failed);
+                return;
+            }
+
             await StartAsync(run).ConfigureAwait(false);
         }
     }
@@ -177,8 +236,17 @@ public sealed class RunQueue(
             }
             catch (Exception)
             {
-                // Whether the stop reached anything or not, the run is over and the ending below
-                // has to happen: a submission left under way strands everything behind it.
+                // Whether the stop reached anything or not, the ending below has to happen: a
+                // submission left under way strands everything behind it, which is a certain
+                // failure weighed against a rare one.
+                //
+                // The rare one is admitted rather than argued away: a dispatch that started a
+                // child and then failed, whose stop also failed, leaves an agent alive while this
+                // run reads failed. What catches it is the backstop RUNS-006 already defines —
+                // the child's identity is recorded before the prompt is written to it, so the next
+                // start-up terminates it before anything else runs. Holding the queue here
+                // instead would trade that bounded window for a Grimoire that stops working
+                // whenever a stop fails once.
             }
 
             // A run that never began must not leave its submission under way: the board counts one

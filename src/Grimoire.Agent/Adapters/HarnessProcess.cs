@@ -311,6 +311,16 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
     /// no interrupt precedes it, because there is nothing left to interrupt — the Grimoire that
     /// could have read the answer is gone.
     /// <para>
+    /// <b>A kill that fails is not swallowed.</b> Every other failure of <c>Kill</c> — a
+    /// <c>Win32Exception</c> the operating system raises because the signal did not land, an
+    /// <c>AggregateException</c> from a child of the tree — leaves the identity confirmed and the
+    /// process alive, which is precisely the state RUNS-006 forbids to proceed from. It travels out
+    /// of here, out of <c>HubApplication.RestoreAfterAStop</c>, and the hub does not start: better
+    /// a Grimoire that refuses to come up than one that reads a run as failed and starts the next
+    /// beside an agent it could not end. Failing to <em>read</em> the identity is the other case
+    /// and is handled above, the other way round.
+    /// </para>
+    /// <para>
     /// <b>What this does not close</b>: the check and the kill are two operations, so a process
     /// that exits between them could in principle have its number taken by another before the
     /// signal lands. Binding the two together needs a per-operating-system primitive — Linux has
@@ -347,13 +357,24 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
                     // Grimoire from killing an unrelated program.
                     return;
                 }
+            }
+            catch (Exception e) when (e is InvalidOperationException or SystemException)
+            {
+                // The identity cannot be read at all. Then it cannot be shown to be this run's
+                // agent, and R-11 settles which way that falls: never end what is not provably
+                // ours. An agent may outlive this, and that is the lesser harm against killing an
+                // unrelated program on the owner's machine.
+                return;
+            }
 
+            try
+            {
                 process.Kill(entireProcessTree: true);
             }
-            catch (Exception e) when (e is InvalidOperationException or NotSupportedException or SystemException)
+            catch (InvalidOperationException)
             {
-                // It ended between the check and the kill, or its start time cannot be read at
-                // all — a process this Grimoire has no business ending either way.
+                // It ended between the check and the kill. The window R-11 admits, and the one
+                // outcome of it that is harmless: the agent is gone, which is what was wanted.
             }
         }
     }

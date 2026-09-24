@@ -65,8 +65,11 @@ port is the store behind it.
 2. no submission reads `failed` with `AcknowledgedAt` null — no failure blocks (RUNS-003);
 3. at least one submission reads `submitted` with no `RunId` — something is waiting.
 
-The one it hands out is the waiting submission with the earliest `SubmittedAt` (RUNS-002). All of
-this is decided under the board's single lock, and the store is written before the decision is
+The one it hands out is the **first waiting submission in the board's own list**, which is the order
+they were accepted and so the order the user made them in (RUNS-002). Deliberately not the earliest
+`SubmittedAt`: that clock is not monotonic, and a correction between two submissions would let a
+later one carry an earlier stamp and jump the queue. The store keeps the same order by `rowid`. All
+of this is decided under the board's single lock, and the store is written before the decision is
 visible, so a stop between deciding and recording cannot exist.
 
 ---

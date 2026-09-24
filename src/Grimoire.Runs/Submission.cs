@@ -79,8 +79,10 @@ public sealed partial class Submission
     public string Text { get; }
 
     /// <summary>
-    /// When the submission was made. Shown in the browser (ACCESS-004), and the order the queue
-    /// hands submissions out in (RUNS-002).
+    /// When the submission was made, and shown in the browser (ACCESS-004). <b>Not</b> what the
+    /// queue is ordered by: this clock is not monotonic, so a correction can leave a later
+    /// submission with an earlier stamp. The order is the order they were accepted — the board's
+    /// own list, and `rowid` in the store (RUNS-002, <see cref="SubmissionBoard.TakeNext"/>).
     /// </summary>
     public DateTimeOffset SubmittedAt { get; }
 

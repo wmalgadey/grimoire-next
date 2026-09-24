@@ -116,16 +116,54 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
     }
 
     /// <summary>
-    /// Whether one path lies within the other, the wiki itself counting as inside. Compared as
-    /// full paths, so that `../` and a trailing separator cannot walk around it.
+    /// Whether one path lies within the other, the wiki itself counting as inside.
     /// </summary>
+    /// <remarks>
+    /// Compared as <em>real</em> paths, not as text. <c>GetFullPath</c> collapses <c>..</c> and
+    /// nothing else, so a state directory reached through a symbolic link would read as outside the
+    /// wiki while sitting in it — which is how `submissions.db` would end up where the wiki store
+    /// lists it and `--fresh` deletes it. <c>FileSystemWikiStore</c> refuses a path that leaves
+    /// through a link for the same reason, on the same kind of check.
+    /// <para>
+    /// Compared without case, because the filesystems Grimoire is developed and run on do not
+    /// distinguish it and .NET offers no portable way to ask. That errs towards refusing, which is
+    /// the safe direction for a guard: the cost of a wrong refusal is one start-up argument.
+    /// </para>
+    /// </remarks>
     private static bool IsInside(string path, string directory)
     {
-        var inside = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
-        var outer = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        var inside = RealPathOf(path);
+        var outer = RealPathOf(directory);
 
-        return string.Equals(inside, outer, StringComparison.Ordinal)
-            || inside.StartsWith(outer + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        return string.Equals(inside, outer, StringComparison.OrdinalIgnoreCase)
+            || inside.StartsWith(outer + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A path with every link along it resolved. Neither directory need exist yet — the state
+    /// directory usually does not on a first start — so the nearest ancestor that does is resolved
+    /// and what was below it is put back on.
+    /// </summary>
+    private static string RealPathOf(string path)
+    {
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        var below = new Stack<string>();
+        var at = full;
+
+        while (!Directory.Exists(at) && !File.Exists(at))
+        {
+            if (Path.GetDirectoryName(at) is not { } parent || parent == at)
+            {
+                return full;
+            }
+
+            below.Push(Path.GetFileName(at));
+            at = parent;
+        }
+
+        var resolved = new DirectoryInfo(at).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? at;
+
+        return Path.TrimEndingDirectorySeparator(Path.Combine([resolved, .. below]));
     }
 
     /// <summary>

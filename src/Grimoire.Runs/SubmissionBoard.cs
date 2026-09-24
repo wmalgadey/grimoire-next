@@ -108,10 +108,11 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
         lock (gate)
         {
             var submission = new Submission(Guid.NewGuid(), text, clock.GetUtcNow(), gate);
-            submissions.Add(submission);
 
-            // On disk before the user is answered: a user told their text was accepted and then
-            // losing power finds it after the restart (RUNS-004).
+            // On disk before it is on the board, and so before the user is answered: a user told
+            // their text was accepted and then losing power finds it after the restart (RUNS-004).
+            // The order matters the other way too — a write that fails must leave no submission
+            // behind that a pump could hand out and a restart would not find.
             store.Add(new StoredSubmission(
                 submission.Id,
                 submission.Text,
@@ -120,6 +121,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
                 Run: null,
                 AcknowledgedAt: null));
 
+            submissions.Add(submission);
             return SubmissionResult.Of(submission);
         }
     }
@@ -164,8 +166,14 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
             }
 
             var run = newRun(next.Id);
-            next.HandedTo(run.Id);
+
+            // On disk before the submission is marked, for the reason `Accept` writes before it
+            // adds: a write that fails must leave the queue as it was. Marked first, a failed
+            // write would leave a submission that every later `TakeNext` reads as under way and
+            // no dispatch ever ends — the queue stranded on a run that does not exist.
             store.AssignRun(next.Id, StoredRun.Of(run));
+
+            next.HandedTo(run.Id);
             return run;
         }
     }
