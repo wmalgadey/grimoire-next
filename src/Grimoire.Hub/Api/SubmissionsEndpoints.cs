@@ -6,20 +6,47 @@ using Microsoft.AspNetCore.Routing;
 
 namespace Grimoire.Hub.Api;
 
-/// <summary>What the browser is told about a submission: its state, and nothing else about the run.</summary>
+/// <summary>
+/// What the browser is told about a submission: which of the four states it is in, and the two
+/// things that tell one submission from another — the opening of its text and when it was made.
+/// </summary>
 /// <remarks>
-/// ACCESS-002 says "and no further detail" — no step, no reasoning, no duration, no cost, no
-/// history. OUT-02 owns everything more, and a field added here would be a mechanism with no
-/// consumer (Constitution II.1). The wire names are on the type rather than in the host's JSON
-/// configuration, so the shape this contract promises is a property of the response itself.
+/// Nothing about the run. ACCESS-002 says "and no further detail" — no identifier, no step, no
+/// reasoning, no duration, no cost, no history — and OUT-02 owns everything more. The excerpt and
+/// the time are facts about the <em>submission</em>, which is what ACCESS-004 asks the browser to
+/// show and is the only way a user can tell which text a failed run was working on (research.md
+/// R-06). The wire names are on the type rather than in the host's JSON configuration, so the
+/// shape this contract promises is a property of the response itself.
 /// </remarks>
 public sealed record SubmissionView(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("state")] string State,
-    [property: JsonPropertyName("submittedAt")] DateTimeOffset SubmittedAt)
+    [property: JsonPropertyName("submittedAt")] DateTimeOffset SubmittedAt,
+    [property: JsonPropertyName("excerpt")] string Excerpt,
+    [property: JsonPropertyName("awaitingAcknowledgement")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? AwaitingAcknowledgement)
 {
-    public static SubmissionView Of(Submission submission) =>
-        new(submission.Id.ToString(), WireNameOf(submission.State), submission.SubmittedAt);
+    public static SubmissionView Of(Submission submission)
+    {
+        ArgumentNullException.ThrowIfNull(submission);
+
+        // One reading of both, under the board's lock. Asked separately, a run ending between the
+        // two answers would put `running` beside an offered acknowledgement — a pair this contract
+        // says cannot occur, and a control on a row whose run is still under way.
+        var status = submission.Status;
+
+        return new SubmissionView(
+            submission.Id.ToString(),
+            WireNameOf(status.State),
+            submission.SubmittedAt,
+            submission.Excerpt,
+
+            // Absent rather than false where there is nothing to acknowledge, so that a row either
+            // offers the control or says nothing at all about it. `failed` alone cannot say: an
+            // acknowledged failure still reads failed and must not offer it again (RUNS-003).
+            status.AwaitingAcknowledgement ? true : null);
+    }
 
     /// <summary>Exactly one of <c>submitted</c> · <c>running</c> · <c>done</c> · <c>failed</c> (RUNS-001).</summary>
     public static string WireNameOf(SubmissionState state) => state switch
@@ -61,9 +88,11 @@ public static class SubmissionsEndpoints
         this IEndpointRouteBuilder endpoints,
         SubmissionIntake intake,
         SubmissionBoard board,
+        RunQueue queue,
         StartUpInputsCheck startUpInputs)
     {
         ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(queue);
 
         endpoints.MapPost("/api/submissions", async (SubmissionRequest? request) =>
         {
@@ -80,10 +109,28 @@ public static class SubmissionsEndpoints
         });
 
         // The browser polls this; there is no push channel. Nothing is exposed here beyond the
-        // three fields of a SubmissionView — a fourth would be a mechanism with no consumer
+        // fields of a SubmissionView — one more would be a mechanism with no consumer
         // (Constitution II.1), and everything more about a run is OUT-02's.
         endpoints.MapGet("/api/submissions", () =>
             new SubmissionListView([.. board.All.Select(SubmissionView.Of)]));
+
+        // The acknowledgement addresses a submission, which has exactly one run (INGEST-002), so
+        // naming it names its failed run — and no run identifier has to reach the browser for the
+        // user to clear one (research.md R-06).
+        endpoints.MapPost("/api/submissions/{id:guid}/acknowledgement", async (Guid id) =>
+        {
+            board.Acknowledge(id);
+
+            // Asked either way. The board decides whether anything may start, and an
+            // acknowledgement that cleared nothing simply leaves it deciding no.
+            await queue.PumpAsync().ConfigureAwait(false);
+
+            // One status for both cases, deliberately: a page loaded before the last run failed
+            // can acknowledge a failure that has already been cleared, and answering that with an
+            // error would put a failure on the user's screen for a request that did exactly what
+            // it should — nothing (contracts/hub-http-api.md).
+            return Results.NoContent();
+        });
 
         return endpoints;
     }
@@ -104,13 +151,6 @@ public static class SubmissionsEndpoints
                 StatusCodes.Status422UnprocessableEntity,
                 "text-empty",
                 "There is no text to submit."),
-
-            // 409 rather than 422: nothing is wrong with the request, only with the moment. The
-            // same text submitted again once the run has ended is accepted.
-            Refusal.RunInProgress => (
-                StatusCodes.Status409Conflict,
-                "run-in-progress",
-                "A run is in progress. Submit this text again once it has ended."),
 
             _ => throw new ArgumentOutOfRangeException(nameof(refusal), refusal, "no such refusal"),
         };

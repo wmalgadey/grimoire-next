@@ -66,3 +66,37 @@ RunTests.AgentStops_NudgesOnce_WhenLogEntryMissing
 these projects, and only these: the underscores are what separate the three parts, and the rule is
 about identifiers an API exposes, whereas a test method is called by the runner and by nobody
 else. It stays on everywhere else in the tree.
+
+## How a surviving mutant is read
+
+`scripts/mutation.sh` and CI's `mutation` job produce the reports; a person reads them, and the
+reading is written down in `specs/<feature>/mutation.md`. These are the kinds that reading uses.
+They live here rather than in any one measurement, because a kind that is redefined per feature
+makes two measurements incomparable.
+
+- **(a)** sharpen a named test — a registered requirement, or Principle IV.3 in
+  `tools/Grimoire.Trace`, asks for the behaviour the mutant changes, and a test that already
+  exists is the one that should have caught it.
+- **(a')** no test reaches the line at all. The same reading as (a) — something asks for the
+  behaviour — but the answer is a new test rather than a sharper one, so the row names the level
+  that test would have to sit at (III.4, III.6).
+- **(b)** no requirement asks for this behaviour — candidate for removal.
+- **(b′)** a guard on an invariant the type's own callers already keep. It reads like (b), but
+  "candidate for removal" is the wrong half of (b) to apply: what it removes is an assertion, not
+  a behaviour. No test is asked for, and the guard stays.
+- **(c)** equivalent mutant.
+- **(d)** not asserted by design — message text, argument guards, and orderings nothing names. No
+  test is asked for and nothing is proposed for removal: a message no test reads is still what a
+  person reads when the guard fires, and a null guard turns a later failure into a named argument
+  at the boundary. **For every project**, not one.
+
+(b) and (d) are the pair most easily confused, and the difference is what happens next: (b) says
+the code could go, (d) says it stays and is not asserted.
+
+**(d) has moved twice.** `001-first-ingest`'s first measurement had no (d) and read message text
+and argument guards as (b); its second added (d) but confined it to `tools/Grimoire.Trace`, on
+the ground that "candidate for removal" is the wrong reading where no registered requirement names
+the code at all; its third kept that narrower wording. The definition above is the second
+measurement's substance — argument guards and orderings nothing names — applied where it was
+always true, which is everywhere. `001-first-ingest/mutation.md` is the record of those
+measurements and keeps the wording each of them used; this section is what a new measurement reads.

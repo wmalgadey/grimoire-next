@@ -34,7 +34,14 @@ run() {
 # because the CLI's protocol may not appear outside it (Constitution V.2), but it starts no
 # process and touches no file, and the whole of the translation from CLI lines to port events is
 # in it.
-run Grimoire.Runs
+#
+# Grimoire.Runs needed no filter until `002-ingest-queue` gave it its first adapter
+# (SqliteSubmissionStore). It gets the same one Grimoire.Wiki has, for the same reason: this
+# measurement runs the Fast suite alone, and an adapter is proven by a Contract suite against the
+# real thing — so every mutant in one would come back uncovered, which says nothing about the
+# tests and only buries the survivors that do. scripts/metrics.sh already scopes coverage this way
+# for every project (`-classfilters:-*.Adapters.*`).
+run Grimoire.Runs --mutate '**/*' --mutate '!**/Adapters/**'
 run Grimoire.Agent \
   --mutate '**/Ceilings.cs' \
   --mutate '**/IAgentHarness.cs' \

@@ -33,14 +33,74 @@ public sealed record HubOptions(
 /// </remarks>
 public static class HubApplication
 {
+    /// <summary>
+    /// Everything the last Grimoire left behind, put back before this one serves anything
+    /// (RUNS-004, RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// The order is the requirement's rather than an implementation detail, because all of it is
+    /// observable: an agent that outlived a stop Grimoire could not act on is terminated
+    /// <b>first</b>, the runs that were in progress read failed <b>second</b>, and only then may
+    /// anything start. The browser must never show failed while the agent is still at work, and no
+    /// second run may begin beside a first that is still writing (research.md R-11).
+    /// <para>
+    /// A run with no recorded process never had a child, and one whose recorded identity is no
+    /// longer a live process is left alone by the adapter. Nothing is resumed and nothing is
+    /// retried; what an interrupted run wrote stays in the wiki (WIKI-003).
+    /// </para>
+    /// </remarks>
+    public static void RestoreAfterAStop(ISubmissionStore submissions, SubmissionBoard board, IAgentHarness harness)
+    {
+        ArgumentNullException.ThrowIfNull(submissions);
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(harness);
+
+        var held = submissions.Load();
+
+        foreach (var identity in held
+            .Where(s => s.WasUnderWay)
+            .Select(s => s.Run!.AgentProcess)
+            .OfType<AgentProcessIdentity>())
+        {
+            harness.Terminate(identity);
+        }
+
+        board.Restore(held);
+    }
+
+    /// <summary>
+    /// The hub is going down: nothing further may start, and what is under way is stopped with it
+    /// (RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// The order is the point, and it is three steps rather than two. Stopping a run ends it, and
+    /// an ending lets the next one start — so stopping first would dispatch an agent behind the
+    /// shutdown. Closing admission alone is not enough either: a pump already past its own check
+    /// can be holding a submission the board has handed out, and that one would be dispatched into
+    /// a hub that had finished stopping, with nothing watching it. So: close, drain, then stop
+    /// (RUNS-006).
+    /// </remarks>
+    public static async Task StopEverythingAsync(RunQueue queue, RunConductor conductor)
+    {
+        ArgumentNullException.ThrowIfNull(queue);
+        ArgumentNullException.ThrowIfNull(conductor);
+
+        queue.StopStartingRuns();
+        await queue.DrainAsync().ConfigureAwait(false);
+        await conductor.StopEverythingAsync().ConfigureAwait(false);
+    }
+
     public static WebApplication Build(
         string[] args,
         HubOptions options,
         IAgentHarness harness,
         IWikiStore wiki,
+        ISubmissionStore submissions,
         TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(harness);
+        ArgumentNullException.ThrowIfNull(submissions);
 
         // The content root is the hub's own base directory rather than whatever directory it was
         // launched from, so the page under wwwroot/ is found the same way whether the hub was
@@ -89,15 +149,34 @@ public static class HubApplication
         app.UseStaticFiles();
 
         var instructions = new InstructionLoader(options.InstructionPath, options.PurposeDescriptionPath);
-        var board = new SubmissionBoard(clock);
-        var conductor = new RunConductor(board, harness, wiki, clock);
-        var intake = new SubmissionIntake(board, harness, conductor, instructions.Assemble, options.Model);
+        var board = new SubmissionBoard(clock, submissions);
 
-        app.MapSubmissions(intake, board, instructions.Read);
+        // The knot the conductor and the queue make, tied here because neither may hold the other
+        // whole: a run that ends is what lets the next one start, and starting one is what gives
+        // the conductor a run to watch. The composition root is where that is allowed to be known
+        // (plan.md, Structure Decision).
+        RunQueue? queue = null;
+        var conductor = new RunConductor(board, harness, wiki, clock, () => queue!.PumpAsync());
+        queue = new RunQueue(board, conductor, harness, instructions.Assemble, options.Model);
+
+        var intake = new SubmissionIntake(board, queue);
+
+        app.MapSubmissions(intake, board, queue, instructions.Read);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to
         // its run. Unauthenticated and on loopback, per docs/product.md §2.
         app.MapMcp("/mcp/runs/{runId}");
+
+        RestoreAfterAStop(submissions, board, harness);
+
+        // The pump waits for the server. A run is told where its own tools are served before it
+        // starts, so starting one before this hub is listening would hand the agent an address
+        // that answers nothing and end the run on its first tool call (GUARD-001).
+        app.Lifetime.ApplicationStarted.Register(() => _ = queue.PumpAsync());
+
+        // No agent goes on working on a run Grimoire has ended (RUNS-006). The hook itself is
+        // framework wiring and is not tested; what it calls is (Constitution III.8, research.md R-05).
+        app.Lifetime.ApplicationStopping.Register(() => StopEverythingAsync(queue, conductor).GetAwaiter().GetResult());
 
         return app;
     }

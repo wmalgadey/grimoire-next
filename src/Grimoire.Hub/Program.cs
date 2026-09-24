@@ -1,11 +1,12 @@
 using Grimoire.Agent.Adapters;
 using Grimoire.Hub;
+using Grimoire.Runs.Adapters;
 using Grimoire.Wiki.Adapters;
 using Microsoft.AspNetCore.Builder;
 
-// The hub's entry point, and the only place the two real adapters are put at their ports: the
-// filesystem wiki store, and the `claude` process (Constitution V.2). Every suite builds the same
-// application through `HubApplication.Build` with in-memory adapters at those same two ports
+// The hub's entry point, and the only place the three real adapters are put at their ports: the
+// filesystem wiki store, the `claude` process, and the SQLite submission store (Constitution V.2).
+// Every suite builds the same application through `HubApplication.Build` with in-memory adapters
 // (III.9), which is why nothing here is covered by a test: dependency wiring and argument reading
 // are not tested (III.8). What exercises this file is the owner's acceptance run (quickstart.md).
 
@@ -23,6 +24,7 @@ var app = HubApplication.Build(
     startUp.Options,
     new HarnessProcess(HarnessSettings.Default(startUp.Address)),
     new FileSystemWikiStore(startUp.Options.WikiRoot),
+    new SqliteSubmissionStore(startUp.StateDirectory),
     TimeProvider.System);
 
 app.Run();
@@ -34,8 +36,15 @@ return 0;
 /// and the model — and the instruction is Grimoire's own, versioned in this repository, so it has a
 /// default and changing it is an owner decision named in the PR (Constitution V.1).
 /// </summary>
-internal sealed record StartUp(HubOptions Options, Uri Address)
+internal sealed record StartUp(HubOptions Options, Uri Address, string StateDirectory)
 {
+    /// <summary>
+    /// Where the queue is kept so that it survives a stop (RUNS-004). Beside the hub rather than
+    /// inside the wiki: the queue writes nothing into the wiki, and Grimoire's bookkeeping in the
+    /// user's repository would show up in their version history (contracts/submission-store.md).
+    /// </summary>
+    public static string DefaultStateDirectory => Path.Combine(AppContext.BaseDirectory, "state");
+
     /// <summary>
     /// Loopback, because the run's tool endpoint carries no token: the hub sits inside a network
     /// the user trusts and has no access control of its own (`docs/product.md` §2, DEC-014).
@@ -49,6 +58,8 @@ internal sealed record StartUp(HubOptions Options, Uri Address)
           --purpose <path>      the hand-written description of what the wiki is for   (required)
           --model <id>          a pinned model id, never an alias                      (required)
           --instruction <path>  Grimoire's own instruction  (default: instructions/ingest.md)
+          --state <path>        where the queue is kept, so that it survives a stop
+                                (default: state/ beside the hub)
           --urls <url>          where the hub listens; loopback only
                                 (default: http://127.0.0.1:5057)
         """;
@@ -86,7 +97,73 @@ internal sealed record StartUp(HubOptions Options, Uri Address)
             return null;
         }
 
-        return new StartUp(new HubOptions(instruction, purpose, wiki, model), address);
+        var state = given.GetValueOrDefault("state") ?? DefaultStateDirectory;
+
+        if (IsInside(state, wiki))
+        {
+            // Refused rather than obeyed, because both consequences are the user's to live with:
+            // the wiki store lists every non-hidden file it finds, so the queue would be served to
+            // the agent as a page — and `run-hub.sh --fresh` deletes the wiki, which would take
+            // every submission the user ever made with it (contracts/submission-store.md).
+            Console.Error.WriteLine("The queue is Grimoire's own bookkeeping and is not kept inside the wiki. Give --state a directory outside it.");
+            return null;
+        }
+
+        return new StartUp(
+            new HubOptions(instruction, purpose, wiki, model),
+            address,
+            state);
+    }
+
+    /// <summary>
+    /// Whether one path lies within the other, the wiki itself counting as inside.
+    /// </summary>
+    /// <remarks>
+    /// Compared as <em>real</em> paths, not as text. <c>GetFullPath</c> collapses <c>..</c> and
+    /// nothing else, so a state directory reached through a symbolic link would read as outside the
+    /// wiki while sitting in it — which is how `submissions.db` would end up where the wiki store
+    /// lists it and `--fresh` deletes it. <c>FileSystemWikiStore</c> refuses a path that leaves
+    /// through a link for the same reason, on the same kind of check.
+    /// <para>
+    /// Compared without case, because the filesystems Grimoire is developed and run on do not
+    /// distinguish it and .NET offers no portable way to ask. That errs towards refusing, which is
+    /// the safe direction for a guard: the cost of a wrong refusal is one start-up argument.
+    /// </para>
+    /// </remarks>
+    private static bool IsInside(string path, string directory)
+    {
+        var inside = RealPathOf(path);
+        var outer = RealPathOf(directory);
+
+        return string.Equals(inside, outer, StringComparison.OrdinalIgnoreCase)
+            || inside.StartsWith(outer + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A path with every link along it resolved. Neither directory need exist yet — the state
+    /// directory usually does not on a first start — so the nearest ancestor that does is resolved
+    /// and what was below it is put back on.
+    /// </summary>
+    private static string RealPathOf(string path)
+    {
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        var below = new Stack<string>();
+        var at = full;
+
+        while (!Directory.Exists(at) && !File.Exists(at))
+        {
+            if (Path.GetDirectoryName(at) is not { } parent || parent == at)
+            {
+                return full;
+            }
+
+            below.Push(Path.GetFileName(at));
+            at = parent;
+        }
+
+        var resolved = new DirectoryInfo(at).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? at;
+
+        return Path.TrimEndingDirectorySeparator(Path.Combine([resolved, .. below]));
     }
 
     /// <summary>

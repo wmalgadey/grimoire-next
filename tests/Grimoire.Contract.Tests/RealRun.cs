@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Grimoire.Agent;
 using Grimoire.Agent.Adapters;
 using Grimoire.Hub;
+using Grimoire.Runs.Adapters;
 using Grimoire.Wiki.Adapters;
 using Microsoft.AspNetCore.Builder;
 
@@ -58,6 +59,7 @@ internal sealed class RealRun : IAsyncDisposable
             new HubOptions(instruction, purpose, wikiRoot, PinnedModel),
             new HarnessProcess(HarnessSettings.Default(new Uri("http://127.0.0.1:1"))),
             new FileSystemWikiStore(wikiRoot),
+            new SqliteSubmissionStore(Path.Combine(root, "state")),
             TimeProvider.System);
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);

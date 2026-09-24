@@ -74,10 +74,10 @@ public sealed class SubmissionStateTests
         hub.Harness.End(submission.Id, outcome);
         var terminal = submission.State;
 
-        // There is no transition out of either in this feature — acknowledgement is RUNS-003,
-        // held back by the split.
-        Assert.Throws<InvalidOperationException>(() => submission.AgentReportedIn());
-        Assert.Throws<InvalidOperationException>(() => submission.Ended(SubmissionState.Done));
+        // There is no transition out of either. Acknowledging a failure is not one: the
+        // acknowledged run still reads failed (RUNS-003).
+        Assert.Throws<InvalidOperationException>(() => hub.Board.ReportedIn(submission.Id));
+        Assert.Throws<InvalidOperationException>(() => hub.Board.Ended(submission.Id, SubmissionState.Done));
         Assert.Equal(terminal, submission.State);
     }
 
@@ -135,14 +135,60 @@ public sealed class SubmissionStateTests
 
         var json = JsonSerializer.SerializeToElement(SubmissionView.Of(submission));
 
-        // No step, reasoning, duration, cost or history — ACCESS-002 says "and no further
-        // detail", and OUT-02 owns everything more (contracts/hub-http-api.md).
+        // No run identifier, step, reasoning, duration, cost or history — ACCESS-002 says "and no
+        // further detail" about the run, and OUT-02 owns everything more. What is here besides the
+        // state are facts about the submission itself (ACCESS-004, contracts/hub-http-api.md).
         Assert.Equal(
-            ["id", "state", "submittedAt"],
+            ["id", "state", "submittedAt", "excerpt"],
             json.EnumerateObject().Select(p => p.Name));
         Assert.Equal(submission.Id.ToString(), json.GetProperty("id").GetString());
         Assert.Equal("running", json.GetProperty("state").GetString());
     }
+
+    [Fact]
+    [Trait("req", "ACCESS-003")]
+    public async Task Report_OffersTheAcknowledgement_OnlyWhereAFailureIsUnacknowledged()
+    {
+        var submission = await Accepted();
+
+        // Not failed: the control is not offered, and the field is not there at all.
+        Assert.DoesNotContain("awaitingAcknowledgement", Reported(submission).EnumerateObject().Select(p => p.Name));
+
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        // Failed and unacknowledged: this is the row that holds the queue.
+        Assert.True(Reported(submission).GetProperty("awaitingAcknowledgement").GetBoolean());
+
+        await hub.AcknowledgeAsync(submission.Id);
+
+        // Acknowledged: still failed, and the control is gone on the next poll (RUNS-003).
+        var afterwards = Reported(submission);
+        Assert.Equal("failed", afterwards.GetProperty("state").GetString());
+        Assert.DoesNotContain("awaitingAcknowledgement", afterwards.EnumerateObject().Select(p => p.Name));
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-002")]
+    public async Task Report_CarriesNoRunIdentifier_WhileAFailureIsUnacknowledged()
+    {
+        var submission = await Accepted();
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        // The acknowledgement addresses the submission, whose identifier the browser has carried
+        // since `001-first-ingest`. Nothing about the run reaches it (research.md R-06).
+        var reported = Reported(submission);
+        Assert.Equal(
+            ["id", "state", "submittedAt", "excerpt", "awaitingAcknowledgement"],
+            reported.EnumerateObject().Select(p => p.Name));
+        Assert.NotNull(submission.RunId);
+        Assert.DoesNotContain(
+            submission.RunId!.Value.ToString(),
+            reported.GetRawText(),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static JsonElement Reported(Submission submission) =>
+        JsonSerializer.SerializeToElement(SubmissionView.Of(submission));
 
     [Theory]
     [InlineData(SubmissionState.Submitted, "submitted")]

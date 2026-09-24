@@ -63,8 +63,12 @@ public sealed class FileSystemWikiStore : IWikiStore
 
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
 
-        // ensure the log files always ends with a single newline, so new log entries are separated by a blank line
-        await File.AppendAllTextAsync(file, entry.TrimEnd('\n') + '\n', cancellationToken).ConfigureAwait(false);
+        // However the entry ended, the file ends with exactly one blank line after it, so the next
+        // run's entry begins as its own Markdown block rather than running into this one. The trim
+        // is what makes that true of an entry that already ended in a newline and of one that did
+        // not (WIKI-001 asks the instruction for one entry per run; this is what keeps two of them
+        // apart on the page).
+        await File.AppendAllTextAsync(file, entry.TrimEnd('\n') + "\n\n", cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

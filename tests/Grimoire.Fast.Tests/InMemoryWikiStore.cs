@@ -27,9 +27,14 @@ internal sealed class InMemoryWikiStore : IWikiStore
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Appended the way <c>FileSystemWikiStore</c> appends it: whatever the entry ended with, the
+    /// log ends with exactly one blank line after it. A double that shaped the file differently
+    /// from the adapter it stands in for would not merely miss a difference — it would hide one.
+    /// </summary>
     public Task AppendLogAsync(string entry, CancellationToken cancellationToken)
     {
-        files[LogPath] = files.GetValueOrDefault(LogPath, string.Empty) + entry;
+        files[LogPath] = files.GetValueOrDefault(LogPath, string.Empty) + entry.TrimEnd('\n') + "\n\n";
         return Task.CompletedTask;
     }
 }

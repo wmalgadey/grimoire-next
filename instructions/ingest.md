@@ -88,15 +88,16 @@ your run makes a section, the root index lists it by the end of the run.
 `log.md` gets one entry for this run, added at the end of the file, so the log reads in the order
 the runs happened. The entry has this shape:
 
-```
+```markdown
 ## [2026-09-21] ingest | what the text was about, in a few words
+
 **Run:** 0ff122ce-67e4-44fa-8dca-5eddc080cd01
 
-**New:** `sources/martin-moeller-profile.md` — the submitted text as a source
-**New:** `tools/humanizer-de.md` — plugin for German AI-text styling, from the profile's own account
-**Updated:** `consulting/content-governance.md` — GKV study added as a second source
-**Updated:** `index.md` — section `tools` added
-**Not done:** the linked video, because it was not watched
+- **New:** `sources/martin-moeller-profile.md` — the submitted text as a source
+- **New:** `tools/humanizer-de.md` — plugin for German AI-text styling, from the profile's own account
+- **Updated:** `consulting/content-governance.md` — GKV study added as a second source
+- **Updated:** `index.md` — section `tools` added
+- **Not done:** the linked video, because it was not watched
 ```
 
 The date is the day the run ran. `ingest` names the operation. The title says what the submitted
@@ -115,10 +116,11 @@ a German wiki.
 Where `log.md` does not exist yet, open it with a title and one line saying the format, and put
 the first entry under that:
 
-```
+```markdown
 # <the wiki's name> — Log
 
 > One entry per run, newest at the bottom. Format: `## [DATE] operation | title`
+
 ```
 
 Write your entry last, after the pages and the indexes are as you want them.

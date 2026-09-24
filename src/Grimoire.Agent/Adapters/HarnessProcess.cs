@@ -128,6 +128,11 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             running[dispatch.RunId] = process;
         }
 
+        // Reported before a single byte is written to the child, because a kill an instant later
+        // is exactly the case this identity is kept for: an agent nobody wrote down cannot be
+        // found again at the next start-up (RUNS-006, research.md R-11).
+        report.AgentProcessIs(dispatch.SubmissionId, IdentityOf(process));
+
         // stderr is redirected, so somebody has to read it: a pipe nobody drains fills at about
         // 64 KiB, and the CLI then blocks on its own diagnostics — stdout stops, the run stalls,
         // and no ceiling can tell that from a slow model. Nothing is done with the lines; what the
@@ -283,6 +288,94 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
         catch (Exception e) when (e is InvalidOperationException or NotSupportedException)
         {
             // It ended between the two calls, or it was never ours to kill.
+        }
+    }
+
+    /// <summary>
+    /// The identifier and the moment the process started — the pair, because the identifier alone
+    /// is not an identity (research.md R-11). <c>StartTime</c> is local, and everything Grimoire
+    /// compares is UTC.
+    /// </summary>
+    private static AgentProcessIdentity IdentityOf(Process process) =>
+        new(process.Id, new DateTimeOffset(process.StartTime).ToUniversalTime());
+
+    /// <summary>
+    /// End an agent that outlived a stop Grimoire could not act on — and only that agent
+    /// (RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// The whole pair has to match. A process that is gone, or one that carries the number but
+    /// started at another moment, is left alone: those numbers are reused, and after a reboot one
+    /// almost certainly belongs to something else on the owner's machine (research.md R-11). The
+    /// kill is the tree kill this adapter already performs at a ceiling, so the act is not new;
+    /// no interrupt precedes it, because there is nothing left to interrupt — the Grimoire that
+    /// could have read the answer is gone.
+    /// <para>
+    /// <b>A kill that fails is not swallowed.</b> Every other failure of <c>Kill</c> — a
+    /// <c>Win32Exception</c> the operating system raises because the signal did not land, an
+    /// <c>AggregateException</c> from a child of the tree — leaves the identity confirmed and the
+    /// process alive, which is precisely the state RUNS-006 forbids to proceed from. It travels out
+    /// of here, out of <c>HubApplication.RestoreAfterAStop</c>, and the hub does not start: better
+    /// a Grimoire that refuses to come up than one that reads a run as failed and starts the next
+    /// beside an agent it could not end. Failing to <em>read</em> the identity is the other case
+    /// and is handled above, the other way round.
+    /// </para>
+    /// <para>
+    /// <b>What this does not close</b>: the check and the kill are two operations, so a process
+    /// that exits between them could in principle have its number taken by another before the
+    /// signal lands. Binding the two together needs a per-operating-system primitive — Linux has
+    /// <c>pidfd</c>, macOS has no equivalent — and research.md R-11 already turned such primitives
+    /// down for that reason. The window is the microseconds between two calls and closing it needs
+    /// the whole number space to wrap inside them; leaving the process alone instead, which is the
+    /// only other portable answer, would leave an agent writing into the wiki with no ceiling on
+    /// it and nothing left to end it. The narrower risk is the one taken.
+    /// </para>
+    /// </remarks>
+    public void Terminate(AgentProcessIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+
+        Process process;
+
+        try
+        {
+            process = Process.GetProcessById(identity.ProcessId);
+        }
+        catch (ArgumentException)
+        {
+            // Nothing is running under that number. The run reads failed as it would have anyway.
+            return;
+        }
+
+        using (process)
+        {
+            try
+            {
+                if (process.HasExited || IdentityOf(process) != identity)
+                {
+                    // Alive, but not this run's agent. Left alone — this is the guard that keeps
+                    // Grimoire from killing an unrelated program.
+                    return;
+                }
+            }
+            catch (Exception e) when (e is InvalidOperationException or SystemException)
+            {
+                // The identity cannot be read at all. Then it cannot be shown to be this run's
+                // agent, and R-11 settles which way that falls: never end what is not provably
+                // ours. An agent may outlive this, and that is the lesser harm against killing an
+                // unrelated program on the owner's machine.
+                return;
+            }
+
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // It ended between the check and the kill. The window R-11 admits, and the one
+                // outcome of it that is harmless: the agent is gone, which is what was wanted.
+            }
         }
     }
 

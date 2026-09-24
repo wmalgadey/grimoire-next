@@ -1,33 +1,21 @@
-using Grimoire.Agent;
 using Grimoire.Runs;
 
 namespace Grimoire.Hub;
 
 /// <summary>
-/// What happens when a text is submitted: the board decides, and an accepted submission is
-/// dispatched as a run before the call returns (INGEST-001).
+/// What happens when a text is submitted: the board decides whether it is accepted, and the queue
+/// is then asked for the next run (INGEST-001, RUNS-002).
 /// </summary>
 /// <remarks>
 /// This is where the contexts meet, which is why it sits in the hub — the composition root is the
 /// only project that knows all three (plan.md, Structure Decision). RUNS decides whether a text is
 /// accepted and holds its state; GUARD runs it; WIKI is reached only through the granted tools.
 /// </remarks>
-public sealed class SubmissionIntake(
-    SubmissionBoard board,
-    IAgentHarness harness,
-    RunConductor conductor,
-    SubmissionIntake.PromptAssembly assemblePrompt,
-    string model)
+public sealed class SubmissionIntake(SubmissionBoard board, RunQueue queue)
 {
     /// <summary>
-    /// What a run is given, assembled from the instruction and the purpose description. The hub's
-    /// <see cref="InstructionLoader"/> is what does this; nothing else puts text into the prompt
-    /// (Constitution V.1).
-    /// </summary>
-    public delegate string PromptAssembly(string text, Guid runId);
-
-    /// <summary>
-    /// Accept a text and put its run under way, or refuse it.
+    /// Accept a text, or refuse it. An accepted text is not necessarily the one that runs next: a
+    /// run already under way keeps its place, and this submission waits its turn (RUNS-002).
     /// </summary>
     /// <remarks>
     /// There is deliberately no cancellation token. A run outlives the request that started it —
@@ -39,38 +27,17 @@ public sealed class SubmissionIntake(
     {
         var result = board.Accept(text, inputs);
 
-        if (result.Accepted is not { } submission)
+        if (result.Accepted is null)
         {
             // A refused submission is stored nowhere, carries no state, and starts no run.
             return result;
         }
 
-        var run = conductor.Begin(submission.Id);
+        // An accepted submission is one of the four events that can let a run start (research.md
+        // R-03). The pump returns once the run it started is under way, and the user waits for no
+        // more than that.
+        await queue.PumpAsync().ConfigureAwait(false);
 
-        try
-        {
-            // Assembling the prompt is inside this try and not above it. It reads the instruction
-            // from disk, so it can throw for a reason that has nothing to do with the run — a file
-            // deleted between start-up and now — and the run is already registered by then.
-            var dispatch = new AgentDispatch(
-                run.Id,
-                submission.Id,
-                assemblePrompt(submission.Text, run.Id),
-                run.Grant,
-                model);
-
-            await harness.DispatchAsync(dispatch, conductor.Report(), CancellationToken.None).ConfigureAwait(false);
-        }
-        catch
-        {
-            // A run that never began must not leave its submission reading Submitted: the board
-            // counts that as a run in progress, so every later text would be refused for as long
-            // as the process lives (INGEST-001, INGEST-005). It ended, and it ended failed.
-            conductor.Report().RunEnded(submission.Id, RunOutcome.Failed);
-            throw;
-        }
-
-        // The run is under way and the call returns; the user waits for none of it.
         return result;
     }
 }

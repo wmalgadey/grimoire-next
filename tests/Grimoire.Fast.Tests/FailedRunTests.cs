@@ -39,7 +39,10 @@ public sealed class FailedRunTests
     {
         await ARunWrites();
 
-        Assert.Equal("Run 8f3c wrote one page.\n", await wiki.ReadAsync("log.md", TestContext.Current.CancellationToken));
+        // Equality rather than containment: WIKI-003 is that nothing reaches back into the wiki,
+        // which means nothing was taken away either. The blank line is the store's own separator
+        // between entries, not something the failure added.
+        Assert.Equal("Run 8f3c wrote one page.\n\n", await wiki.ReadAsync("log.md", TestContext.Current.CancellationToken));
     }
 
     [Fact]

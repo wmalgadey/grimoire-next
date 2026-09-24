@@ -90,6 +90,7 @@ public sealed class HarnessProcessTests
         var finished = new TaskCompletionSource();
 
         var report = new RunReport(
+            AgentProcessIs: (_, _) => { },
             AgentReportedIn: _ => reportedIn = true,
             CostSoFar: (_, _) => { },
             AgentExited: (_, _) => { },
@@ -127,6 +128,7 @@ public sealed class HarnessProcessTests
         var finished = new TaskCompletionSource();
 
         var report = new RunReport(
+            AgentProcessIs: (_, _) => { },
             AgentReportedIn: _ => { },
 
             // The first tokens mean a model call is under way, which is the moment a stop has to
