@@ -311,7 +311,7 @@ owner's, and I.9 makes it the last task of the feature rather than a formality a
       merge this feature's binding decisions into `docs/decisions.md` as `DEC-023` (SQLite behind a
       submission store) and `DEC-024` (recognising a process by the identifier *and* its start
       time), each with its reason — **Req:** Principle IV.2 | Principle II.6
-- [ ] T039 The owner exercises the outcome once with the real external systems in place, per
+- [X] T039 The owner exercises the outcome once with the real external systems in place, per
       `quickstart.md` — the queue, the acknowledgement gate, and **both** stop passes including the
       `kill -9` one, where after the restart `pgrep -f claude` must print nothing. This is the last
       task of the feature; without it the feature is not done — **Req:** Principle I.9
