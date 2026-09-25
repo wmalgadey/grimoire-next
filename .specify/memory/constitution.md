@@ -10,8 +10,8 @@ a required template field, or a gate. Two gates exist from the first feature: `t
 ### I. Purpose and Focus
 
 1. `docs/product.md` is owner-written: goal, non-goals, the core loop, the capability names, and the
-   ordered outcomes with status Now / Next / Later / Never; exactly one outcome is Now. It outranks
-   every spec. **Verified:** review
+   ordered outcomes with status Now / Next / Later / Never / Done; exactly one outcome is Now. It
+   outranks every spec. **Verified:** review
 2. Outcomes carry stable IDs `OUT-NN`. They are never renumbered and never reused, row order is
    priority, and `OUT` and `DEC` are reserved and are not capability names. **Verified:** review
 3. Every spec names the one outcome ID it advances. A feature may touch several capabilities; it
@@ -22,9 +22,12 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    **Verified:** spec template field "Blocking open questions (none, or stop)"
 6. A feature is one vertical slice with a user-observable result and adds exactly one of: a new
    operation, a new user interaction, a new external system. Never two. The first feature establishes
-   the skeleton and is exempt from "never two", not from the budget. **Verified:** review
-7. Budget per feature: 3 user stories, about 40 tasks. A plan over budget is split before
-   `/speckit-tasks`. **Verified:** plan template field "Budget and split decision"
+   the skeleton and is exempt from "never two", nothing else. **Verified:** review
+7. A feature has one acceptance scenario, the one the owner exercises by hand at close. Every user
+   story advances that scenario; a story that needs its own scenario is a separate feature. A split
+   is proposed in the plan with both scenarios named and is the owner's decision; no count of
+   stories, requirements or tasks triggers a split. **Verified:** plan template field "Acceptance
+   scenario"
 8. Where the product conforms to an external standard, `docs/product.md` names it with a pinned
    version and the capability requirements state which parts apply. Nothing of the standard beyond
    those parts is built. **Verified:** review
@@ -34,10 +37,22 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    its review-proven requirements are about, and the owner has exercised its outcome once with the
    real external systems in place. **Verified:** review
 10. One feature branch off main. Each phase of `tasks.md` is a branch off the feature branch and is
-    merged back into it when its PR is reviewed and green, before the next phase starts. No PR is
-    based on another open PR. The plan names the phases and their PRs before implementation starts.
-    A PR stays a draft until its phase is complete and leaves the feature branch green; a step that
-    cannot pass yet belongs in the PR that makes it pass. **Verified:** review
+    merged back into it when its PR is green and its review is closed (I.11), before the next phase
+    starts. No PR is based on another open PR. The plan names the phases and their PRs before
+    implementation starts. A PR stays a draft until its phase is complete and leaves the feature
+    branch green; a step that cannot pass yet belongs in the PR that makes it pass.
+    **Verified:** review
+11. Every PR is reviewed before merge by a reviewer other than the agent that wrote it. Taking a PR
+    out of draft starts the repository's automatic review; the implementing agent waits for it,
+    classifies every finding per Governance 3, resolves what it accepts and answers what it rejects
+    on the PR. After resolving, the agent decides whether a further round is needed — by the size
+    and complexity of the change and whether the findings altered the design — and records that
+    decision on the PR in one sentence. At most three rounds per PR. The agent stops and requests
+    the owner's review, leaving the PR open, when findings remain after the third round, when a
+    finding is an owner decision (Governance 3), when the change touches an instruction, a design
+    invariant or a decision in `docs/decisions.md`, or when the agent judges a second opinion
+    insufficient. A review round is counted when the agent pushes after findings. The agent merges
+    a phase PR into the feature branch itself; the feature reaches main per I.9. **Verified:** review
 
 ### II. Simplicity
 
@@ -118,14 +133,24 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    **Verified:** `trace-check`
 4. A single documented command writes `docs/trace.md` (requirement, proof kind, tests, level, status).
    It is committed when a feature closes, together with the outcome status and spec reference in
-   `docs/product.md`; these two edits are the only ones an agent makes to `docs/product.md`. These
-   places and `docs/decisions.md` answer what is wanted, what exists, what is proven, and why it is
-   built this way, and no other status document exists. **Verified:** review
+   `docs/product.md`; these two edits are the only ones an agent makes to `docs/product.md`. At
+   feature close the agent sets the outcome to Done only when the owner, having exercised the
+   outcome (I.9), states that it is achieved; otherwise it stays Now and the next spec advancing it
+   follows. A Done outcome is never reopened; a further wish is a new outcome. Done keeps its
+   `OUT-NN` and its row. These places and `docs/decisions.md` answer what is wanted, what exists,
+   what is proven, and why it is built this way, and no other status document exists.
+   **Verified:** review
 5. Every task names the requirement ID it serves or the principle it follows. **Verified:** tasks
    template field "Requirement or principle"
 6. Every behaviour a spec commits to carries a requirement ID. Edge cases, success criteria and
    assumptions refer to requirement IDs and add no behaviour of their own. **Verified:** spec
    template field "Edge cases"
+7. A requirement is one observable behaviour. The values it covers — states, reasons, fields,
+   messages — are a list inside that requirement, never one requirement per value. Two requirements
+   that differ only in a value are merged. **Verified:** review
+8. Clarification refines, it does not extend: what a clarification surfaces goes into the
+   acceptance criteria of an existing requirement. A clarification that would need a new
+   requirement ID is put to the owner; the agent does not create it. **Verified:** review
 
 ### V. Design Invariants
 
@@ -146,9 +171,10 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    before action: code defect → task; spec defect → `/speckit-clarify`; else dropped. **Verified:** review
 3. A review finding, human or bot, becomes a test only if it names a violated requirement ID.
    Otherwise it gets the smallest code change that resolves it, or is dropped. A finding whose answer
-   is a new mechanism is an owner decision. **Verified:** review
+   is a new mechanism is an owner decision. Findings are answered on the PR, not silently dropped.
+   **Verified:** review
 4. An amendment is its own PR, touches only this file, the template overrides, and the review
    checklist, and is not retroactive. Versioning is semantic: MAJOR removal or redefinition, MINOR new
    rule, PATCH wording. **Verified:** review
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-09-20
+**Version**: 2.0.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-09-25

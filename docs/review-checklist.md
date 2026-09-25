@@ -9,7 +9,8 @@ requires an amendment that retires one.
       renumbered or reused, row order still reflects priority, no capability is named `OUT` or `DEC`,
       `docs/product.md` was otherwise not edited by an agent except for the outcome status and the
       spec reference, and no status document exists beyond it, `docs/trace.md`, and the capability
-      files. *(I.1, I.2, IV.4)*
+      files. If an outcome was set to Done: did the owner state it achieved after exercising it, and
+      was no Done outcome reopened? *(I.1, I.2, IV.4)*
 
 - [ ] **2. Slice shape** — The feature is one vertical slice with a user-observable result and adds
       exactly one of: a new operation, a new user interaction, a new external system. *(I.6)*
@@ -20,8 +21,11 @@ requires an amendment that retires one.
       agent rather than on our code, does the instruction every run receives state that shape, in
       full, as the requirement lists it? *(I.8)*
 
-- [ ] **4. Phase PRs and the feature branch** — Was every phase PR merged into the feature branch
-      before the next phase started, and was no PR based on another open PR? *(I.10)*
+- [ ] **4. Phase PRs and their review** — Was every phase PR merged into the feature branch before
+      the next phase started, only once green and its review closed, and was no PR based on another
+      open PR? Was every PR reviewed by someone other than its author, every finding answered on the
+      PR, the round decision recorded in one sentence, no more than three rounds run, and the
+      owner's review requested where I.11 requires it? *(I.10, I.11)*
 
 - [ ] **5. Closing the feature** — Are all tasks complete, both gates green, and `docs/trace.md`
       regenerated? Are the capability files reconciled with this feature's requirements as added,
@@ -57,12 +61,15 @@ requires an amendment that retires one.
       its adapter? Does every dispatch pass an explicit tool list, and is that grant recorded?
       *(V.2, V.3)*
 
-- [ ] **11. Findings become tests only on a named violation** — Every review finding, human or bot,
-      that became a test names the requirement ID it violates; the rest became the smallest code
-      change that resolves them or were dropped, and any finding whose answer is a new mechanism went
-      to the owner. *(Gov. 3)*
+- [ ] **11. Findings, converge and amendments** — Every review finding, human or bot, that became a
+      test names the requirement ID it violates; the rest became the smallest code change that
+      resolves them or were dropped, none silently — each is answered on the PR — and any finding
+      whose answer is a new mechanism went to the owner. Each converge finding was classified before
+      action, work blocked by a rule was unblocked by an amendment rather than by an exception, and
+      any amendment was its own PR touching only the constitution, the template overrides, and this
+      checklist. *(Gov. 1, 2, 3, 4)*
 
-- [ ] **12. Converge and amendments** — Each converge finding was classified before action, work
-      blocked by a rule was unblocked by an amendment rather than by an exception, and any amendment
-      was its own PR touching only the constitution, the template overrides, and this checklist.
-      *(Gov. 1, 2, 4)*
+- [ ] **12. Requirement shape** — Is every requirement one observable behaviour, with the values it
+      covers listed inside it and no two requirements differing only in a value? Did every
+      clarification land in the acceptance criteria of an existing requirement, and was any that
+      needed a new requirement ID put to the owner rather than created by the agent? *(IV.7, IV.8)*

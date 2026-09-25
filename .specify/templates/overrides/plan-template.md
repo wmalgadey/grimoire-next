@@ -15,7 +15,7 @@ execution workflow.
 
 **Slice addition**: [exactly one of: a new operation | a new user interaction | a new external
 system]. [What it is.] *(Constitution I.6 — never two; the skeleton feature is exempt from
-"never two", not from the budget.)*
+"never two", nothing else.)*
 
 ## Technology decisions *(mandatory)*
 
@@ -72,20 +72,26 @@ Enforced by: [means]. No purpose-built tooling.
 | V. Design Invariants | touched \| not touched | [one line] |
 | Governance | touched \| not touched | [one line] |
 
-## Budget and split decision *(mandatory)*
+## Acceptance scenario *(mandatory)*
 
 <!--
-  REQUIRED (Constitution I.7). Budget: 3 user stories, about 40 tasks. A plan over budget is split
-  BEFORE /speckit-tasks.
+  REQUIRED (Constitution I.7). A feature has ONE acceptance scenario: the one the owner exercises
+  by hand at close (its steps are the Quickstart below). Every user story advances it; a story
+  that needs its own scenario is a separate feature. No count of stories, requirements or tasks
+  triggers a split — only a second scenario does, and the split is the owner's decision.
 -->
 
-**User stories**: [n] of 3 · **Estimated tasks**: [n] of ~40
+**Scenario**: [one sentence — what the owner does and what they see, with the real external
+systems in place]
 
-**Within budget?** [Yes → proceed to /speckit-tasks] \| [No → split, described below]
+**How each story advances it**: US1 — [how]; US2 — [how]; US3 — [how]
 
-**Split** *(fill only if over budget)*: This feature keeps [scope]; [scope] moves to [follow-up
-feature / a Later outcome proposed to the owner]. The cut runs along [boundary], so each half still
-has a user-observable result.
+**Split proposed?** [No → proceed to /speckit-tasks] \| [Yes → both scenarios named below; the
+owner decides before /speckit-tasks]
+
+**Split** *(fill only if a story needs its own scenario)*: This feature keeps [scenario A]; [scenario
+B] moves to [follow-up feature / a Later outcome proposed to the owner]. The cut runs along
+[boundary], so each half still has a user-observable result.
 
 ## Phase PRs *(mandatory)*
 
@@ -98,7 +104,10 @@ has a user-observable result.
 | --- | --- | --- | --- |
 | [phase name] | [task IDs] | `[###-feature-name]-phase-N-[name]` | [#NN, or "not opened yet"] |
 
-Each PR targets the feature branch and is merged before the next phase starts (I.10).
+Each PR targets the feature branch and is merged by the agent before the next phase starts, once
+it is green and its review is closed: reviewed by someone other than its author, every finding
+answered on the PR, the round decision recorded, the owner's review requested where I.11 says so
+(I.10, I.11).
 
 ## Project Structure
 
