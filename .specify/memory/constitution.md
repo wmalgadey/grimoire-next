@@ -173,8 +173,9 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    Otherwise it gets the smallest code change that resolves it, or is dropped. A finding whose answer
    is a new mechanism is an owner decision. Findings are answered on the PR, not silently dropped.
    **Verified:** review
-4. An amendment is its own PR, touches only this file, the template overrides, and the review
-   checklist, and is not retroactive. Versioning is semantic: MAJOR removal or redefinition, MINOR new
-   rule, PATCH wording. **Verified:** review
+4. An amendment is its own PR, touches only this file, the template overrides, the review checklist
+   and, where an amended rule describes a mechanism by its behaviour, the one `docs/decisions.md`
+   entry that names the tool behind it, and is not retroactive. Versioning is semantic: MAJOR removal
+   or redefinition, MINOR new rule, PATCH wording. **Verified:** review
 
 **Version**: 2.0.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-09-25

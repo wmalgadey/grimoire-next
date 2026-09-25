@@ -66,8 +66,9 @@ requires an amendment that retires one.
       resolves them or were dropped, none silently — each is answered on the PR — and any finding
       whose answer is a new mechanism went to the owner. Each converge finding was classified before
       action, work blocked by a rule was unblocked by an amendment rather than by an exception, and
-      any amendment was its own PR touching only the constitution, the template overrides, and this
-      checklist. *(Gov. 1, 2, 3, 4)*
+      any amendment was its own PR touching only the constitution, the template overrides, this
+      checklist and, where an amended rule describes a mechanism by its behaviour, the one
+      `docs/decisions.md` entry that names the tool behind it. *(Gov. 1, 2, 3, 4)*
 
 - [ ] **12. Requirement shape** — Is every requirement one observable behaviour, with the values it
       covers listed inside it and no two requirements differing only in a value? Did every

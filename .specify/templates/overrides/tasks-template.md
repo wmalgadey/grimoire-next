@@ -12,8 +12,8 @@ data-model.md, contracts/
 
 **Outcome advanced**: OUT-NN — [row wording, copied from the spec]
 
-**Acceptance scenario**: [one sentence, copied from plan.md]. Every task serves a story that
-advances it; no count of tasks triggers a split (Constitution I.7).
+**Acceptance scenario**: [one sentence, copied from plan.md]. Every task serves it, through a user
+story or the foundation the stories stand on; no count of tasks triggers a split (Constitution I.7).
 
 ## Format
 
