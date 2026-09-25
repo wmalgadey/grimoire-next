@@ -197,4 +197,12 @@
 
 **Made by**: plan `002-ingest-queue` (research.md R-11).
 
+## DEC-025 — Every PR's second reviewer is Claude Code Review from the Claude GitHub App
+
+**Decision**: The Claude GitHub App is installed on the repository with Claude Code Review enabled and its trigger set to "when a pull request is marked ready for review" (draft → open), targeting every PR. No CI job of ours starts the review; the app's own trigger does.
+
+**Reason**: Constitution I.11 requires a reviewer other than the agent that wrote the PR and ties the start of review to leaving draft. The implementing agent runs as a session of the same product, so the app's review is a distinct process with no memory of the change, which is what "other than" means here. Configuring it as a repository setting rather than a workflow means no code of ours (II.1) and no gate (II.2); its findings are classified per Governance 3 and never fail CI on their own.
+
+**Made by**: owner, on amending the constitution to 2.0.0.
+
 ## Superseded
