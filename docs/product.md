@@ -27,26 +27,38 @@ As long as one person uses Grimoire, it needs no access control of its own: it a
 
 ## 4. Non-goals
 
+Things that are never built. What must never break is in §5.
+
 - No vector/embedding index: the readable wiki IS the product, RAG is the alternative to it.
 - No wiki editor of our own: the wiki stays readable and editable with any tool.
-- No judgement of content by Grimoire: judgement about content rests with the agent and the
-  user. Into the wiki Grimoire writes only facts about the run: who produced a page and when.
-- Undo happens through the wiki's version control, not through Grimoire: Grimoire brings no undo
-  of its own and never takes a run back, a failed one included. How far back the user can go is a
-  property of the wiki's history, not a feature of Grimoire.
 - No approval before a run's changes land: trust is built by reviewing afterwards (§1), and the
   history is the gate (§2). Approval exists only where a run itself proposes instead of acts
   (OUT-08).
 - No general execution access for agents: an agent's abilities are exposed as narrowly scoped
   tools, never as a shell.
-- No configurable budgets or per-run tuning: a run has two fixed ceilings, wall-clock time and
-  cost, and ends at whichever it reaches first; otherwise it runs to completion. Trust rests on
-  seeing what a run did, not on regulating it up front.
+- No configurable budgets or per-run tuning: the two ceilings (§5) are fixed; otherwise a run
+  runs to completion. Trust rests on seeing what a run did, not on regulating it up front.
 - Not multiple wikis per instance — a second wiki means a second instance.
 - No plugin/extension system.
 - No hosted service.
 
-## 5. Capabilities
+## 5. Invariants
+
+These hold from OUT-01 on and no outcome may break them. Anything that need not hold from the
+first feature is a Later outcome, not an invariant.
+
+1. Grimoire decides no wiki content. Judgement lives only in the versioned instruction and the
+   user-written purpose description, both handed to the agent at dispatch. Into wiki pages
+   Grimoire writes nothing but facts about a run: who produced a page and when.
+2. Every run is bounded. An agent receives only the tools granted for that dispatch, every grant
+   is recorded, and the run ends at the first of its two fixed ceilings, wall-clock time and
+   cost. There is no way to run an agent without both.
+3. The wiki's history stays the user's gate. Every change a run makes is visible and reversible
+   there; Grimoire never takes a run back on its own, not even a failed one.
+4. The wiki stays an artifact that is readable and usable without Grimoire. No outcome may make
+   a page depend on Grimoire to be understood.
+
+## 6. Capabilities
 
 | Capability | Covers                                                                                                                             |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -59,13 +71,7 @@ As long as one person uses Grimoire, it needs no access control of its own: it a
 | GUARD      | What an agent may do and reach: tool grants, the safety ceilings, reach limits                                                     |
 | OPS        | Setting up and running Grimoire continuously                                                                                       |
 
-## 6. Outcomes
-
-<!-- IDs: OUT-NN, in order of assignment. They are never renumbered and never reused.
-     Order of rows = priority. OUT is not a capability name.
-     Status: Now = gets specified next; Next = after that, without a condition;
-     Later = needs a trigger from §7; Done = every spec in its row is merged and the
-     owner has exercised it; Never = excluded. -->
+## 7. Outcomes
 
 | ID     | I can ...                                                                                               | Status | Capabilities                      | Specs                              |
 | ------ | ------------------------------------------------------------------------------------------------------- | ------ | --------------------------------- | ---------------------------------- |
@@ -94,7 +100,7 @@ As long as one person uses Grimoire, it needs no access control of its own: it a
 
 Against the core loop (§3): steps 1 and 2 are OUT-01, step 3 is OUT-02, step 4 is OUT-03. The loop closes once Next is done, not with Now alone.
 
-## 7. Later: promotion triggers
+## 8. Later: promotion triggers
 
 A trigger moves an outcome from Later to Next.
 
@@ -115,7 +121,7 @@ A trigger moves an outcome from Later to Next.
 - OUT-21: after OUT-18 and before runs go unattended. Not earlier.
 - OUT-22: as soon as I paste chat excerpts as text for the third time in one week.
 
-## 8. Open questions
+## 9. Open questions
 
 - How does a run tell a consequential lint change from an uncritical one, and who decides the criterion? (blocks OUT-08)
 - Who commits, the agent through a tool of its own or Grimoire at the run boundary; and does a run's commit land on the wiki's main history or on a branch the user merges? (blocks OUT-15)
