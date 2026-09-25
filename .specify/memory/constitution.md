@@ -135,11 +135,12 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    It is committed when a feature closes, together with the outcome status and spec reference in
    `docs/product.md`; these two edits are the only ones an agent makes to `docs/product.md`. At
    feature close the agent sets the outcome to Done only when the owner, having exercised the
-   outcome (I.9), states that it is achieved; otherwise it stays Now and the next spec advancing it
-   follows. A Done outcome is never reopened; a further wish is a new outcome. Done keeps its
-   `OUT-NN` and its row. These places and `docs/decisions.md` answer what is wanted, what exists,
-   what is proven, and why it is built this way, and no other status document exists.
-   **Verified:** review
+   outcome (I.9), states that it is achieved and names the outcome that becomes Now; the agent sets
+   both statuses in one edit, so exactly one outcome is Now at every commit (I.1). Otherwise it
+   stays Now and the next spec advancing it follows. A Done outcome is never reopened; a further
+   wish is a new outcome. Done keeps its `OUT-NN` and its row. These places and `docs/decisions.md`
+   answer what is wanted, what exists, what is proven, and why it is built this way, and no other
+   status document exists. **Verified:** review
 5. Every task names the requirement ID it serves or the principle it follows. **Verified:** tasks
    template field "Requirement or principle"
 6. Every behaviour a spec commits to carries a requirement ID. Edge cases, success criteria and
