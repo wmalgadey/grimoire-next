@@ -197,4 +197,12 @@
 
 **Made by**: plan `002-ingest-queue` (research.md R-11).
 
+## DEC-025 — Every PR's second reviewer is GitHub Copilot code review, requested by the repository
+
+**Decision**: Copilot code review is requested automatically by a repository rule, once per pull request: when a PR is opened ready for review, or when a draft is marked ready. It does not run again on a push. Every further round is requested by the implementing agent, by re-requesting the reviewer on the PR. No CI job of ours starts the review; the repository setting does.
+
+**Reason**: Constitution I.11 requires a reviewer other than the agent that wrote the PR and ties the start of review to leaving draft. The implementing agent is a Claude session, so a review by a different vendor's model is a distinct reviewer with no memory of the change, which is what "other than" means here. Observed on PR #42: the `copilot-pull-request-reviewer` check run appeared the moment the PR left draft, with no workflow of ours involved. Configuring it as a repository setting rather than a workflow means no code of ours (II.1) and no gate (II.2); its findings are classified per Governance 3 and never fail CI on their own.
+
+**Made by**: owner, on amending the constitution to 2.0.0.
+
 ## Superseded

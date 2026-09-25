@@ -12,7 +12,8 @@ data-model.md, contracts/
 
 **Outcome advanced**: OUT-NN — [row wording, copied from the spec]
 
-**Budget**: about 40 tasks (Constitution I.7). If the list exceeds it, go back to plan.md and split.
+**Acceptance scenario**: [one sentence, copied from plan.md]. Every task serves it, through a user
+story or the foundation the stories stand on; no count of tasks triggers a split (Constitution I.7).
 
 ## Format
 
@@ -182,4 +183,5 @@ feature (Constitution II.1).
   level below cannot prove it.
 - Commit after each task or logical group.
 - A finding from review becomes a test only if it names a violated requirement ID (Governance 3);
-  otherwise it becomes the smallest code change that resolves it, or is dropped.
+  otherwise it becomes the smallest code change that resolves it, or is dropped. Findings are
+  answered on the PR, not silently dropped.

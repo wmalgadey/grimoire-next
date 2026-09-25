@@ -42,8 +42,10 @@
 ## User Scenarios & Testing *(mandatory)*
 
 <!--
-  Budget: at most 3 user stories (Constitution I.7). Each story is independently testable and
-  delivers value on its own. Priorities P1, P2, P3 — P1 is the MVP slice.
+  Every user story advances the feature's one acceptance scenario, the one the owner exercises by
+  hand at close (Constitution I.7); a story that needs its own scenario is a separate feature. No
+  count of stories triggers a split. Each story is independently testable and delivers value on
+  its own. Priorities P1, P2, P3 — P1 is the MVP slice.
 -->
 
 ### User Story 1 - [Brief Title] (Priority: P1)
@@ -104,8 +106,15 @@
 
 ## Requirements *(mandatory)*
 
+Binding are the requirement sentence and its acceptance scenario. Lists, screen descriptions and
+examples are illustrative unless the requirement says "exactly".
+
 <!--
-  REQUIRED per requirement: a capability-scoped ID and a proof kind.
+  REQUIRED per requirement: a capability-scoped ID and a proof kind. A requirement is ONE
+  observable behaviour; the values it covers (states, reasons, fields, messages) are a list inside
+  it, never one requirement per value, and two requirements that differ only in a value are
+  merged (Constitution IV.7). Its acceptance scenario is the Given / When / Then under the user
+  story it serves.
 
   ID       <CAPABILITY>-NNN, capability name from docs/product.md §5. Stable, never reused,
            never feature-local. A new capability is an owner decision (Constitution IV.1).
@@ -118,7 +127,9 @@
                       `review` gets one line under "Why review" below saying why both are
                       impossible. No line, no `review`.
 
-  Mark anything undecided as [NEEDS CLARIFICATION: question] and run /speckit-clarify.
+  Mark anything undecided as [NEEDS CLARIFICATION: question] and run /speckit-clarify. A
+  clarification refines an existing requirement's acceptance criteria; one that would need a new
+  requirement ID is put to the owner, never created by the agent (Constitution IV.8).
 -->
 
 ### Functional Requirements
