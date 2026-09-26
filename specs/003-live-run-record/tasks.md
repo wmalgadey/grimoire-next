@@ -308,11 +308,11 @@ rather than work of its own", and what it adds is the two assertions nothing els
       does not, or the reason none should. A survivor becomes a test only where it names a requirement
       the suite does not actually verify. Nothing here is a threshold and nothing is run locally —
       **Req:** Principle III.1
-- [ ] T054 Set OUT-02 **and OUT-16** to Done and name the next Now, in **one** edit to
+- [X] T054 Set OUT-02 **and OUT-16** to Done and name the next Now, in **one** edit to
       `docs/product.md`, together with the spec reference — and move OUT-16 into this feature's row.
       One edit, so exactly one outcome is Now at every commit (Constitution IV.4, I.1). Only after
       T055 — **Req:** Principle IV.4
-- [ ] T055 The owner exercises OUT-02 and OUT-16 once with the real external systems in place, per
+- [X] T055 The owner exercises OUT-02 and OUT-16 once with the real external systems in place, per
       `plan.md` §Quickstart and [quickstart.md](quickstart.md) Part 1: a real wiki, a signed-in
       `claude`, a pinned model, no stand-ins. **This is the last task of the feature; without it the
       feature is not done** — **Req:** Principle I.9
