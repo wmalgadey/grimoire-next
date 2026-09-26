@@ -340,6 +340,46 @@ public sealed class RunRecordViewTests : PageTest
         await Expect(calls.Locator(".call")).ToHaveCountAsync(2);
     }
 
+    [Fact]
+    public async Task Turn_CountsItsCalls_WhenTheirAnswersAreWrittenBesideThem()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Said(submission, "I will read both pages.");
+
+        // Two calls before either answer, which is how a turn that batches them arrives. Neither
+        // answer can be nested — the call above the first is the second — so the record writes both
+        // beside the calls, at the calls' own depth.
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+        hub.Agent.Called(submission, "read_page", """{"path":"grace.md"}""");
+        hub.Agent.Returned(submission, "read_page", "# Ada");
+        hub.Agent.Returned(submission, "read_page", "# Grace");
+        hub.Agent.End(submission, RunOutcome.Done);
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
+
+        var calls = Segments().Nth(0).Locator("details.calls");
+
+        // Two calls, not four sections. An answer written beside a call is not one more thing the
+        // agent did.
+        await Expect(calls.Locator("summary").First).ToHaveTextAsync("2 tool calls");
+        await Expect(calls.Locator(".call")).ToHaveCountAsync(2);
+
+        // And each answer sits in the call it answers, oldest first — which is the order the record
+        // attributes them by.
+        await Expect(calls.Locator(".call").Nth(0).Locator("details.result")).ToHaveCountAsync(1);
+        await Expect(calls.Locator(".call").Nth(1).Locator("details.result")).ToHaveCountAsync(1);
+
+        // Opened: the turn's fold first, then the answer inside the call it belongs to.
+        await calls.Locator("summary").First.ClickAsync();
+        await calls.Locator(".call").Nth(0).Locator("details.result > summary").ClickAsync();
+
+        await Expect(calls.Locator(".call").Nth(0).Locator("pre")).ToHaveTextAsync("# Ada");
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator Segments() => Page.Locator("#record li");

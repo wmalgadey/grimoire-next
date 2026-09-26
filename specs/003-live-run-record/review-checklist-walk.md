@@ -59,11 +59,17 @@ stories stand at:
 | --- | --- | --- |
 | US1 — read back a finished run, on the run's page | 5 | `Run_IsOpenedFromItsRowAndReadInOrder`, `Result_IsFoldedUntilTheUserOpensItAndIsThenWhole`, `Result_IsOneSegment_WhenItHoldsALineStartingWithTwoHashes`, `AgentText_IsShownWhole_WhenItHoldsAFencedBlock`, `View_SaysLinesAreMissing_WhenTheRecordCouldNotHoldThem` |
 | US1 — read back a finished run, on the list | 3 | `List_ShowsTheModelAndBothFigures_ForARunThatHasEnded`, `List_ShowsNoRunFigures_ForASubmissionWaitingItsTurn`, `List_PutsANewSubmissionFirst_WhileThePageIsOpen` |
-| US2 — watch a run under way | 3 | `Figures_RiseWhileTheRunIsUnderWay_WithoutMovingTheRows`, `Row_IsNotRebuiltUnderTheUser_WhileTheListPolls`, `Moments_ArriveBelowWhatIsThere_WithoutDisturbingIt` |
+| US1 — read back a finished run, the shape of an entry | 1 | `Turn_CountsItsCalls_WhenTheirAnswersAreWrittenBesideThem` |
+| US2 — watch a run under way | 4 | `Figures_RiseWhileTheRunIsUnderWay_WithoutMovingTheRows`, `Row_IsNotRebuiltUnderTheUser_WhileTheListPolls`, `Moments_ArriveBelowWhatIsThere_WithoutDisturbingIt`, `Answer_ArrivesWhileThePageIsOpen_InTheCallItAnswers` |
 | US3 — without Grimoire | 1 | `Record_ServedIsTheFileOnDisk_AndTheWikiHoldsNoneOfIt` |
 
-**US1 stands at eight**, split across two rows above only to show where they sit; III.4 counts them per
-*story*, and both rows are US1. US2 stands at three. US3 is the only one inside the rule.
+**US1 stands at nine**, split across three rows above only to show where they sit; III.4 counts them
+per *story*, and all three rows are US1. **US2 stands at four.** US3 is the only one inside the rule.
+
+The counts rose while this PR was open, because each new scenario answered a review finding — the
+missing-lines notice, the row ordering, a live answer, a batched turn. That is how eight became nine
+and three became four, and it is the same one-at-a-time habit the finding below describes: each was
+weighed on its own and none against the cap.
 
 (An earlier version of this table said six for US1 while listing eight names. The count was wrong, not
 the list — which is the same kind of error as a test name promising what its assertions do not

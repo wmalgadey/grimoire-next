@@ -194,7 +194,10 @@ function framed(text) {
   const rows = lines
     .filter((line) => line.startsWith("|") && line.endsWith("|"))
     .map((line) => line.slice(1, -1).split("|").map((cell) => cell.trim()))
-    .filter((cells) => cells.length === 2 && !cells.every((cell) => /^-+$/.test(cell)));
+    // The header row of the record's tables carries no names — the two columns are a name and a
+    // value, and saying so would be a row of its own — and the row of dashes under it is Markdown's
+    // own. Neither is a row of the table a reader wants.
+    .filter((cells) => cells.length === 2 && !cells.every((cell) => cell === "" || /^-+$/.test(cell)));
 
   if (rows.length === 0) {
     // Nothing that reads as one of the record's tables. Whatever it is, it goes on the screen as the
@@ -297,19 +300,48 @@ function element(segment) {
 
   // The calls of this turn, folded away behind their count. Eight reads are eight lines the reader
   // did not ask for; the sentence that explains them is the one they came for.
-  const calls = document.createElement("details");
-  calls.className = "calls";
+  const calls = foldFor(item);
 
-  const summary = document.createElement("summary");
-  summary.textContent = `${inside.length} ${inside.length === 1 ? "tool call" : "tool calls"}`;
-  calls.append(summary);
-
-  for (const call of inside) {
-    calls.append(nested(call));
+  for (const part of inside) {
+    place(calls, part);
   }
 
-  item.append(calls);
+  countCalls(calls);
   return item;
+}
+
+// Where one section of a turn goes. Not every section is a call: a turn that made several at once has
+// its answers written beside them, at the calls' own depth, because none of them could be nested. An
+// answer like that belongs in the oldest call still waiting for one — the same ordering the record
+// uses to attribute it, and the same one the transcript uses a layer further down.
+function place(calls, part) {
+  if (part.said.startsWith("called ")) {
+    calls.append(nested(part));
+    return;
+  }
+
+  const waiting = [...calls.querySelectorAll(":scope > .call")].find(
+    (call) => call.dataset.answered !== "yes",
+  );
+
+  if (waiting === undefined) {
+    // An answer with no call before it waiting for one. It is still part of the run, so it is shown
+    // rather than dropped.
+    calls.append(...bodyOf(part, part.body));
+    return;
+  }
+
+  waiting.append(...bodyOf(part, part.body));
+  waiting.dataset.answered = "yes";
+}
+
+// The count on the fold is the calls, not the sections: an answer written beside them is not one more
+// thing the agent did.
+function countCalls(calls) {
+  const drawn = calls.querySelectorAll(":scope > .call").length;
+
+  calls.querySelector(":scope > summary").textContent =
+    `${drawn} ${drawn === 1 ? "tool call" : "tool calls"}`;
 }
 
 // One call inside a turn: its own line, and whatever the record wrote inside it — its answer — folded
@@ -521,14 +553,20 @@ function grew(held, segment) {
   const calls = held.element.querySelector(":scope > details.calls");
 
   // An answer written inside a call that is already on the page.
+  const drawnCalls = calls === null ? [] : [...calls.querySelectorAll(":scope > .call")];
+
   inside.slice(0, held.inside).forEach((call, at) => {
+    if (!call.said.startsWith("called ")) {
+      return;
+    }
+
     const { inside: within } = sections(call.body, 4);
 
     if (within.length <= held.within[at]) {
       return;
     }
 
-    const drawn = calls.querySelectorAll(":scope > .call")[at];
+    const drawn = drawnCalls[inside.slice(0, at).filter((p) => p.said.startsWith("called ")).length];
 
     for (const part of within.slice(held.within[at])) {
       drawn.append(...bodyOf(part, part.body));
@@ -541,28 +579,31 @@ function grew(held, segment) {
     return;
   }
 
-  // And calls added to the turn since.
+  // And sections added to the turn since — calls, or answers written beside them.
   const fold = calls ?? foldFor(held.element);
 
   for (const part of inside.slice(held.inside)) {
-    fold.append(nested(part));
+    place(fold, part);
     held.within.push(sections(part.body, 4).inside.length);
   }
 
   held.inside = inside.length;
-
-  const drawn = fold.querySelectorAll(":scope > .call").length;
-  fold.querySelector(":scope > summary").textContent =
-    `${drawn} ${drawn === 1 ? "tool call" : "tool calls"}`;
+  countCalls(fold);
 }
 
 /// The fold a turn's calls go in, made where the turn had none yet.
 function foldFor(item) {
-  const fold = document.createElement("details");
-  fold.className = "calls";
-  fold.append(document.createElement("summary"));
-  item.append(fold);
-  return fold;
+  const fold = item.querySelector(":scope > details.calls");
+
+  if (fold !== null) {
+    return fold;
+  }
+
+  const made = document.createElement("details");
+  made.className = "calls";
+  made.append(document.createElement("summary"));
+  item.append(made);
+  return made;
 }
 
 async function refreshMissing() {

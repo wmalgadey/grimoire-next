@@ -238,10 +238,23 @@ public sealed class RunNarrativeTests
             [0, 1, 2, 1, 2, 0],
             moments.Select(m => m.Depth));
 
-        // A call made before the agent has said anything has nothing to sit inside, so it stays at
-        // the top.
-        var second = await hub.AcceptedAsync("Ein zweiter Text.");
-        Assert.Equal(SubmissionState.Submitted, second.State);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-009")]
+    public async Task Call_StaysAtTheTop_BeforeTheAgentHasSaidAnything()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+
+        // No agent text yet, so there is nothing for this call to sit inside.
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+
+        var called = Assert.Single(hub.Record.MomentsOf(run.Id), m => m.Kind == RunMomentKind.ToolCalled);
+
+        Assert.Equal(0, called.Depth);
     }
 
     private static TranscriptMoment Returned(string content) =>

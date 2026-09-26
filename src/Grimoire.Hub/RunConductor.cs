@@ -379,7 +379,13 @@ public sealed class RunConductor(
                 record.Append(RunMoment.GrimoireSaid(
                     watched.Run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
 
+                // The nudge closes the turn rather than opening one. What the agent does next is the
+                // agent's, and writing it inside a section headed "Grimoire" would read as though
+                // Grimoire had made those calls. It stays at the top until the agent speaks again and
+                // opens a turn of its own.
                 watched.CallWrittenLast = null;
+                watched.TurnIsOpen = false;
+                watched.CallsAwaitingTheirResult = 0;
 
                 await harness.NudgeAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
                 return;
