@@ -203,8 +203,14 @@ public sealed class RunConductor(
             if (moment.Kind == RunMomentKind.ToolCalled)
             {
                 watched.Run.ToolCalled();
-                FiguresRose(watched.Run);
             }
+
+            // After every moment, not only after a tool call. The append above may have failed, and
+            // then the count of what the record could not hold has risen — a run whose lost moments
+            // happened to be results and agent text would otherwise have kept that to itself until it
+            // ended, and RUNS-007 has it recorded with the run. The board writes only where something
+            // actually changed, so a moment that lost nothing and called nothing costs nothing.
+            FiguresRose(watched.Run);
         }
     }
 

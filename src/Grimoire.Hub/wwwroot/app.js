@@ -127,6 +127,12 @@ function ensureRunParts(item, submission) {
   open.href = `run.html?submission=${submission.id}`;
   open.textContent = "Open";
 
+  // "Open" is enough beside the row it sits in and says nothing on its own, and anything that
+  // announces links out of context reads a list of runs as "Open, Open, Open". The opening of the
+  // submitted text is what tells one submission from another (ACCESS-004), so it is what names the
+  // link too. Still no identifier — neither the submission's nor the run's.
+  open.setAttribute("aria-label", `Open the run for: ${submission.excerpt}`);
+
   item.append(" ", model, " ", tokens, " ", calls, " ", open);
 }
 

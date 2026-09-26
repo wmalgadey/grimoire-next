@@ -126,10 +126,14 @@ public sealed class MarkdownRunRecordTests : IDisposable
         var text = File.ReadAllText(Path.Combine(runs, $"{head.RunId}.md"));
 
         // The gap is where it happened: in front of the entry that finally got through, so a reader
-        // sees it between the moment before it and the moment after.
-        Assert.Contains("2 entries", text, StringComparison.Ordinal);
+        // sees it between the moment before it and the moment after. The count is what is asserted,
+        // not the sentence around it — the wording of the record's lines is the adapter's and is not
+        // tested (Constitution III.8).
+        var notice = RecordText.EntriesLost(2, Noon);
+
+        Assert.Contains(notice.Trim(), text, StringComparison.Ordinal);
         Assert.True(
-            text.IndexOf("2 entries", StringComparison.Ordinal)
+            text.IndexOf(notice.Trim(), StringComparison.Ordinal)
             < text.IndexOf("read_page returned", StringComparison.Ordinal));
         Assert.Equal(2, record.EntriesLost(head.RunId));
     }

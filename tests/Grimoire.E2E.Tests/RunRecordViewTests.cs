@@ -258,6 +258,36 @@ public sealed class RunRecordViewTests : PageTest
         }
     }
 
+    [Fact]
+    [Trait("req", "RUNS-007")]
+    public async Task View_SaysLinesAreMissing_WhenTheRecordCouldNotHoldThem()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
+        await Expect(Segments()).ToHaveCountAsync(1);
+
+        // The disk refuses the rest. The run goes on — that is what RUNS-007 decided — and the record
+        // keeps what it already has.
+        hub.StopTheRecordBeingWritten();
+
+        hub.Agent.Returned(submission, "read_page", ALongResult);
+        hub.Agent.Said(submission, "Ada Lovelace already has a page.");
+
+        // The view says so, while the user is looking at it. A gap that passed for an agent doing
+        // nothing would be worse than the gap (ACCESS-006, RUNS-007).
+        await Expect(Page.Locator("#missing")).ToContainTextAsync("2");
+        await Expect(Page.Locator("#missing")).Not.ToBeEmptyAsync();
+
+        // And what did get written is still there to read.
+        await Expect(Heading(0)).ToContainTextAsync("called read_page");
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator Segments() => Page.Locator("#record li");

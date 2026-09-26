@@ -37,6 +37,13 @@ tokens of every model it touched — is appended when it ends. A run still under
 which is the only difference between its record and one from last month. The seven reasons are values
 inside RUNS-008 and not requirements of their own (Constitution IV.7).
 
+The tokens per model come from what the CLI reports when a turn ends. A run stopped before it ever
+reported one — a cost ceiling reached inside the first turn, a process that died, a tool surface that
+was not the grant — has no breakdown to record, and its tail holds the total against the ceiling and
+no model rows. The head still names the model the run was dispatched on. Nothing is invented to fill
+the gap: attributing the whole total to that model would claim the CLI's own background calls, which
+a run causes but never asks for, were made on it.
+
 RUNS-009 is what the run *did*, and nothing about what it was told: no instruction, no purpose
 description, no submitted text. A tool result goes in whole — nothing cut, nothing escaped — inside a
 fence longer than any run of backticks in it.

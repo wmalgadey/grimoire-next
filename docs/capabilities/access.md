@@ -31,7 +31,11 @@ without the rows moving as a figure rises (E2E) — geometry only a real browser
 
 ACCESS-006 is a second page, reached from the row. It is a window onto the record RUNS-007 keeps and
 not a second place the run lives: the bytes it shows are the bytes of the file, and the user reads a
-run under way and a run from last month the same way.
+run under way and a run from last month the same way. A tool call is one line with its result folded
+under it, which is how the user follows what the run did without reading the results in full and still
+reaches any one of them; the agent's own text is prose and is shown whole, fenced blocks in it
+included. Where the record could not hold something, the page says so — a gap that passed for an agent
+doing nothing would be worse than the gap (RUNS-007).
 
 ## Retired
 

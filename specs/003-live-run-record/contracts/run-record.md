@@ -92,7 +92,14 @@ Markdown. **The wording is the adapter's and is not part of this contract** — 
 | --- | --- | --- |
 | Head | `Begin` | The run's identifier, the submission's, the pinned model, the granted tools, both ceilings, when the run started (RUNS-008) |
 | Moments | `Append` | Each tool call with its arguments; what each returned, whole; the agent's own text; anything Grimoire said to the agent — today only the nudge of RUNS-005 (RUNS-009) |
-| Tail | `End` | When it ended, `done` or `failed`, why, elapsed against the elapsed ceiling, tokens against the cost ceiling, and the tokens of every model the run touched (RUNS-008, DEC-015) |
+| Tail | `Ended` | When it ended, `done` or `failed`, why, elapsed against the elapsed ceiling, tokens against the cost ceiling, and the tokens of every model the run touched (RUNS-008, DEC-015) |
+
+**A run that never reported a breakdown has no model rows.** The tokens per model come from a turn's
+own report; a run stopped inside its first turn — a cost ceiling reached, a process that died, a tool
+surface that was not the grant — has none, and its tail holds the total against the ceiling and
+nothing more. The head still names the model it was dispatched on. Nothing is invented: attributing the
+whole total to that model would claim the CLI's background calls, which a run causes but never asks
+for, were made on it.
 
 **A record of a run still under way is the head and however many moments have happened.** It has no
 tail, and that is the only difference between it and a run from last month (the owner's wish, brief §3).
