@@ -101,3 +101,25 @@ T053 classifies the mutation survivors from **the mutation artifact of the PR to
 exists yet. The feature branch reaches `main` only once the feature is done (I.9) — which is after
 T055. So the survivors can be classified only on the PR that closes the feature, and
 `specs/003-live-run-record/mutation.md` is written then.
+
+## The owner's review, and what was decided
+
+2026-09-26, on PR #43 and after everything above was written. Recorded here because I.11 asks for the
+decision in one sentence and this is the round that got one.
+
+An automated review of the closing PR raised twelve findings. Eight were answered without a change —
+three claimed a compile error that C# 7.2's non-trailing named arguments make legal, one read the
+record's segment parser without its ` · ` guard, two were answered by the defect below, and two
+restated what item 4 and this document already say. One, the record's handling of a non-text tool
+result, is a real gap against RUNS-009 and was put to the owner rather than fixed: today's grant is
+five wiki tools and none returns a non-text block, so it is a choice about what to do when one does,
+not a repair.
+
+One was a live defect and is fixed in 3a7bf6f and 73684b8: a run whose process died with Grimoire's
+was marked failed in the store and its record was left head-and-moments only, so the row and the
+record disagreed for good. Start-up now closes that record, saying that Grimoire was stopped under
+the run and that its time was not measured. The owner read both commits before the merge — the
+review that item 4 says was never requested was requested and given here — and directed the merge
+with items 4 and 7 standing as written above. They are the next feature's inheritance, not this
+one's repair: item 4 cannot be repaired after the fact, and item 7's two remedies are both the
+owner's to choose.
