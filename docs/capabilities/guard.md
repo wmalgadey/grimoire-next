@@ -21,9 +21,11 @@ rather than framework behaviour, so III.8 does not exclude it.
 
 GUARD-004's cost is **not** a token count. An input token, an output token, a cache read and a cache
 write are billed at ratios of 1 : 5 : 0.1 : 2, so summing the four raw counts measures turns times
-context size and not what a run costs: a run that reads a large cache back turn after turn is the
-cheapest thing the CLI does and was the first to be stopped, while a run writing little and thinking
-hard ran five times as far as the money allowed. The quantity has no unit of its own and is never
+context size and not what a run costs. Measured: ten million cache reads — the cheapest thing the
+CLI does — are 1 000 000 equivalents and reached the old raw ceiling of 2 000 000 five times over,
+while four hundred thousand output tokens are 2 000 000 equivalents, twice the money, and sat at a
+fifth of that same ceiling. The raw sum had the two the wrong way round by a factor of fifty, which
+is the ratio between the dearest class and the cheapest. The quantity has no unit of its own and is never
 currency — currency is not available while a run is under way, only in the `result` that ends it
 (DEC-015). The ratios are Anthropic's price structure, which every first-party model shares, so no
 model's price is in the tree; a sign-in contract test is what holds them to the CLI's own `costUSD`.

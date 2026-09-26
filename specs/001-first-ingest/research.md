@@ -349,8 +349,15 @@ happens these are reasoned estimates.
 
 | Ceiling | Initial value | Reasoning |
 | --- | --- | --- |
-| Cost | **2 000 000 tokens** *(now 2 000 000 input-token equivalents, and a placeholder — R-15)* | The floor is measured: a trivial one-turn run cost 6 664 tokens, nearly all of it the one-off cache creation of the system prompt. A real ingest reads a few pages and writes a few more — call it 20 to 40 model calls over a context of a few tens of thousands of tokens — and `cacheReadInputTokens` then dominates at roughly 30 k × 30 ≈ 900 k, with output a rounding error beside it. Two million is about double the expected run, and still stops a loop that has stopped making progress |
+| Cost | **2 000 000 tokens** | The floor is measured: a trivial one-turn run cost 6 664 tokens, nearly all of it the one-off cache creation of the system prompt. A real ingest reads a few pages and writes a few more — call it 20 to 40 model calls over a context of a few tens of thousands of tokens — and `cacheReadInputTokens` then dominates at roughly 30 k × 30 ≈ 900 k, with output a rounding error beside it. Two million is about double the expected run, and still stops a loop that has stopped making progress |
 | Elapsed time | **15 minutes** | Those same 20 to 40 calls take single-digit minutes once tool round trips are counted. Nobody waits on a run (INGEST-001), so this ceiling exists to bound a stuck run, not to hurry a working one |
+
+> **The cost row above is superseded by R-15**, reasoning and all. The number 2 000 000 stayed, but
+> it counts input-token equivalents now, and an equivalent is not a token — the estimate in that
+> cell weighed a cache read the same as an output token, which is the mistake R-15 corrects. It is
+> left standing because it is the change record of what was decided here. **The current value is a
+> placeholder**, calibrated after the acceptance run from the four raw counts real runs report.
+> The elapsed row is untouched.
 
 Both are constants in `Grimoire.Agent/Ceilings.cs`. Changing them is an owner decision and a code
 change, which is what "fixed, not configurable" means here.
@@ -645,10 +652,14 @@ Anthropic bills the four classes at those ratios. A raw sum therefore measures *
 size**, not cost:
 
 - `cacheReadInputTokens` dominates a many-turn run, as R-04 itself observed — and it is the cheapest
-  of the four by a factor of fifty against output. Ten million cache reads, one fiftieth of the
-  money, blew the old ceiling five times over.
-- Output is the dearest, and a run writing four hundred thousand tokens — the same money as those ten
-  million reads — sat at a fifth of the old ceiling and ran on.
+  of the four, a fiftieth of an output token. Ten million cache reads are **1 000 000 equivalents**,
+  half of what the ceiling now allows, and they blew the old raw ceiling of 2 000 000 five times over.
+- Output is the dearest. Four hundred thousand output tokens are **2 000 000 equivalents** — twice
+  the money of those ten million reads — and sat at a fifth of the old raw ceiling and ran on.
+
+So the raw sum judged the first run twenty-five times the heavier where it in fact cost half as
+much: wrong by a factor of fifty, which is exactly the ratio between the dearest class and the
+cheapest.
 
 So the old ceiling stopped the cheap runs first and let the expensive ones run. It was, as a
 by-product, a decent **thrash indicator**: a run going round in circles re-reads its context every

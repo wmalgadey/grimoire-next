@@ -121,10 +121,9 @@ A trigger moves an outcome from Later to Next.
 - OUT-20: as soon as I remove the traces of a bad source by hand for the first time and it takes longer than 15 minutes.
 - OUT-21: after OUT-18 and before runs go unattended. Not earlier.
 - OUT-22: as soon as I paste chat excerpts as text for the third time in one week.
-- OUT-23: as soon as a run is refused, or I hold one back, because I do not know how much of the
-  five-hour window is left. The figure is already in every run's stream (`rate_limit_event`, with a
-  five-hour and a seven-day utilization); showing it is the work. It is a display and never a
-  ceiling — what a subscription's window is for is mine to decide, not Grimoire's.
+- OUT-23: as soon as a run is refused for want of subscription usage, or I hold one back because I
+  do not know how much of the window is left. A display and never a ceiling — what my subscription's
+  window is for is mine to decide, not Grimoire's.
 
 ## 9. Open questions
 
