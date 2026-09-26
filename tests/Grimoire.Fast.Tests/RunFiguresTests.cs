@@ -162,6 +162,30 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-005")]
+    public async Task Figures_DoNotMove_AfterTheRunHasEnded()
+    {
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.Spend(submission.Id, 148_233);
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        var final = submission.Status.Run!;
+        var writes = hub.Journal.Entries.Count;
+
+        // A tool call racing the stop: the conductor read the run before it was removed, and reports on
+        // it afterwards. The record already dropped the moment for arriving after the tail, so counting
+        // it here would put a figure on the row that is in no record at all — and RUNS-010 has the
+        // figures stand as the run's final ones once it has ended.
+        hub.Board.RunFiguresAre(submission.Id, tokensUsed: 999_999, toolCalls: 99, entriesLost: 7);
+
+        Assert.Equal(final, submission.Status.Run);
+        Assert.Equal(writes, hub.Journal.Entries.Count);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-004")]
     public async Task Figures_ComeBackWithTheRun_AfterAStop()
     {

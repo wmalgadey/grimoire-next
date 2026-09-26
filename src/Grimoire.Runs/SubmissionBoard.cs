@@ -338,7 +338,13 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
     {
         lock (gate)
         {
-            if (Located(submissionId) is not { RunId: { } run } submission)
+            // Nothing after the ending. The conductor reads a run and then reports on it in two steps,
+            // so a tool call racing a stop can arrive here after the final figures were published —
+            // and it would raise the count past the run's last snapshot, to a figure that is in no
+            // record, because the moment behind it was dropped for arriving after the tail. RUNS-010
+            // has the figures stand as the run's final ones once it has ended, and this is where a
+            // terminal submission is known.
+            if (Located(submissionId) is not { IsUnderWay: true, RunId: { } run } submission)
             {
                 return;
             }
