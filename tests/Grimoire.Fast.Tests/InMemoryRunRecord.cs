@@ -82,7 +82,7 @@ internal sealed class InMemoryRunRecord : IRunRecord
             // Nothing is written after the tail, the same promise the real adapter makes: a moment
             // already in flight when the run ended is dropped, and is not counted lost — no write
             // failed (contracts/run-record.md).
-            if (HasATail(moment.RunId))
+            if (ended.Contains(moment.RunId))
             {
                 return;
             }
@@ -98,9 +98,11 @@ internal sealed class InMemoryRunRecord : IRunRecord
         // One lock across the check and the write: read apart, two endings racing would both pass.
         lock (gate)
         {
-            // A run ends once, so a second call appends nothing. And a tail that could not be written
-            // is not a tail: it may still be written, exactly as the real adapter allows (RUNS-007).
-            if (HasATail(tail.RunId))
+            // A run ends once, whether or not the tail reaches the record — the same promise the real
+            // adapter makes. A tail that could not be written is one more entry lost, and the run is
+            // over all the same: nothing would ever write it later, because a run has no moments after
+            // its end (RUNS-007).
+            if (!ended.Add(tail.RunId))
             {
                 return;
             }
@@ -109,9 +111,8 @@ internal sealed class InMemoryRunRecord : IRunRecord
         }
     }
 
-    /// <summary>Whether this run's tail is already in the record. Assumes the lock.</summary>
-    private bool HasATail(Guid runId) =>
-        written.TryGetValue(runId, out var entries) && entries.OfType<RunFrameTail>().Any();
+    /// <summary>The runs whose ending has been taken. A run ends once. Assumes the lock.</summary>
+    private readonly HashSet<Guid> ended = [];
 
     public int EntriesLost(Guid runId)
     {

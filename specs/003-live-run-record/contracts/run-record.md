@@ -133,6 +133,9 @@ requirement covers as a list inside it.
   looks a run up and appends in two steps, so a moment already in flight can arrive after the ending
   that removed it, and only the adapter knows whether the tail is on disk. Such a moment is dropped and
   is **not** counted as an entry lost, because no write failed.
-- **A run is ended once its tail is on disk**, not once one was attempted. Marked on the attempt, a tail
-  lost to a full disk could never be written at all, and the record would be missing its tail with
-  nothing able to put one there.
+- **A run ends once, whether or not its tail reached the disk.** Marking it ended only on a successful
+  write was tried, so that a lost tail could be written later; nothing writes it later, because a run has
+  no moments after its end, and it left the record able to take a late moment with no tail behind it — a
+  record whose last line is not its ending. A tail that could not be written is one more entry lost, and
+  RUNS-007's promise is kept by the count rather than by a retry: the row says lines are missing, and so
+  does the record view.

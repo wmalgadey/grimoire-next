@@ -135,7 +135,7 @@ public sealed class MarkdownRunRecordTests : IDisposable
     }
 
     [Fact]
-    public void Tail_CanStillBeWritten_WhenItsFirstWriteFailed()
+    public void Run_IsEndedAndItsTailCounted_WhenTheTailCannotBeWritten()
     {
         var head = AHead();
         var runs = Path.Combine(state, "runs");
@@ -149,19 +149,20 @@ public sealed class MarkdownRunRecordTests : IDisposable
 
         record.Ended(ATail(head.RunId, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry));
 
+        // The tail is one more entry lost, which is what the row and the record view say (RUNS-007).
         Assert.Equal(1, record.EntriesLost(head.RunId));
 
-        // And comes back. A tail that could not be written is not a tail: had the run been marked
-        // ended on the attempt rather than on the write, the record could never have got one at all,
-        // and it would be missing its tail with nothing able to put one there (RUNS-007).
+        // And the run is over all the same. A record whose tail could not be written must not go on
+        // taking moments: a run has no moments after its end, so nothing would ever write that tail,
+        // and the record's last line would be something that happened before the run stopped.
         File.Delete(runs);
         Directory.CreateDirectory(runs);
 
+        record.Append(Returned(head.RunId, "one word too late"));
         record.Ended(ATail(head.RunId, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry));
 
-        var text = File.ReadAllText(Path.Combine(runs, $"{head.RunId}.md"));
-        Assert.Contains("ended done", text, StringComparison.Ordinal);
-        Assert.Contains("1 entries", text, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(runs, $"{head.RunId}.md")));
+        Assert.Equal(1, record.EntriesLost(head.RunId));
     }
 
     [Fact]

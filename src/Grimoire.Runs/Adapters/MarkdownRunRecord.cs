@@ -97,19 +97,23 @@ public sealed class MarkdownRunRecord : IRunRecord
 
         lock (gate)
         {
-            // A run ends once, so a second call appends nothing.
-            if (ended.Contains(tail.RunId))
+            // A run ends once, so a second call appends nothing — and it is ended here whether or not
+            // the tail reaches the disk.
+            //
+            // The other way round was tried: marking it ended only on a successful write, so that a
+            // tail lost to a full disk could still be written later. Nothing writes it later. A run
+            // has no moments after its end, so "once it can be written again" never comes — and the
+            // record was left able to take a late moment with no tail behind it, which is a record
+            // whose last line is not its ending. Finalising here makes the shape well defined, and
+            // RUNS-007's promise about a write that fails is kept by the count, not by a retry: the
+            // tail is one more entry lost, the row says lines are missing, and so does the record
+            // view.
+            if (!ended.Add(tail.RunId))
             {
                 return;
             }
 
-            // Marked ended only once the tail is actually on disk. Marked before, a tail lost to a
-            // full disk could never be written at all, and the record would be missing its tail with
-            // nothing able to put one there (RUNS-007).
-            if (Write(tail.RunId, tail.EndedAt, RecordText.Tail(tail)))
-            {
-                ended.Add(tail.RunId);
-            }
+            Write(tail.RunId, tail.EndedAt, RecordText.Tail(tail));
         }
     }
 
