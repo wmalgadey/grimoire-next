@@ -180,7 +180,7 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
 
         return process is null
             ? Task.CompletedTask
-            : WriteUserMessageAsync(process, "No log entry for this run was found in log.md.", cancellationToken);
+            : WriteUserMessageAsync(process, IAgentHarness.LogEntryMissing, cancellationToken);
     }
 
     public Task NothingFurtherAsync(Guid runId, CancellationToken cancellationToken)
@@ -422,8 +422,12 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
                 switch (said.Says)
                 {
                     case TranscriptSays.InitIsNotAcceptable:
-                        // Failed here, before the first model call (GUARD-001).
-                        report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
+                        // Failed here, before the first model call (GUARD-001). The reason is
+                        // reported with the ending, because it is the one thing about this ending
+                        // that the hub holds no other fact of: a dispatch that never started a
+                        // process looks the same to it in every other way (RUNS-008).
+                        report.RunEnded(
+                            dispatch.SubmissionId, RunOutcome.Failed, RunEndedBecause.ToolsWereNotTheGrant);
                         await StopAsync(dispatch.RunId, CancellationToken.None).ConfigureAwait(false);
                         return;
 
@@ -432,11 +436,22 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
                         break;
 
                     case TranscriptSays.CostSoFar:
-                        report.CostSoFar(dispatch.SubmissionId, said.TokensUsed);
+                        report.CostSoFar(dispatch.SubmissionId, said.TokensUsed, said.TokensPerModel);
+                        break;
+
+                    // What the run did, reported one moment at a time and in the order the blocks
+                    // arrived. The adapter still decides nothing: which moments a record holds and
+                    // when they are written is the hub's (RUNS-009).
+                    case TranscriptSays.MomentsHappened:
+                        foreach (var moment in said.Moments)
+                        {
+                            report.MomentHappened(dispatch.SubmissionId, moment);
+                        }
+
                         break;
 
                     case TranscriptSays.AgentStopped:
-                        report.CostSoFar(dispatch.SubmissionId, said.TokensUsed);
+                        report.CostSoFar(dispatch.SubmissionId, said.TokensUsed, said.TokensPerModel);
 
                         // The hub decides what a stop means — done, one nudge, or failed. A
                         // nudged run carries on, so more messages may follow this one.
@@ -462,7 +477,7 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
             // Nothing awaits this reader, so rethrowing would only surface later as an
             // unobserved task exception. The run has been ended, which is the part that matters
             // to the hub; the reader stops here.
-            report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
+            report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
         }
         finally
         {

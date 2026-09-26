@@ -96,6 +96,7 @@ public static class HubApplication
         IAgentHarness harness,
         IWikiStore wiki,
         ISubmissionStore submissions,
+        IRunRecord record,
         TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -156,8 +157,9 @@ public static class HubApplication
         // the conductor a run to watch. The composition root is where that is allowed to be known
         // (plan.md, Structure Decision).
         RunQueue? queue = null;
-        var conductor = new RunConductor(board, harness, wiki, clock, () => queue!.PumpAsync());
-        queue = new RunQueue(board, conductor, harness, instructions.Assemble, options.Model);
+        var conductor = new RunConductor(
+            board, harness, wiki, record, clock, options.Model, () => queue!.PumpAsync());
+        queue = new RunQueue(board, conductor, harness, instructions.Assemble);
 
         var intake = new SubmissionIntake(board, queue);
 

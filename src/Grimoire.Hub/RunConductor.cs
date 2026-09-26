@@ -14,7 +14,9 @@ public sealed class RunConductor(
     SubmissionBoard board,
     IAgentHarness harness,
     IWikiStore wiki,
+    IRunRecord record,
     TimeProvider clock,
+    string model,
     RunConductor.NextRunMayStart nextRunMayStart)
 {
     /// <summary>
@@ -40,7 +42,20 @@ public sealed class RunConductor(
             submissionId,
             clock.GetUtcNow(),
             ToolGrant.Ingest(clock),
-            Ceilings.Fixed);
+            Ceilings.Fixed,
+            model);
+
+        // The head before the agent. This runs inside the board's lock, at the moment the submission
+        // is handed out and before the dispatch — so a run whose dispatch fails still has a record,
+        // and its tail says the agent's process died (RUNS-007, contracts/run-record.md).
+        record.Begin(new RunFrameHead(
+            run.Id,
+            run.SubmissionId,
+            run.Model,
+            run.Grant.ToolNames,
+            run.Grant.RecordedAt,
+            run.Ceilings,
+            run.StartedAt));
 
         // GUARD-004's elapsed ceiling has to be able to fire while the agent says nothing at all —
         // a model call that hangs, or a tool call that never comes back, is exactly the run the
@@ -65,7 +80,8 @@ public sealed class RunConductor(
         AgentStopped: AgentStoppedAsync,
         AgentExited: AgentExited,
         RunEnded: RunEnded,
-        AgentProcessIs: board.AgentProcessIs);
+        AgentProcessIs: board.AgentProcessIs,
+        MomentHappened: MomentHappened);
 
     /// <summary>
     /// The hub is going down, so the run under way goes with it: no agent goes on working on a run
@@ -93,7 +109,7 @@ public sealed class RunConductor(
     {
         while (runs.ToArray() is { Length: > 0 } underWay)
         {
-            await Task.WhenAll(underWay.Select(u => StopAtACeilingAsync(u.Value.Run, u.Key)))
+            await Task.WhenAll(underWay.Select(u => StopAsync(u.Value.Run, u.Key, RunEndedBecause.GrimoireStopped)))
                 .ConfigureAwait(false);
         }
     }
@@ -104,7 +120,7 @@ public sealed class RunConductor(
     /// The cost ceiling, watched as the run spends. At either ceiling the run is stopped at once,
     /// a model call in flight included, and it ends failed (GUARD-004).
     /// </summary>
-    private void CostSoFar(Guid submissionId, long tokensUsed)
+    private void CostSoFar(Guid submissionId, long tokensUsed, IReadOnlyDictionary<string, ModelTokens> tokensPerModel)
     {
         if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
         {
@@ -112,14 +128,58 @@ public sealed class RunConductor(
         }
 
         // Recorded on the run, not only compared: the stop decision below reads it, and so does
-        // the token ceiling when the run is asked how it ended (GUARD-004).
-        run.Spent(tokensUsed);
+        // the token ceiling when the run is asked how it ended (GUARD-004). The breakdown comes with
+        // it, and the record's tail says what each model spent (RUNS-008).
+        run.Spent(tokensUsed, tokensPerModel);
 
-        if (run.Ceilings.ReachedBy(clock.GetUtcNow() - run.StartedAt, run.TokensUsed))
+        // The figures the list shows. `Spent` is a Math.Max, so this writes the store two to four
+        // times a turn rather than once per streamed line (RUNS-010, research.md R-06).
+        FiguresRose(run);
+
+        var elapsed = clock.GetUtcNow() - run.StartedAt;
+
+        if (run.Ceilings.ReachedBy(elapsed, run.TokensUsed))
         {
-            _ = StopAtACeilingAsync(run, submissionId);
+            _ = StopAsync(run, submissionId, run.CeilingReachedBy(elapsed));
         }
     }
+
+    /// <summary>
+    /// One thing the run did, put in the record at the moment the hub read it (RUNS-009).
+    /// </summary>
+    /// <remarks>
+    /// The clock is read here rather than in the adapter, because the clock is the hub's (DEC-018) and
+    /// a record whose times an adapter stamped would be one the Fast suite could not drive. A tool
+    /// call also raises the run's count, which is the second of the two figures the list shows
+    /// (RUNS-010).
+    /// </remarks>
+    private void MomentHappened(Guid submissionId, TranscriptMoment moment)
+    {
+        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        {
+            return;
+        }
+
+        record.Append(RunMoment.Of(run.Id, clock.GetUtcNow(), moment));
+
+        if (moment.Kind == RunMomentKind.ToolCalled)
+        {
+            run.ToolCalled();
+            FiguresRose(run);
+        }
+    }
+
+    /// <summary>
+    /// The run's figures as they now stand, offered to the board, which writes them only where one has
+    /// actually changed (RUNS-010).
+    /// </summary>
+    /// <remarks>
+    /// All three together, because one event writes them and they are read as one row: the tokens and
+    /// the tool calls the run itself holds, and how many entries its record could not hold, which only
+    /// the record knows. Read apart, the row could show a gap that belongs to another moment.
+    /// </remarks>
+    private void FiguresRose(Run run) =>
+        board.RunFiguresAre(run.SubmissionId, run.TokensUsed, run.ToolCalls, record.EntriesLost(run.Id));
 
     /// <summary>
     /// The decision RUNS-005 rests on. The wiki's log is read for the run's identifier and nothing
@@ -148,6 +208,12 @@ public sealed class RunConductor(
         if (decision == RunDecision.Nudge)
         {
             await harness.NudgeAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
+
+            // Appended by the hub, which knows it nudged. Never read back off the agent's stream:
+            // measured, the CLI does not echo what is written to its stdin, so the nudge cannot
+            // appear twice (RUNS-009, research.md R-03).
+            record.Append(RunMoment.GrimoireSaid(
+                run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
             return;
         }
 
@@ -167,7 +233,9 @@ public sealed class RunConductor(
             return;
         }
 
-        RunEnded(submissionId, run.Exited(exitCode, clock.GetUtcNow() - run.StartedAt));
+        var ending = run.Exited(exitCode, clock.GetUtcNow() - run.StartedAt);
+
+        RunEnded(submissionId, ending.Outcome, ending.Because);
     }
 
     /// <summary>
@@ -179,7 +247,7 @@ public sealed class RunConductor(
     /// Whatever the run had already written stays in the wiki, in every failed case: nothing here
     /// reaches back into it (WIKI-003).
     /// </remarks>
-    private void RunEnded(Guid submissionId, RunOutcome outcome)
+    private void RunEnded(Guid submissionId, RunOutcome outcome, RunEndedBecause because)
     {
         if (!runs.TryRemove(submissionId, out var watched))
         {
@@ -187,6 +255,23 @@ public sealed class RunConductor(
         }
 
         watched.Deadline.Dispose();
+
+        var run = watched.Run;
+
+        // The tail where the verdict is taken, and with the final figures beside it. Written before
+        // the board is told, so that a record is complete by the time the browser can read the row as
+        // ended — the two are read by the same poll (RUNS-007, RUNS-008).
+        record.Ended(new RunFrameTail(
+            run.Id,
+            clock.GetUtcNow(),
+            outcome,
+            because,
+            clock.GetUtcNow() - run.StartedAt,
+            run.TokensUsed,
+            run.Ceilings,
+            run.TokensPerModel));
+
+        FiguresRose(run);
 
         board.Ended(
             submissionId,
@@ -217,16 +302,17 @@ public sealed class RunConductor(
             return;
         }
 
-        _ = StopAtACeilingAsync(run, submissionId);
+        _ = StopAsync(run, submissionId, RunEndedBecause.TimeCeiling);
     }
 
     /// <summary>
-    /// What either ceiling does: the interrupt first, and then the ending. Both go through here so
-    /// that neither can stop a run without also ending it — a stop that the agent does not answer
-    /// would otherwise leave the submission reading running, and the board refuses every later
-    /// text while one does (GUARD-004, RUNS-002).
+    /// What either ceiling does, and what stopping Grimoire does: the interrupt first, and then the
+    /// ending, for the reason the record's tail will give. All three go through here so that none of
+    /// them can stop a run without also ending it — a stop that the agent does not answer would
+    /// otherwise leave the submission reading running, and the board refuses every later text while
+    /// one does (GUARD-004, RUNS-002, RUNS-006).
     /// </summary>
-    private async Task StopAtACeilingAsync(Run run, Guid submissionId)
+    private async Task StopAsync(Run run, Guid submissionId, RunEndedBecause because)
     {
         try
         {
@@ -236,11 +322,11 @@ public sealed class RunConductor(
         {
             // Nothing awaits this, so a throw would surface later as an unobserved task exception
             // and the run would be left reading running. Whether the stop reached the agent or
-            // not, the ceiling was reached and the run is over.
+            // not, what made us stop it happened and the run is over.
         }
         finally
         {
-            RunEnded(submissionId, RunOutcome.Failed);
+            RunEnded(submissionId, RunOutcome.Failed, because);
         }
     }
 }

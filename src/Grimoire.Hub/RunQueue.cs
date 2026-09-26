@@ -24,8 +24,7 @@ public sealed class RunQueue(
     SubmissionBoard board,
     RunConductor conductor,
     IAgentHarness harness,
-    RunQueue.PromptAssembly assemblePrompt,
-    string model)
+    RunQueue.PromptAssembly assemblePrompt)
 {
     /// <summary>
     /// What a run is given, assembled from the instruction and the purpose description. The hub's
@@ -194,7 +193,11 @@ public sealed class RunQueue(
             // never given a process, not one that was (RUNS-006).
             if (Closed)
             {
-                conductor.Report().RunEnded(run.SubmissionId, RunOutcome.Failed);
+                // Grimoire is leaving, so this run ends with it and its record says so — the same
+                // reason a run that was under way at the stop reads after a restart (RUNS-004,
+                // RUNS-006).
+                conductor.Report().RunEnded(
+                    run.SubmissionId, RunOutcome.Failed, RunEndedBecause.GrimoireStopped);
                 return;
             }
 
@@ -214,12 +217,14 @@ public sealed class RunQueue(
             // Assembling the prompt is inside this try and not above it. It reads the instruction
             // from disk, so it can throw for a reason that has nothing to do with the run — a file
             // deleted between start-up and now — and the run is already registered by then.
+            // The model comes off the run, which was given it at Begin beside the grant and both
+            // ceilings. One fewer place the model lives, not one more (data-model.md §Run).
             var dispatch = new AgentDispatch(
                 run.Id,
                 run.SubmissionId,
                 assemblePrompt(text, run.Id),
                 run.Grant,
-                model);
+                run.Model);
 
             await harness.DispatchAsync(dispatch, conductor.Report(), CancellationToken.None).ConfigureAwait(false);
         }
@@ -257,7 +262,11 @@ public sealed class RunQueue(
             // submission being dispatched is not necessarily the one just submitted, and answering
             // one user's request with another submission's failure would say something untrue
             // about theirs (RUNS-002).
-            conductor.Report().RunEnded(run.SubmissionId, RunOutcome.Failed);
+            // A dispatch that never gave the run a process, or one that failed after it had: either
+            // way no agent of this run is at work, which is the reason the record's tail names
+            // (RUNS-008).
+            conductor.Report().RunEnded(
+                run.SubmissionId, RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
         }
     }
 }

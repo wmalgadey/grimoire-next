@@ -26,6 +26,17 @@ public enum TranscriptSays
 
     /// <summary>The agent has stopped. The hub reads the log and decides (RUNS-005).</summary>
     AgentStopped,
+
+    /// <summary>
+    /// A complete <c>assistant</c> or <c>user</c> message held things the run did: tool calls, what
+    /// they returned, the agent's own text (RUNS-009).
+    /// </summary>
+    /// <remarks>
+    /// One value for all of them rather than one per kind, because <c>message.content</c> is an array
+    /// and one line can carry several blocks of different kinds — three values could not describe
+    /// such a line, and splitting it into three reads would lose the order the blocks arrived in.
+    /// </remarks>
+    MomentsHappened,
 }
 
 /// <summary>
@@ -44,7 +55,22 @@ public enum TranscriptSays
 /// On <see cref="TranscriptSays.AgentStopped"/>: the agent did not stop of its own accord — an
 /// interrupted stream, or a subtype that is not success.
 /// </param>
-public sealed record TranscriptEvent(TranscriptSays Says, long TokensUsed = 0, bool EndedAbnormally = false);
+public sealed record TranscriptEvent(TranscriptSays Says, long TokensUsed = 0, bool EndedAbnormally = false)
+{
+    /// <summary>
+    /// What this line says the run did, in the order the blocks arrived. Empty for every line that is
+    /// not a complete <c>assistant</c> or <c>user</c> message (RUNS-009).
+    /// </summary>
+    public IReadOnlyList<TranscriptMoment> Moments { get; init; } = [];
+
+    /// <summary>
+    /// What the run has spent per model, as a <c>result</c>'s <c>modelUsage</c> reports it. Empty for
+    /// every other line, including a streamed usage, which carries a total and no breakdown
+    /// (RUNS-008, DEC-015).
+    /// </summary>
+    public IReadOnlyDictionary<string, ModelTokens> TokensPerModel { get; init; } =
+        new Dictionary<string, ModelTokens>(StringComparer.Ordinal);
+}
 
 /// <summary>
 /// The CLI's newline-delimited JSON, read as port events. A line goes in, an event comes out; no
@@ -86,6 +112,13 @@ public sealed class AgentTranscript(ToolGrant grant)
     /// of this rather than starting the run's counter again.
     /// </summary>
     private long reconciled;
+
+    /// <summary>
+    /// The tool the last <c>tool_use</c> block named, so that the result following it can say which
+    /// call returned. A run makes one call at a time in the order the stream reports it, which is what
+    /// makes order enough and an identifier in the record unnecessary (data-model.md §RunMoment).
+    /// </summary>
+    private string? lastToolCalled;
 
     /// <summary>
     /// Whether what <c>system/init</c> reported is this run's grant. The bare names the grant
@@ -132,14 +165,100 @@ public sealed class AgentTranscript(ToolGrant grant)
             case "result":
                 // modelUsage is the authority and it is cumulative across the session, so the
                 // whole run's cost is the last one and not the sum of them (R-04, measured).
-                reconciled = Math.Max(reconciled, Ceilings.CostOf(ModelUsage(message)));
+                var perModel = ModelUsage(message);
+                reconciled = Math.Max(reconciled, Ceilings.CostOf(perModel.Values));
                 spent = Math.Max(spent, reconciled);
-                return new TranscriptEvent(TranscriptSays.AgentStopped, spent, EndedAbnormally(message));
+                return new TranscriptEvent(TranscriptSays.AgentStopped, spent, EndedAbnormally(message))
+                {
+                    // The breakdown travels with the total it is the sum of, so the record's tail
+                    // cannot name models that do not add up to the figure beside them (RUNS-008).
+                    TokensPerModel = perModel,
+                };
+
+            // What the run did, from the CLI's complete messages: every tool_use and text block of an
+            // `assistant` message, and every tool_result block of a `user` one. The complete message
+            // arrives for every block, so nothing is assembled from the partial stream — which stays
+            // the cost ceiling's alone, as it was added for (research.md R-03).
+            //
+            // A `user` line on stdout is a tool result and never something Grimoire said: measured,
+            // the CLI does not echo what is written to its stdin, so no moment can appear twice.
+            case "assistant" or "user" when Moments(message) is { Count: > 0 } moments:
+                return new TranscriptEvent(TranscriptSays.MomentsHappened) { Moments = moments };
 
             default:
                 return new TranscriptEvent(TranscriptSays.Nothing);
         }
     }
+
+    /// <summary>
+    /// The moments one complete message holds, in the order its blocks arrived (RUNS-009).
+    /// </summary>
+    /// <remarks>
+    /// <c>thinking</c> blocks are not read: measured, the complete message carries an empty
+    /// <c>thinking</c> and a signature blob, and there is nothing in it a person reads (research.md
+    /// R-05). Any other block kind is passed over the same way — what the record holds is what the
+    /// run did, and a block this hub cannot name is not something it did.
+    /// </remarks>
+    private List<TranscriptMoment> Moments(JsonObject message)
+    {
+        var moments = new List<TranscriptMoment>();
+
+        if (message["message"]?["content"] is not JsonArray blocks)
+        {
+            return moments;
+        }
+
+        foreach (var block in blocks.OfType<JsonObject>())
+        {
+            switch (Text(block["type"]))
+            {
+                case "tool_use":
+                    // The name is kept for the result that follows. The CLI's `tool_use_id` is read
+                    // to nothing: a run makes one call at a time in the order the stream reports it,
+                    // and an identifier in the record would be a field with no reader (II.1).
+                    lastToolCalled = Text(block["name"]);
+                    moments.Add(new TranscriptMoment(
+                        RunMomentKind.ToolCalled, lastToolCalled, block["input"]?.ToJsonString()));
+                    break;
+
+                case "tool_result":
+                    moments.Add(new TranscriptMoment(
+                        RunMomentKind.ToolReturned, lastToolCalled, ResultContent(block["content"])));
+                    break;
+
+                case "text":
+                    moments.Add(new TranscriptMoment(RunMomentKind.AgentSaid, Tool: null, Text(block["text"])));
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        return moments;
+    }
+
+    /// <summary>
+    /// What a <c>tool_result</c> returned: a string is itself, and an array is the text of its text
+    /// blocks, joined — the protocol allows both.
+    /// </summary>
+    /// <remarks>
+    /// Anything else comes back <c>null</c>, which the record writes as a result that could not be
+    /// read. Refused rather than read around, the way a <c>tools</c> array that is not names already
+    /// is (GUARD-001's precedent): a result nobody could read must not pass for a call that returned
+    /// nothing.
+    /// </remarks>
+    private static string? ResultContent(JsonNode? content) => content switch
+    {
+        JsonValue value when value.TryGetValue<string>(out var text) => text,
+        JsonArray blocks => string.Join(
+            '\n',
+            blocks.OfType<JsonObject>()
+                .Where(b => Text(b["type"]) == "text")
+                .Select(b => Text(b["text"]))
+                .OfType<string>()),
+        _ => null,
+    };
 
     /// <summary>
     /// A node read as a string, or null where it is anything else. <c>GetValue&lt;string&gt;</c>
@@ -228,24 +347,28 @@ public sealed class AgentTranscript(ToolGrant grant)
     /// Every entry of the result's <c>modelUsage</c> — all models, the CLI's own background calls
     /// included, because a call the run never asked for is still the run's doing (R-04).
     /// </summary>
-    private static IEnumerable<ModelTokens> ModelUsage(JsonObject result)
+    private static Dictionary<string, ModelTokens> ModelUsage(JsonObject result)
     {
-        if (result["modelUsage"] is not JsonObject usage)
+        var usage = new Dictionary<string, ModelTokens>(StringComparer.Ordinal);
+
+        if (result["modelUsage"] is not JsonObject reported)
         {
-            yield break;
+            return usage;
         }
 
-        foreach (var (_, value) in usage)
+        foreach (var (name, value) in reported)
         {
             if (value is JsonObject model)
             {
-                yield return new ModelTokens(
+                usage[name] = new ModelTokens(
                     Field(model, "inputTokens"),
                     Field(model, "outputTokens"),
                     Field(model, "cacheReadInputTokens"),
                     Field(model, "cacheCreationInputTokens"));
             }
         }
+
+        return usage;
     }
 
     /// <summary>An ending the agent did not choose: an aborted stream, or a subtype that is not success.</summary>

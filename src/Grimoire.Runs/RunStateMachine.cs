@@ -29,6 +29,14 @@ public enum RunDecision
     Failed,
 }
 
+/// <summary>The verdict on a run and why it was reached, taken together (RUNS-005, RUNS-008).</summary>
+/// <remarks>
+/// One value, because the two are one judgment: a run that is failed for a reason the record does not
+/// name is a run the user cannot read back, and a reason established anywhere but where the verdict
+/// is taken would be a second judgment about the same run.
+/// </remarks>
+public sealed record RunEnding(RunOutcome Outcome, RunEndedBecause Because);
+
 /// <summary>
 /// One attempt to work one submission into the wiki, and the decision RUNS-005 rests on.
 /// </summary>
@@ -39,7 +47,13 @@ public enum RunDecision
 /// </remarks>
 public sealed class Run
 {
-    public Run(Guid id, Guid submissionId, DateTimeOffset startedAt, ToolGrant grant, Ceilings ceilings)
+    public Run(
+        Guid id,
+        Guid submissionId,
+        DateTimeOffset startedAt,
+        ToolGrant grant,
+        Ceilings ceilings,
+        string model)
     {
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentNullException.ThrowIfNull(ceilings);
@@ -49,6 +63,7 @@ public sealed class Run
         StartedAt = startedAt;
         Grant = grant;
         Ceilings = ceilings;
+        Model = model;
     }
 
     public Guid Id { get; }
@@ -62,8 +77,34 @@ public sealed class Run
 
     public Ceilings Ceilings { get; }
 
+    /// <summary>
+    /// The pinned model id this run runs on (DEC-010). On the run rather than held by whatever
+    /// dispatches it: the grant and both ceilings are already recorded here at the moment the run
+    /// begins, and the model belongs in the same breath — a record from last month must say which
+    /// model served it, and the owner may change <c>--model</c> between runs (data-model.md §Run).
+    /// </summary>
+    public string Model { get; }
+
     /// <summary>Every token the run has caused so far (GUARD-004).</summary>
     public long TokensUsed { get; private set; }
+
+    /// <summary>
+    /// How many tool calls the run has made (RUNS-010). Rises once per reported call; never goes
+    /// backwards.
+    /// </summary>
+    public int ToolCalls { get; private set; }
+
+    /// <summary>
+    /// What the run has spent per model, as the last <c>result</c> reported it (RUNS-008, DEC-015).
+    /// Empty for a run that never reached a model call.
+    /// </summary>
+    /// <remarks>
+    /// Replaced rather than added to, for the reason the total is reconciled rather than summed:
+    /// <c>modelUsage</c> is cumulative across the session, so the latest breakdown is the whole run's
+    /// and a sum of them would be a multiple of it (research.md R-04).
+    /// </remarks>
+    public IReadOnlyDictionary<string, ModelTokens> TokensPerModel { get; private set; } =
+        new Dictionary<string, ModelTokens>(StringComparer.Ordinal);
 
     /// <summary>
     /// Whether the agent has already been told once that its log entry is missing. This exists for
@@ -83,6 +124,26 @@ public sealed class Run
 
     /// <summary>Record what the run has caused so far. Never goes backwards.</summary>
     public void Spent(long tokensUsed) => TokensUsed = Math.Max(TokensUsed, tokensUsed);
+
+    /// <summary>
+    /// What the run has caused so far, with the breakdown the line carried. The breakdown is taken
+    /// only where there is one: a streamed line reports a total and no models, and replacing the
+    /// breakdown with nothing would lose what the last <c>result</c> established.
+    /// </summary>
+    public void Spent(long tokensUsed, IReadOnlyDictionary<string, ModelTokens> tokensPerModel)
+    {
+        ArgumentNullException.ThrowIfNull(tokensPerModel);
+
+        Spent(tokensUsed);
+
+        if (tokensPerModel.Count > 0)
+        {
+            TokensPerModel = tokensPerModel;
+        }
+    }
+
+    /// <summary>The run made a tool call (RUNS-010).</summary>
+    public void ToolCalled() => ToolCalls++;
 
     /// <summary>
     /// Whether the wiki's log holds an entry for this run.
@@ -141,15 +202,42 @@ public sealed class Run
     /// other three say (RUNS-005, GUARD-004, contracts/agent-cli-protocol.md).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The exit code is read here and nowhere else, which is what the protocol's "or a non-zero
     /// exit" row asks for. A CLI that reports a clean result and then exits non-zero did not do
     /// what it said it did, and the run is not done.
+    /// </para>
+    /// <para>
+    /// The reason comes back with the verdict, because it is the same judgment read at a finer grain:
+    /// the four cases below are exactly the four the verdict distinguishes, and a reason established
+    /// anywhere else would be a second judgment about the same run (RUNS-008).
+    /// </para>
     /// </remarks>
-    public RunOutcome Exited(int exitCode, TimeSpan elapsed) =>
-        StoppedOfItsOwnAccord
-        && LogEntryWasPresent
-        && exitCode == 0
-        && !Ceilings.ReachedBy(elapsed, TokensUsed)
-            ? RunOutcome.Done
-            : RunOutcome.Failed;
+    public RunEnding Exited(int exitCode, TimeSpan elapsed)
+    {
+        // A ceiling reached fails the run whatever the other three say, so it is read first — and
+        // which of the two it was, because the record names one of seven reasons and not "a ceiling".
+        if (Ceilings.ReachedBy(elapsed, TokensUsed))
+        {
+            return new RunEnding(RunOutcome.Failed, CeilingReachedBy(elapsed));
+        }
+
+        // The agent did not stop of its own accord, or the process said otherwise on its way out.
+        if (!StoppedOfItsOwnAccord || exitCode != 0)
+        {
+            return new RunEnding(RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
+        }
+
+        return LogEntryWasPresent
+            ? new RunEnding(RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry)
+            : new RunEnding(RunOutcome.Failed, RunEndedBecause.StoppedWithoutItsLogEntry);
+    }
+
+    /// <summary>
+    /// Which ceiling a run has reached. Elapsed is read first, and a run that has reached both is
+    /// recorded as having reached the time ceiling: it ran out of time whatever it was spending, and
+    /// a record naming two reasons would name none of the seven (RUNS-008).
+    /// </summary>
+    public RunEndedBecause CeilingReachedBy(TimeSpan elapsed) =>
+        elapsed >= Ceilings.Elapsed ? RunEndedBecause.TimeCeiling : RunEndedBecause.CostCeiling;
 }

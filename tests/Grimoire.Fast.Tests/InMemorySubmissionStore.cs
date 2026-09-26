@@ -114,6 +114,23 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
         }
     }
 
+    public void RecordFigures(Guid runId, long tokensUsed, int toolCalls, int entriesLost)
+    {
+        lock (gate)
+        {
+            runs[runId] = runs[runId] with
+            {
+                TokensUsed = tokensUsed,
+                ToolCalls = toolCalls,
+                EntriesLost = entriesLost,
+            };
+
+            // Journalled, because "written only where a figure has actually risen" is a claim about
+            // how often this is reached and not only about what it leaves behind (research.md R-06).
+            journal?.Record($"figures of {runId} are {tokensUsed}/{toolCalls}/{entriesLost}");
+        }
+    }
+
     public void Acknowledge(Guid submissionId, DateTimeOffset at)
     {
         lock (gate)

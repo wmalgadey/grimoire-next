@@ -39,7 +39,10 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         new(Guid.NewGuid(), text, submittedAt, SubmissionState.Submitted, Run: null, AcknowledgedAt: null);
 
     private static StoredRun ARun(Guid submissionId, DateTimeOffset startedAt) =>
-        new(Guid.NewGuid(), submissionId, startedAt, ToolGrant.ForIngest, startedAt, AgentProcess: null);
+        new(Guid.NewGuid(), submissionId, startedAt, ToolGrant.ForIngest, startedAt, PinnedModel, AgentProcess: null);
+
+    /// <summary>The model a run is recorded against (DEC-010).</summary>
+    private const string PinnedModel = "claude-opus-4-5-20251101";
 
     private static readonly DateTimeOffset Noon = new(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
 

@@ -173,7 +173,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
             // no dispatch ever ends — the queue stranded on a run that does not exist.
             store.AssignRun(next.Id, StoredRun.Of(run));
 
-            next.HandedTo(run.Id);
+            next.HandedTo(run.Id, run.Model);
             return run;
         }
     }
@@ -296,6 +296,31 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
 
             submission.Ended(terminal);
             store.SetState(submissionId, terminal);
+        }
+    }
+
+    /// <summary>
+    /// The figures of this submission's run as they now stand (RUNS-010).
+    /// </summary>
+    /// <remarks>
+    /// Written under the one lock, as every other change to a submission is, and <b>only where one of
+    /// them has actually risen</b>: the cost is reported on every streamed line, most of which change
+    /// nothing, and a store written sixty times a turn to record the same three numbers would be sixty
+    /// writes with no reader (research.md R-06).
+    /// </remarks>
+    public void RunFiguresAre(Guid submissionId, long tokensUsed, int toolCalls, int entriesLost)
+    {
+        lock (gate)
+        {
+            if (Located(submissionId) is not { RunId: { } run } submission)
+            {
+                return;
+            }
+
+            if (submission.FiguresAre(tokensUsed, toolCalls, entriesLost))
+            {
+                store.RecordFigures(run, tokensUsed, toolCalls, entriesLost);
+            }
         }
     }
 
