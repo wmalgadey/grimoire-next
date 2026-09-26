@@ -138,6 +138,14 @@ internal sealed class HubUnderTest : IAsyncDisposable
 
     public string Address { get; }
 
+    /// <summary>
+    /// Where Grimoire keeps its own bookkeeping — the submissions and the records — and the wiki it
+    /// writes into. Siblings, never one inside the other (contracts/submission-store.md).
+    /// </summary>
+    public string StateDirectory => Path.Combine(directory, "state");
+
+    public string WikiDirectory => Path.Combine(directory, "wiki");
+
     /// <summary>The run the hub dispatched to, which a test drives from state to state.</summary>
     public DrivableHarness Agent { get; }
 

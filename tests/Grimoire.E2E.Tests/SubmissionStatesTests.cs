@@ -180,6 +180,34 @@ public sealed class SubmissionStatesTests : PageTest
         await Expect(State(submission)).ToHaveTextAsync("failed");
     }
 
+    [Fact]
+    public async Task List_PutsANewSubmissionFirst_WhileThePageIsOpen()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var first = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(first);
+
+        await Page.GotoAsync(hub.Address);
+        await Expect(Row(first)).ToBeVisibleAsync();
+
+        // Submitted from elsewhere while this page is open — a second browser, or the same user in
+        // another tab. The list polls; nothing is pushed to it.
+        var second = await hub.SubmitAsync("Grace Hopper found the first bug in a relay.", token);
+
+        await Expect(Row(second)).ToBeVisibleAsync();
+
+        // Newest first, which is the order the server sends (contracts/hub-http-api.md). Rows are
+        // written to rather than rebuilt now, so a new one is appended to the list as an element and
+        // has to be moved into place — without that it would arrive at the bottom, under every
+        // submission the user made before it (ACCESS-004).
+        var order = await Page.Locator("#submissions li").EvaluateAllAsync<string[]>(
+            "rows => rows.map(r => r.dataset.id)");
+
+        Assert.Equal([second.ToString(), first.ToString()], order);
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator State(Guid submission) => Row(submission).Locator(".state");

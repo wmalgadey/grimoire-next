@@ -273,10 +273,10 @@ rather than work of its own", and what it adds is the two assertions nothing els
 
 ### Tests for User Story 3
 
-- [ ] T044 [P] [US3] `RunRecordTests` in `tests/Grimoire.Fast.Tests/`: writing a whole record asks the
+- [X] T044 [P] [US3] `RunRecordTests` in `tests/Grimoire.Fast.Tests/`: writing a whole record asks the
       wiki store for **nothing** — no read, no write, no append. RUNS-005's `log.md` read is the only
       thing that touches the wiki while a run is watched, and it is unchanged — **Req:** RUNS-007 | **Level:** Fast — **Why not lower:** the in-memory wiki store is what can be asked what it was asked
-- [ ] T045 [US3] `RunRecordViewTests` in `tests/Grimoire.E2E.Tests/`: the bytes the record endpoint
+- [X] T045 [US3] `RunRecordViewTests` in `tests/Grimoire.E2E.Tests/`: the bytes the record endpoint
       serves are the bytes of the file under `<state>/runs/`, and the wiki directory holds no file of
       the record. This is what makes the browser a window rather than a second place the run lives —
       **Req:** RUNS-007, ACCESS-006 | **Level:** E2E — **Why not lower:** it compares what a real hub serves with what is really on disk; neither half exists below E2E

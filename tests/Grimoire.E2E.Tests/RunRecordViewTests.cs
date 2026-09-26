@@ -207,6 +207,48 @@ public sealed class RunRecordViewTests : PageTest
         Assert.Equal(scrolledTo, await Page.EvaluateAsync<double>("window.scrollY"));
     }
 
+    [Fact]
+    [Trait("req", "RUNS-007")]
+    public async Task Record_ServedIsTheFileOnDisk_AndTheWikiHoldsNoneOfIt()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+        hub.Agent.Returned(submission, "read_page", ALongResult);
+        hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
+        hub.Agent.End(submission, RunOutcome.Done);
+
+        // What the browser is served.
+        await Page.GotoAsync($"{hub.Address}/api/submissions/{submission}/record");
+        var served = await Page.InnerTextAsync("body");
+
+        // What is on disk. One file, under the state directory Grimoire owns, named for the run.
+        var records = Directory.GetFiles(Path.Combine(hub.StateDirectory, "runs"), "*.md");
+        var onDisk = await File.ReadAllTextAsync(Assert.Single(records), token);
+
+        // The browser gets what the owner's editor would get. Nothing is rendered server-side and
+        // nothing is summarised, which is what keeps the page a window onto the record rather than a
+        // second place the run lives (US3, ACCESS-006).
+        Assert.Contains("Ada Lovelace already has a page.", onDisk, StringComparison.Ordinal);
+        Assert.Contains("ended done", onDisk, StringComparison.Ordinal);
+
+        foreach (var line in onDisk.Split('\n').Where(l => l.Trim().Length > 0))
+        {
+            Assert.Contains(line.Trim(), served, StringComparison.Ordinal);
+        }
+
+        // And the wiki holds none of it. Grimoire's bookkeeping in the user's repository would turn up
+        // in the version history that is their only undo (Invariants 1 and 3, DEC-023).
+        var inTheWiki = Directory.GetFiles(hub.WikiDirectory, "*", SearchOption.AllDirectories);
+
+        Assert.DoesNotContain(inTheWiki, f => Path.GetFileName(f).EndsWith(".md", StringComparison.Ordinal)
+            && File.ReadAllText(f).Contains("ended done", StringComparison.Ordinal));
+        Assert.DoesNotContain(inTheWiki, f => records.Any(r => Path.GetFileName(r) == Path.GetFileName(f)));
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator Segments() => Page.Locator("#record li");
