@@ -48,6 +48,16 @@ RUNS-009 is what the run *did*, and nothing about what it was told: no instructi
 description, no submitted text. A tool result goes in whole — nothing cut, nothing escaped — inside a
 fence longer than any run of backticks in it.
 
+**There is no reasoning in a record, because the CLI does not give any.** The agent's own text is
+recorded wherever it writes some, which is at the turn boundaries: it says what it is about to do,
+makes its calls, and says what it found. Inside one turn it makes call after call without prose, and
+that gap is the model's doing rather than something dropped on the way. Its *thinking* is a different
+matter and is not available at all — measured twice, on `claude-haiku-4-5` (research.md R-05) and
+again on `claude-sonnet-4-5` with CLI 2.1.283: the complete message carries `"thinking": ""` beside a
+several-hundred-character signature, and the streamed `thinking_delta` events carry empty strings too.
+There is nothing behind the signature to record. Should a later CLI deliver it, that is a change to
+what RUNS-009 covers and an owner's decision, not a silent addition.
+
 RUNS-010 exists apart from ACCESS-005 because keeping the figures and showing them are two
 behaviours, and because a stop must not lose them: `002-ingest-queue` assumed the token counts of a
 cut-off run need not survive, and that assumption is withdrawn here — the row of a failed run still
