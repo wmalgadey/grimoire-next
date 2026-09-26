@@ -27,10 +27,12 @@
         word-break: break-word;
       }
       #record { list-style: none; margin: 1.5rem 0 0; padding: 0; }
+      /* Dense and quiet: a call and its result are a few lines, not a card (docs/ux.md, Feel). */
       #record li {
-        border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-        padding: 0.5rem 0;
+        border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+        padding: 0.35rem 0;
       }
+      .when { opacity: 0.45; }
       .heading {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 0.875rem;
@@ -48,7 +50,15 @@
       li .sub-heading ~ * { margin-left: 1rem; }
       /* A tool call is one line and its result is folded under it, so the user can follow what the
          run did without reading the results in full and still reach any one of them (ACCESS-006). */
-      .result summary { cursor: pointer; font-size: 0.875rem; opacity: 0.7; }
+      /* The fold reads as the terminal's does: a turnstile and a count, indented under its call. */
+      .result summary {
+        cursor: pointer;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.875rem;
+        margin-left: 1.2rem;
+        opacity: 0.6;
+      }
+      .result pre { margin-left: 1.2rem; }
       .result pre {
         background: color-mix(in srgb, currentColor 6%, transparent);
         margin-top: 0.4rem;

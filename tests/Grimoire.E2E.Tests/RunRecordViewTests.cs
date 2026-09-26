@@ -62,10 +62,12 @@ public sealed class RunRecordViewTests : PageTest
 
 
 
-        // The call carries both halves, each folded and each named.
-        await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(2);
-        await Expect(Segments().Nth(0).Locator("summary").Nth(0)).ToContainTextAsync("arguments");
-        await Expect(Segments().Nth(0).Locator("summary").Nth(1)).ToContainTextAsync("returned");
+
+        // A tool call is one line — the tool and its arguments on it — with the result folded
+        // underneath, which is the shape docs/ux.md names as its reference. One fold, not two.
+        await Expect(Heading(0)).ToContainTextAsync("ada.md");
+        await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(1);
+        await Expect(Segments().Nth(0).Locator("summary")).ToContainTextAsync("7 lines");
 
         // The agent's own text is prose and is simply there.
         await Expect(Segments().Nth(1)).ToContainTextAsync("I will add the date.");
@@ -89,8 +91,8 @@ public sealed class RunRecordViewTests : PageTest
 
         await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
 
-        // The result sits in the entry of the call it answers, as its second folded block.
-        var result = Segments().Nth(0).Locator("details.result").Nth(1);
+        // The result sits in the entry of the call it answers, folded under its one line.
+        var result = Segments().Nth(0).Locator("details.result");
 
         // Folded: the user can follow what the run did without reading the results in full.
         await Expect(result.Locator("pre")).Not.ToBeVisibleAsync();
@@ -123,7 +125,7 @@ public sealed class RunRecordViewTests : PageTest
         // (contracts/run-record.md, rule 4). Two entries: the call with its answer, and the tail.
         await Expect(Segments()).ToHaveCountAsync(2);
         await Expect(Heading(0)).ToContainTextAsync("called read_page");
-        await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(2);
+        await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(1);
     }
 
     [Fact]
@@ -168,9 +170,9 @@ public sealed class RunRecordViewTests : PageTest
         await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
         await Expect(Segments()).ToHaveCountAsync(1);
 
-        // The user opens the result and reads it — the second block of the call's own entry. The run
-        // is still under way.
-        var result = Segments().Nth(0).Locator("details.result").Nth(1);
+        // The user opens the result and reads it, folded under the call's one line. The run is still
+        // under way.
+        var result = Segments().Nth(0).Locator("details.result");
         await result.Locator("summary").ClickAsync();
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
 

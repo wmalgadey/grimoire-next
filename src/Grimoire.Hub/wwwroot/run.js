@@ -242,7 +242,13 @@ function folded(label, content) {
 
   const summary = document.createElement("summary");
   const lines = content.split("\n").length;
-  summary.textContent = `${label} — ${lines} ${lines === 1 ? "line" : "lines"}`;
+
+  // The count and nothing else for a result, which is what a reader needs to decide whether to open
+  // it. "arguments" is named because it is the one that is not the answer (docs/ux.md, References).
+  summary.textContent =
+    label === "returned"
+      ? `${lines} ${lines === 1 ? "line" : "lines"}`
+      : `${label} — ${lines} ${lines === 1 ? "line" : "lines"}`;
 
   const text = document.createElement("pre");
   text.textContent = asReadableJson(content) ?? content;
@@ -266,24 +272,63 @@ function toolOf(said) {
 // here (RUNS-009, US3).
 function element(segment) {
   const item = document.createElement("li");
-
-  const heading = document.createElement("div");
-  heading.className = "heading";
-  heading.textContent = segment.heading;
-  item.append(heading);
-
   const { lead, inside } = sections(segment.body);
 
-  item.append(...shownAs(segment.said, lead));
+  // A tool call is **one line**, its result folded underneath, the agent's own text as prose in
+  // between — the shape docs/ux.md names as its reference, and the one the owner reads daily in
+  // Claude Code. The call's arguments go on that line where they fit, rather than behind a second
+  // disclosure that turns one call into four lines.
+  const heading = document.createElement("div");
+  heading.className = "heading";
 
+  const when = document.createElement("span");
+  when.className = "when";
+  when.textContent = timeIn(segment.heading);
+
+  const what = document.createElement("span");
+  const args = segment.said.startsWith("called ") ? fencedIn(lead) : null;
+  const inline = args === null ? null : oneLine(args);
+
+  what.textContent =
+    inline === null ? segment.said : `${segment.said}(${inline.shown})`;
+
+  heading.append(when, " ", what);
+  item.append(heading);
+
+  // Where the arguments did not fit on the line, they are still reachable — quietly, and under the
+  // call they belong to.
+  if (inline !== null && inline.cut) {
+    item.append(folded("arguments", args));
+  }
+
+  if (args === null) {
+    item.append(...shownAs(segment.said, lead));
+  }
+
+  // The result, folded underneath. The record wrote it as a section inside this call, so this is
+  // showing what is there rather than pairing anything (US3).
   for (const part of inside) {
-    const sub = document.createElement("div");
-    sub.className = "sub-heading";
-    sub.textContent = part.heading;
-    item.append(sub, ...shownAs(part.said, part.body));
+    item.append(...shownAs(part.said, part.body));
   }
 
   return item;
+}
+
+/// The time out of a segment's first line, to the second. The date is in the frame already, and a
+/// date on every line of a log is a column nobody reads.
+function timeIn(heading) {
+  const match = /\b(\d{2}:\d{2}:\d{2})\b/.exec(heading);
+
+  return match === null ? heading.split(" · ")[0] : match[1];
+}
+
+/// A call's arguments as they go on the call's own line, cut where they would not fit.
+function oneLine(args) {
+  const collapsed = args.replace(/\s+/g, " ").trim();
+
+  return collapsed.length <= 72
+    ? { shown: collapsed, cut: false }
+    : { shown: `${collapsed.slice(0, 72)}…`, cut: true };
 }
 
 // What one part of a segment looks like: a fenced block folded, the record's own table as a table, and
