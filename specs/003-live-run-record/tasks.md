@@ -174,20 +174,20 @@ Nothing live, no editor.
 
 ### Tests for User Story 1
 
-- [ ] T028 [P] [US1] `SubmissionStateTests` in `tests/Grimoire.Fast.Tests/`: the response carries the
+- [X] T028 [P] [US1] `SubmissionStateTests` in `tests/Grimoire.Fast.Tests/`: the response carries the
       state, the model and both figures for a submission that has a run, and **no run fields at all**
       — not zeros — for one that has none — **Req:** ACCESS-005 | **Level:** Fast — **Why not lower:** there is no lower level; the response is built in-process
-- [ ] T029 [P] [US1] `SubmissionStateTests`: `entriesLost` is absent where nothing was lost and a
+- [X] T029 [P] [US1] `SubmissionStateTests`: `entriesLost` is absent where nothing was lost and a
       number above zero where the record could not hold something — **Req:** ACCESS-005, RUNS-007 | **Level:** Fast — **Why not lower:** the in-memory record adapter is what can be made to lose an entry
-- [ ] T030 [P] [US1] `RunRecordEndpointTests` in `tests/Grimoire.Fast.Tests/`: the endpoint answers
+- [X] T030 [P] [US1] `RunRecordEndpointTests` in `tests/Grimoire.Fast.Tests/`: the endpoint answers
       with the record's bytes unaltered and `404` where there is no such submission, no run yet, or no
       record — **Req:** ACCESS-006 | **Level:** Fast — **Why not lower:** the endpoint is reachable in-process through `HubApplication.Build`
-- [ ] T031 [US1] `SubmissionStatesTests` in `tests/Grimoire.E2E.Tests/`: the row of a run that has
+- [X] T031 [US1] `SubmissionStatesTests` in `tests/Grimoire.E2E.Tests/`: the row of a run that has
       ended carries the model, the tokens and the tool calls beside its state — **Req:** ACCESS-005 | **Level:** E2E — **Why not lower:** what the *browser renders* is the half of ACCESS-005 no in-process test reaches (DEC-019's precedent for ACCESS-001/002)
-- [ ] T032 [US1] `RunRecordViewTests` in `tests/Grimoire.E2E.Tests/`: the owner opens a finished run
+- [X] T032 [US1] `RunRecordViewTests` in `tests/Grimoire.E2E.Tests/`: the owner opens a finished run
       from its row, reads its frame and its moments in order, and opens one folded result to find it
       whole — **Req:** ACCESS-006 | **Level:** E2E — **Why not lower:** the folding and the segmentation are the browser's, and only a real browser exercises them
-- [ ] T033 [US1] Retire ACCESS-002 **with the five tests that carry it**, in this one commit:
+- [X] T033 [US1] Retire ACCESS-002 **with the five tests that carry it**, in this one commit:
       `Report_CarriesNothingBeyondTheState` and `List_ShowsNothingBeyondTheState` are **deleted**,
       because they assert the negative this feature undoes; `Report_NamesEachStateAsOneOfTheFour` and
       `List_ShowsEachSubmissionInItsState` are retargeted to ACCESS-005;
@@ -198,21 +198,21 @@ Nothing live, no editor.
 
 ### Implementation for User Story 1
 
-- [ ] T034 [US1] `docs/capabilities/access.md`: ACCESS-002 moves under "Retired" keeping its ID, with
+- [X] T034 [US1] `docs/capabilities/access.md`: ACCESS-002 moves under "Retired" keeping its ID, with
       the reason the spec gives; the note saying ACCESS-003 and ACCESS-004 do not reach past it goes
       with it (Constitution IV.1, IV.2) — **Req:** Principle IV.2
-- [ ] T035 [US1] `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs`: `SubmissionView` gains `model`,
+- [X] T035 [US1] `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs`: `SubmissionView` gains `model`,
       `tokensUsed`, `toolCalls` and, only where it is above zero, `entriesLost` — all four from the one
       reading of `SubmissionStatus`, all four absent where there is no run. The scope note that said
       no further detail about the run is exposed is withdrawn, with a line saying which requirement
       withdrew it — **Req:** ACCESS-005
-- [ ] T036 [P] [US1] `src/Grimoire.Hub/Api/RunRecordEndpoint.cs`: `GET /api/submissions/{id}/record`,
+- [X] T036 [P] [US1] `src/Grimoire.Hub/Api/RunRecordEndpoint.cs`: `GET /api/submissions/{id}/record`,
       answering `text/markdown; charset=utf-8` with the file's bytes, or `404`. It serves the file and
       renders nothing: no second, machine-shaped view of a run exists (contracts/hub-http-api.md) —
       **Req:** ACCESS-006
-- [ ] T037 [US1] `src/Grimoire.Hub/wwwroot/index.html` and `app.js`: each row gains the model, the two
+- [X] T037 [US1] `src/Grimoire.Hub/wwwroot/index.html` and `app.js`: each row gains the model, the two
       figures and a link to that run's page. No identifier is rendered — **Req:** ACCESS-005
-- [ ] T038 [US1] `src/Grimoire.Hub/wwwroot/run.html` and `run.js`: the record shown in monospace
+- [X] T038 [US1] `src/Grimoire.Hub/wwwroot/run.html` and `run.js`: the record shown in monospace
       (`docs/ux.md`), segmented by the rule of contracts/run-record.md — a tool call as one line, its
       result folded under it, the agent's text as prose — and a line saying lines are missing where
       `entriesLost` is above zero — **Req:** ACCESS-006

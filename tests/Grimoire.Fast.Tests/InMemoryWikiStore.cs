@@ -15,11 +15,21 @@ internal sealed class InMemoryWikiStore : IWikiStore
 
     public IReadOnlyDictionary<string, string> Files => files;
 
+    /// <summary>
+    /// Run inside <see cref="ReadAsync"/>, which is the one call on the run's stopping path that
+    /// leaves the process — and so the one place a run can end while the hub is waiting.
+    /// </summary>
+    public Action? WhileReading { get; set; }
+
     public Task<IReadOnlyList<string>> ListAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<string>>([.. files.Keys.Order(StringComparer.Ordinal)]);
 
-    public Task<string?> ReadAsync(string path, CancellationToken cancellationToken) =>
-        Task.FromResult(files.GetValueOrDefault(path));
+    public Task<string?> ReadAsync(string path, CancellationToken cancellationToken)
+    {
+        WhileReading?.Invoke();
+
+        return Task.FromResult(files.GetValueOrDefault(path));
+    }
 
     public Task WriteAsync(string path, string content, CancellationToken cancellationToken)
     {

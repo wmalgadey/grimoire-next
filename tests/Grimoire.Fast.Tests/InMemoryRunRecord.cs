@@ -1,3 +1,4 @@
+using System.Text;
 using Grimoire.Runs;
 
 namespace Grimoire.Fast.Tests;
@@ -38,6 +39,16 @@ internal sealed class InMemoryRunRecord : IRunRecord
     /// disk. Nothing throws either way (RUNS-007).
     /// </summary>
     public bool FailWrites { get; set; }
+
+    /// <summary>
+    /// Run inside <see cref="Append"/>, while the conductor still holds that run's lock.
+    /// </summary>
+    /// <remarks>
+    /// This is how "a report falls entirely before the ending or entirely after it" becomes observable:
+    /// a test cannot win a race by racing it, but it can stop a report half way and ask whether an
+    /// ending can get past it (RUNS-009, RUNS-010).
+    /// </remarks>
+    public Action? WhileAppending { get; set; }
 
     /// <summary>Whether this record was asked to write anything at all for that run.</summary>
     public bool Holds(Guid runId)
@@ -81,10 +92,12 @@ internal sealed class InMemoryRunRecord : IRunRecord
             // Nothing is written after the tail, the same promise the real adapter makes: a moment
             // already in flight when the run ended is dropped, and is not counted lost — no write
             // failed (contracts/run-record.md).
-            if (HasATail(moment.RunId))
+            if (ended.Contains(moment.RunId))
             {
                 return;
             }
+
+            WhileAppending?.Invoke();
 
             Write(moment.RunId, moment);
         }
@@ -97,9 +110,11 @@ internal sealed class InMemoryRunRecord : IRunRecord
         // One lock across the check and the write: read apart, two endings racing would both pass.
         lock (gate)
         {
-            // A run ends once, so a second call appends nothing. And a tail that could not be written
-            // is not a tail: it may still be written, exactly as the real adapter allows (RUNS-007).
-            if (HasATail(tail.RunId))
+            // A run ends once, whether or not the tail reaches the record — the same promise the real
+            // adapter makes. A tail that could not be written is one more entry lost, and the run is
+            // over all the same: nothing would ever write it later, because a run has no moments after
+            // its end (RUNS-007).
+            if (!ended.Add(tail.RunId))
             {
                 return;
             }
@@ -108,9 +123,8 @@ internal sealed class InMemoryRunRecord : IRunRecord
         }
     }
 
-    /// <summary>Whether this run's tail is already in the record. Assumes the lock.</summary>
-    private bool HasATail(Guid runId) =>
-        written.TryGetValue(runId, out var entries) && entries.OfType<RunFrameTail>().Any();
+    /// <summary>The runs whose ending has been taken. A run ends once. Assumes the lock.</summary>
+    private readonly HashSet<Guid> ended = [];
 
     public int EntriesLost(Guid runId)
     {
@@ -119,6 +133,29 @@ internal sealed class InMemoryRunRecord : IRunRecord
             return lost.GetValueOrDefault(runId);
         }
     }
+
+    /// <summary>
+    /// The record as bytes, rendered the way the real adapter renders it — through the same
+    /// <c>RecordText</c>. A double that shaped the file differently from the adapter it stands in for
+    /// would not merely miss a difference; it would hide one.
+    /// </summary>
+    public byte[]? Read(Guid runId)
+    {
+        var entries = Of(runId);
+
+        return entries.Count == 0
+            ? null
+            : Encoding.UTF8.GetBytes(string.Concat(entries.Select(TextOf)));
+    }
+
+    private static string TextOf(object entry) => entry switch
+    {
+        RunFrameHead head => RecordText.Head(head),
+        RunMoment moment => RecordText.Moment(moment),
+        RunFrameTail tail => RecordText.Tail(tail),
+        LostEntriesNotice notice => RecordText.EntriesLost(notice.Count, FastSuite.Start),
+        _ => throw new ArgumentOutOfRangeException(nameof(entry), entry, "not something a record holds"),
+    };
 
     private void Write(Guid runId, object entry)
     {

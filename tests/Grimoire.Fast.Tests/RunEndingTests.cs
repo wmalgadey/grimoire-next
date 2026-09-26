@@ -107,4 +107,35 @@ public sealed class RunEndingTests
 
         Assert.Equal(SubmissionState.Failed, submission.State);
     }
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public async Task Agent_IsNotNudged_WhenTheRunEndsWhileTheLogIsBeingRead()
+    {
+        var hub = new FastHub();
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+
+        // The log is read outside the run's lock, which is what lets a run be ended while the wiki is
+        // slow — the elapsed ceiling exists for exactly that run. So the ending lands here.
+        Task? ending = null;
+
+        hub.Wiki.WhileReading = () =>
+        {
+            hub.Wiki.WhileReading = null;
+            ending = Task.Run(() => hub.Harness.End(submission.Id, RunOutcome.Failed));
+            ending.Wait(TimeSpan.FromSeconds(2));
+        };
+
+        await hub.Harness.StoppedAsync(submission.Id);
+        await ending!;
+
+        // The log holds no entry, so the decision would have been to nudge. It is not taken: nudging
+        // would put an agent back to work on a run Grimoire has already ended (RUNS-006), and the
+        // record would take a moment after its tail.
+        Assert.Empty(hub.Harness.Nudged);
+        Assert.Equal(SubmissionState.Failed, submission.State);
+
+        var run = hub.Store.Load().Single(s => s.Id == submission.Id).Run!;
+        Assert.DoesNotContain(hub.Record.MomentsOf(run.Id), m => m.Kind == RunMomentKind.GrimoireSaid);
+    }
 }

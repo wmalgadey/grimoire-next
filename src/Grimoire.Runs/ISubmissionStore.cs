@@ -144,6 +144,19 @@ public interface ISubmissionStore
     /// </summary>
     void SetState(Guid submissionId, SubmissionState state);
 
+    /// <summary>
+    /// The run ended: its submission's terminal state and the run's final figures, <b>in one
+    /// change</b> (RUNS-001, RUNS-010).
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="SetState"/> followed by <see cref="RecordFigures"/>. Those are two changes, and
+    /// a stop between them — which RUNS-004 covers, a kill or a power cut — would leave a submission
+    /// that reads done or failed beside the figures it had one moment earlier. RUNS-010 has the
+    /// figures stand as the run's final ones once it has ended <em>and</em> survive a stop, and two
+    /// changes cannot promise both.
+    /// </remarks>
+    void Ended(Guid submissionId, SubmissionState terminal, Guid runId, long tokensUsed, int toolCalls, int entriesLost);
+
     /// <summary>The user has acknowledged this submission's failed run (RUNS-003).</summary>
     void Acknowledge(Guid submissionId, DateTimeOffset at);
 

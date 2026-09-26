@@ -164,6 +164,7 @@ public static class HubApplication
         var intake = new SubmissionIntake(board, queue);
 
         app.MapSubmissions(intake, board, queue, instructions.Read);
+        app.MapRunRecord(board, record);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to
         // its run. Unauthenticated and on loopback, per docs/product.md §2.

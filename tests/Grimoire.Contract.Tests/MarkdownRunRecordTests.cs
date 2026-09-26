@@ -1,3 +1,4 @@
+using System.Text;
 using Grimoire.Agent;
 using Grimoire.Runs;
 using Grimoire.Runs.Adapters;
@@ -134,7 +135,7 @@ public sealed class MarkdownRunRecordTests : IDisposable
     }
 
     [Fact]
-    public void Tail_CanStillBeWritten_WhenItsFirstWriteFailed()
+    public void Run_IsEndedAndItsTailCounted_WhenTheTailCannotBeWritten()
     {
         var head = AHead();
         var runs = Path.Combine(state, "runs");
@@ -148,19 +149,20 @@ public sealed class MarkdownRunRecordTests : IDisposable
 
         record.Ended(ATail(head.RunId, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry));
 
+        // The tail is one more entry lost, which is what the row and the record view say (RUNS-007).
         Assert.Equal(1, record.EntriesLost(head.RunId));
 
-        // And comes back. A tail that could not be written is not a tail: had the run been marked
-        // ended on the attempt rather than on the write, the record could never have got one at all,
-        // and it would be missing its tail with nothing able to put one there (RUNS-007).
+        // And the run is over all the same. A record whose tail could not be written must not go on
+        // taking moments: a run has no moments after its end, so nothing would ever write that tail,
+        // and the record's last line would be something that happened before the run stopped.
         File.Delete(runs);
         Directory.CreateDirectory(runs);
 
+        record.Append(Returned(head.RunId, "one word too late"));
         record.Ended(ATail(head.RunId, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry));
 
-        var text = File.ReadAllText(Path.Combine(runs, $"{head.RunId}.md"));
-        Assert.Contains("ended done", text, StringComparison.Ordinal);
-        Assert.Contains("1 entries", text, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(runs, $"{head.RunId}.md")));
+        Assert.Equal(1, record.EntriesLost(head.RunId));
     }
 
     [Fact]
@@ -181,6 +183,66 @@ public sealed class MarkdownRunRecordTests : IDisposable
         // (contracts/run-record.md).
         Assert.Equal(ended, File.ReadAllText(file));
         Assert.Equal(0, record.EntriesLost(head.RunId));
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-006")]
+    public async Task Read_IsAlwaysAWholeRecord_WhileTheRunIsStillAppendingToIt()
+    {
+        var head = AHead();
+        var record = new MarkdownRunRecord(state);
+
+        record.Begin(head);
+
+        var headText = RecordText.Head(head);
+
+        // About a megabyte, which is large enough that one append is several writes to the disk rather
+        // than one — measured: at a few kilobytes the window is so small that a read misses it two
+        // times in three, and a test that passes on broken code proves nothing. The character outside
+        // ASCII is there so that a read landing inside a write is not even valid UTF-8.
+        var moment = Returned(head.RunId, string.Concat(Enumerable.Repeat("Ada Lovelace — 42\n", 60_000)));
+        var momentText = RecordText.Moment(moment);
+
+        const int appends = 12;
+
+        var appending = Task.Run(
+            () =>
+            {
+                for (var i = 0; i < appends; i++)
+                {
+                    record.Append(moment);
+                }
+            },
+            TestContext.Current.CancellationToken);
+
+        var readings = 0;
+
+        while (!appending.IsCompleted)
+        {
+            if (record.Read(head.RunId) is not { } bytes)
+            {
+                continue;
+            }
+
+            readings++;
+
+            // Every answer is a record taken at an append boundary: the head, and some whole number of
+            // moments behind it. `File.AppendAllText` is not atomic, so a read that did not wait for
+            // one would serve a segment cut in half — a record the browser cannot segment, on the very
+            // poll where the run is most alive (ACCESS-006).
+            var text = Encoding.UTF8.GetString(bytes);
+            var behindTheHead = text.Length - headText.Length;
+
+            Assert.StartsWith(headText, text, StringComparison.Ordinal);
+            Assert.Equal(0, behindTheHead % momentText.Length);
+            Assert.Equal(headText + string.Concat(Enumerable.Repeat(momentText, behindTheHead / momentText.Length)), text);
+        }
+
+        await appending;
+
+        // The loop has to have actually looked. A run that finished appending before the first read
+        // would pass this without having read anything at all.
+        Assert.True(readings > 0, "the record was never read while it was being appended to");
     }
 
     private static RunFrameHead AHead() => new(

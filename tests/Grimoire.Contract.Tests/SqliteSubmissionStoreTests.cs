@@ -208,6 +208,31 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
 
     [Fact]
     [Trait("req", "RUNS-010")]
+    public void Ending_PutsTheTerminalStateAndTheFinalFiguresInTheFileTogether()
+    {
+        var submission = ASubmission("Ada Lovelace wrote the first program.", Noon);
+        var run = ARun(submission.Id, Noon);
+        var store = Reopened();
+
+        store.Add(submission);
+        store.AssignRun(submission.Id, run);
+        store.RecordFigures(run.Id, tokensUsed: 51_094, toolCalls: 4, entriesLost: 0);
+
+        store.Ended(submission.Id, SubmissionState.Failed, run.Id, tokensUsed: 148_233, toolCalls: 9, entriesLost: 2);
+
+        // One change, so a stop can leave the file before it or after it and never between: a
+        // submission reading failed beside the figures it had one moment earlier is what RUNS-010
+        // forbids, and two writes could not promise otherwise.
+        var read = Reopened().Load().Single();
+
+        Assert.Equal(SubmissionState.Failed, read.State);
+        Assert.Equal(148_233, read.Run!.TokensUsed);
+        Assert.Equal(9, read.Run.ToolCalls);
+        Assert.Equal(2, read.Run.EntriesLost);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-010")]
     public void OlderFile_ComesBackWithItsSubmissionsIntactAndItsFiguresAtZero()
     {
         var submissionId = Guid.NewGuid();

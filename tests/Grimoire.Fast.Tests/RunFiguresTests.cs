@@ -126,6 +126,102 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-005")]
+    public async Task TerminalState_AndTheFinalFigures_ArePublishedTogether()
+    {
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.Spend(submission.Id, 148_233);
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+
+        // The tail cannot be written, so the count of lost entries rises in the same breath as the
+        // ending — which is the moment the two could most easily be published apart (RUNS-007).
+        hub.Record.FailWrites = true;
+
+        // What a poll would read at every moment one could land inside the ending. The board's lock is
+        // re-entrant, so this is the reading a poll on this thread would get.
+        var readings = new List<SubmissionStatus>();
+        hub.Store.WhileWriting = () => readings.Add(submission.Status);
+
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        hub.Store.WhileWriting = null;
+
+        // Never `running` beside a figure the ending produced. Written as two passes of the lock — the
+        // figures, then the state — a reader landing between them would see exactly that pair, and it
+        // never existed (ACCESS-005, contracts/hub-http-api.md).
+        Assert.NotEmpty(readings);
+        Assert.DoesNotContain(
+            readings,
+            reading => reading.State == SubmissionState.Running && reading.Run!.EntriesLost > 0);
+
+        // And the reading that carries the final figures carries the terminal state with them.
+        Assert.All(
+            readings.Where(r => r.Run!.EntriesLost > 0),
+            reading => Assert.Equal(SubmissionState.Failed, reading.State));
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-005")]
+    public async Task Figures_DoNotMove_AfterTheRunHasEnded()
+    {
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.Spend(submission.Id, 148_233);
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        var final = submission.Status.Run!;
+        var writes = hub.Journal.Entries.Count;
+
+        // A tool call racing the stop: the conductor read the run before it was removed, and reports on
+        // it afterwards. The record already dropped the moment for arriving after the tail, so counting
+        // it here would put a figure on the row that is in no record at all — and RUNS-010 has the
+        // figures stand as the run's final ones once it has ended.
+        hub.Board.RunFiguresAre(submission.Id, tokensUsed: 999_999, toolCalls: 99, entriesLost: 7);
+
+        Assert.Equal(final, submission.Status.Run);
+        Assert.Equal(writes, hub.Journal.Entries.Count);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-009")]
+    public async Task Ending_WaitsForAMomentAlreadyBeingAccountedFor()
+    {
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+
+        var endingGotPast = false;
+        Task? ending = null;
+
+        // Stop half way through a tool call — the record being written, the count not yet raised — and
+        // let the run end from another thread.
+        hub.Record.WhileAppending = () =>
+        {
+            hub.Record.WhileAppending = null;
+            ending = Task.Run(() => hub.Harness.End(submission.Id, RunOutcome.Failed));
+
+            // It must not get through. Appended on one side of the ending and counted on the other,
+            // the row would say fewer tool calls than the record holds.
+            endingGotPast = ending.Wait(TimeSpan.FromMilliseconds(250));
+        };
+
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+
+        await ending!;
+
+        Assert.False(endingGotPast, "the run ended while a moment was still being accounted for");
+
+        // And the row agrees with the record about what the run did.
+        var run = hub.Store.Load().Single(s => s.Id == submission.Id).Run!;
+        Assert.Equal(
+            hub.Record.MomentsOf(run.Id).Count(m => m.Kind == RunMomentKind.ToolCalled),
+            run.ToolCalls);
+        Assert.Equal(1, run.ToolCalls);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-004")]
     public async Task Figures_ComeBackWithTheRun_AfterAStop()
     {

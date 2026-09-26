@@ -27,8 +27,23 @@ public sealed class RunConductor(
 
     private readonly ConcurrentDictionary<Guid, Watched> runs = new();
 
-    /// <summary>A run under way, together with the timer that holds it to its elapsed ceiling.</summary>
-    private sealed record Watched(Run Run, ITimer Deadline);
+    /// <summary>
+    /// A run under way: the run, the timer that holds it to its elapsed ceiling, and the one lock every
+    /// report about it is taken under.
+    /// </summary>
+    /// <param name="Gate">
+    /// What makes a report and the ending mutually exclusive. Everything the hub learns about a run
+    /// arrives on whatever thread the harness reads on, and every callback here used to read the run
+    /// and then act on it in two steps — so a moment could be appended to the record and counted on
+    /// either side of an ending that happened in between, leaving the row and the record disagreeing
+    /// about what the run did. Under this lock a report falls <b>entirely</b> before the ending or
+    /// entirely after it, and one that falls after finds no run and does nothing.
+    /// <para>
+    /// Always the outermost lock taken here. The record's and the board's are taken inside it and
+    /// never the other way about, which is what keeps the three from making a cycle.
+    /// </para>
+    /// </param>
+    private sealed record Watched(Run Run, ITimer Deadline, Lock Gate);
 
     /// <summary>
     /// A run for this submission, with its grant and both ceilings recorded on it. Called by the
@@ -67,7 +82,7 @@ public sealed class RunConductor(
             dueTime: run.Ceilings.Elapsed,
             period: Timeout.InfiniteTimeSpan);
 
-        runs[submissionId] = new Watched(run, deadline);
+        runs[submissionId] = new Watched(run, deadline, new Lock());
         return run;
     }
 
@@ -122,22 +137,34 @@ public sealed class RunConductor(
     /// </summary>
     private void CostSoFar(Guid submissionId, long tokensUsed, IReadOnlyDictionary<string, ModelTokens> tokensPerModel)
     {
-        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        if (Reporting(submissionId) is not { } watched)
         {
             return;
         }
 
-        // Recorded on the run, not only compared: the stop decision below reads it, and so does
-        // the token ceiling when the run is asked how it ended (GUARD-004). The breakdown comes with
-        // it, and the record's tail says what each model spent (RUNS-008).
-        run.Spent(tokensUsed, tokensPerModel);
+        var run = watched.Run;
+        TimeSpan elapsed;
 
-        // The figures the list shows. `Spent` is a Math.Max, so this writes the store two to four
-        // times a turn rather than once per streamed line (RUNS-010, research.md R-06).
-        FiguresRose(run);
+        lock (watched.Gate)
+        {
+            if (HasEnded(submissionId))
+            {
+                return;
+            }
 
-        var elapsed = clock.GetUtcNow() - run.StartedAt;
+            // Recorded on the run, not only compared: the stop decision below reads it, and so does
+            // the token ceiling when the run is asked how it ended (GUARD-004). The breakdown comes
+            // with it, and the record's tail says what each model spent (RUNS-008).
+            run.Spent(tokensUsed, tokensPerModel);
 
+            // The figures the list shows. `Spent` is a Math.Max, so this writes the store two to four
+            // times a turn rather than once per streamed line (RUNS-010, research.md R-06).
+            FiguresRose(run);
+
+            elapsed = clock.GetUtcNow() - run.StartedAt;
+        }
+
+        // Outside the lock: stopping ends the run, and ending it takes this same lock.
         if (run.Ceilings.ReachedBy(elapsed, run.TokensUsed))
         {
             _ = StopAsync(run, submissionId, run.CeilingReachedBy(elapsed));
@@ -155,19 +182,37 @@ public sealed class RunConductor(
     /// </remarks>
     private void MomentHappened(Guid submissionId, TranscriptMoment moment)
     {
-        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        if (Reporting(submissionId) is not { } watched)
         {
             return;
         }
 
-        record.Append(RunMoment.Of(run.Id, clock.GetUtcNow(), moment));
-
-        if (moment.Kind == RunMomentKind.ToolCalled)
+        lock (watched.Gate)
         {
-            run.ToolCalled();
-            FiguresRose(run);
+            // Read again inside the lock. The run may have ended while this callback waited for it,
+            // and a moment that arrives after the ending belongs to neither the record nor the count:
+            // accounted for on one side of the ending and not the other, the row and the record would
+            // disagree about what the run did (RUNS-009, RUNS-010).
+            if (HasEnded(submissionId))
+            {
+                return;
+            }
+
+            record.Append(RunMoment.Of(watched.Run.Id, clock.GetUtcNow(), moment));
+
+            if (moment.Kind == RunMomentKind.ToolCalled)
+            {
+                watched.Run.ToolCalled();
+                FiguresRose(watched.Run);
+            }
         }
     }
+
+    /// <summary>The run this report is about, or null once it is over.</summary>
+    private Watched? Reporting(Guid submissionId) => runs.GetValueOrDefault(submissionId);
+
+    /// <summary>Whether the run is already over. Read inside that run's lock.</summary>
+    private bool HasEnded(Guid submissionId) => !runs.ContainsKey(submissionId);
 
     /// <summary>
     /// The run's figures as they now stand, offered to the board, which writes them only where one has
@@ -192,34 +237,55 @@ public sealed class RunConductor(
     /// </remarks>
     private async Task AgentStoppedAsync(Guid submissionId, bool endedAbnormally)
     {
-        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        if (Reporting(submissionId) is not { } watched)
         {
             return;
         }
 
+        // Read outside the run's lock. It is the one call on this path that leaves the process, and a
+        // run whose lock was held across it could not be ended while the wiki was slow — the elapsed
+        // ceiling exists for exactly that run (GUARD-004).
         var log = await wiki.ReadAsync(WikiFile.Log, CancellationToken.None).ConfigureAwait(false);
 
-        var decision = run.AgentStopped(new AgentStop(
-            run.IsNamedIn(log),
-            clock.GetUtcNow() - run.StartedAt,
-            run.TokensUsed,
-            endedAbnormally));
+        RunDecision decision;
 
+        lock (watched.Gate)
+        {
+            // The run may have ended while the log was being read — a ceiling reached, or Grimoire
+            // stopped. Deciding anything now would judge a run that is already judged, and nudging
+            // would put an agent back to work on a run Grimoire has ended (RUNS-006).
+            if (HasEnded(submissionId))
+            {
+                return;
+            }
+
+            decision = watched.Run.AgentStopped(new AgentStop(
+                watched.Run.IsNamedIn(log),
+                clock.GetUtcNow() - watched.Run.StartedAt,
+                watched.Run.TokensUsed,
+                endedAbnormally));
+
+            if (decision == RunDecision.Nudge)
+            {
+                // Recorded here, under the lock, so that it lands before the tail rather than after it.
+                // Appended by the hub, which knows it nudged: the CLI does not echo what is written to
+                // its stdin, so the nudge cannot appear twice (RUNS-009, research.md R-03). Written
+                // before it is sent — a send that then fails ends the run, and the tail says so.
+                record.Append(RunMoment.GrimoireSaid(
+                    watched.Run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
+            }
+        }
+
+        // Both of these talk to the agent's process, so neither is done holding the run's lock.
         if (decision == RunDecision.Nudge)
         {
-            await harness.NudgeAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
-
-            // Appended by the hub, which knows it nudged. Never read back off the agent's stream:
-            // measured, the CLI does not echo what is written to its stdin, so the nudge cannot
-            // appear twice (RUNS-009, research.md R-03).
-            record.Append(RunMoment.GrimoireSaid(
-                run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
+            await harness.NudgeAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
             return;
         }
 
         // Done or failed, nothing further is sent. The CLI reads stdin for as long as it is open,
         // so this is also what lets the agent's process end at all — and the run ends there.
-        await harness.NothingFurtherAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
+        await harness.NothingFurtherAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -228,13 +294,28 @@ public sealed class RunConductor(
     /// </summary>
     private void AgentExited(Guid submissionId, int exitCode)
     {
-        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        if (Reporting(submissionId) is not { } watched)
         {
             return;
         }
 
-        var ending = run.Exited(exitCode, clock.GetUtcNow() - run.StartedAt);
+        RunEnding ending;
 
+        lock (watched.Gate)
+        {
+            if (HasEnded(submissionId))
+            {
+                return;
+            }
+
+            // The verdict is taken from fields a cost report also writes, so it is read under the
+            // run's lock like everything else about it.
+            ending = watched.Run.Exited(exitCode, clock.GetUtcNow() - watched.Run.StartedAt);
+        }
+
+        // The lock is given up and taken again. Another ending reaching the run in between — a ceiling
+        // firing at the same moment — simply wins, and this one finds no run to remove: a run ends
+        // once, which is the rule rather than the exception here.
         RunEnded(submissionId, ending.Outcome, ending.Because);
     }
 
@@ -249,11 +330,35 @@ public sealed class RunConductor(
     /// </remarks>
     private void RunEnded(Guid submissionId, RunOutcome outcome, RunEndedBecause because)
     {
-        if (!runs.TryRemove(submissionId, out var watched))
+        if (Reporting(submissionId) is not { } watched)
         {
             return;
         }
 
+        lock (watched.Gate)
+        {
+            // Taken under the run's own lock, so a report already under way finishes first and every
+            // report after this finds no run. Removing inside the lock is also what makes two endings
+            // racing — a ceiling and an exit — end the run once.
+            if (!runs.TryRemove(submissionId, out _))
+            {
+                return;
+            }
+
+            Finish(watched, outcome, because);
+        }
+
+        // The queue moves, outside the run's lock: what starts behind this one must not be started
+        // while the run that ended is still being written down (RUNS-002).
+        _ = nextRunMayStart();
+    }
+
+    /// <summary>
+    /// The tail, the final figures and the terminal state, with the run already taken off the board of
+    /// those under way. Assumes that run's lock.
+    /// </summary>
+    private void Finish(Watched watched, RunOutcome outcome, RunEndedBecause because)
+    {
         watched.Deadline.Dispose();
 
         var run = watched.Run;
@@ -271,16 +376,16 @@ public sealed class RunConductor(
             run.Ceilings,
             run.TokensPerModel));
 
-        FiguresRose(run);
-
+        // The terminal state and the final figures in one pass of the board's lock. Told separately, a
+        // poll landing between them would read `running` beside a final figure — and a tail whose write
+        // just failed would raise the count of lost entries on a row still reading `running`
+        // (ACCESS-005).
         board.Ended(
-            submissionId,
-            outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed);
-
-        // The queue moves. Nothing awaits this: a run ends on whatever thread the harness reads
-        // on, and the run being reported is over either way — what happens behind it is the
-        // queue's, and it cannot fail in a way this caller could answer for (RUNS-002).
-        _ = nextRunMayStart();
+            run.SubmissionId,
+            outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed,
+            run.TokensUsed,
+            run.ToolCalls,
+            record.EntriesLost(run.Id));
     }
 
     /// <summary>

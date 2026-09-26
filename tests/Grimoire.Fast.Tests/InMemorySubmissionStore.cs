@@ -63,6 +63,18 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
     private readonly Dictionary<Guid, StoredRun> runs = [];
     private readonly Lock gate = new();
 
+    /// <summary>
+    /// Run at the moment of every write, while whoever is writing still holds the board's lock.
+    /// </summary>
+    /// <remarks>
+    /// This is how "the state and the figures are read as one instant" becomes observable at all
+    /// (ACCESS-005). A test cannot catch a reader landing between two writes by racing it; it can ask
+    /// what a reading would have said at the one moment such a reader could land — inside the write —
+    /// and that is deterministic. The board's lock is re-entrant, so a reading taken here is the
+    /// reading a poll on this thread would get.
+    /// </remarks>
+    public Action? WhileWriting { get; set; }
+
     public IReadOnlyList<StoredSubmission> Load()
     {
         lock (gate)
@@ -80,6 +92,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
     {
         lock (gate)
         {
+            WhileWriting?.Invoke();
             accepted.Add(submission.Id);
             held[submission.Id] = submission;
             journal?.Record($"added {submission.Id}");
@@ -90,6 +103,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
     {
         lock (gate)
         {
+            WhileWriting?.Invoke();
             runs[run.Id] = run;
             held[submissionId] = held[submissionId] with { Run = run };
             journal?.Record($"handed out {submissionId}");
@@ -100,6 +114,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
     {
         lock (gate)
         {
+            WhileWriting?.Invoke();
             runs[runId] = runs[runId] with { AgentProcess = identity };
             journal?.Record($"agent of {runId} is {identity.ProcessId}");
         }
@@ -109,6 +124,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
     {
         lock (gate)
         {
+            WhileWriting?.Invoke();
             held[submissionId] = held[submissionId] with { State = state };
             journal?.Record($"{submissionId} reads {state}");
         }
@@ -118,6 +134,8 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
     {
         lock (gate)
         {
+            WhileWriting?.Invoke();
+
             runs[runId] = runs[runId] with
             {
                 TokensUsed = tokensUsed,
@@ -131,10 +149,32 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
         }
     }
 
+    public void Ended(
+        Guid submissionId, SubmissionState terminal, Guid runId, long tokensUsed, int toolCalls, int entriesLost)
+    {
+        lock (gate)
+        {
+            WhileWriting?.Invoke();
+
+            held[submissionId] = held[submissionId] with { State = terminal };
+            runs[runId] = runs[runId] with
+            {
+                TokensUsed = tokensUsed,
+                ToolCalls = toolCalls,
+                EntriesLost = entriesLost,
+            };
+
+            // One entry, because it is one change. Two would say the store had been written twice,
+            // which is exactly what this member exists to stop (RUNS-010).
+            journal?.Record($"{submissionId} ended {terminal} at {tokensUsed}/{toolCalls}/{entriesLost}");
+        }
+    }
+
     public void Acknowledge(Guid submissionId, DateTimeOffset at)
     {
         lock (gate)
         {
+            WhileWriting?.Invoke();
             held[submissionId] = held[submissionId] with { AcknowledgedAt = at };
             journal?.Record($"acknowledged {submissionId}");
         }

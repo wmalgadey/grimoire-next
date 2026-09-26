@@ -262,6 +262,25 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             ("$lost", entriesLost),
             ("$run", runId.ToString()));
 
+    /// <summary>
+    /// Both statements, one transaction, committed before this returns (RUNS-010).
+    /// </summary>
+    public void Ended(
+        Guid submissionId, SubmissionState terminal, Guid runId, long tokensUsed, int toolCalls, int entriesLost) =>
+        Execute(
+            """
+            UPDATE submissions SET state = $state WHERE id = $id;
+
+            UPDATE runs SET tokens_used = $tokens, tool_calls = $calls, entries_lost = $lost
+            WHERE id = $run;
+            """,
+            ("$state", WireNameOf(terminal)),
+            ("$id", submissionId.ToString()),
+            ("$tokens", tokensUsed),
+            ("$calls", toolCalls),
+            ("$lost", entriesLost),
+            ("$run", runId.ToString()));
+
     public void SetState(Guid submissionId, SubmissionState state) =>
         Execute(
             "UPDATE submissions SET state = $state WHERE id = $id",

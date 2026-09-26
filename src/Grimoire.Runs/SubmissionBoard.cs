@@ -284,8 +284,18 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
         }
     }
 
-    /// <summary>This submission's run has ended, done or failed (RUNS-001).</summary>
-    public void Ended(Guid submissionId, SubmissionState terminal)
+    /// <summary>
+    /// This submission's run has ended, done or failed, with the figures it ended on (RUNS-001,
+    /// RUNS-010).
+    /// </summary>
+    /// <remarks>
+    /// The terminal state and the final figures are written in <b>one</b> pass of the one lock. Written
+    /// as two — the figures, then the state — a poll landing between them would read <c>running</c>
+    /// beside a final figure, and a tail whose write failed would raise the count of lost entries on a
+    /// row still reading <c>running</c>. ACCESS-005 has the state and the figures read as one instant,
+    /// and a reading is only as atomic as the writing behind it.
+    /// </remarks>
+    public void Ended(Guid submissionId, SubmissionState terminal, long tokensUsed, int toolCalls, int entriesLost)
     {
         lock (gate)
         {
@@ -294,7 +304,23 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
                 return;
             }
 
+            // The state first, because it is the one that refuses: a submission already done or failed
+            // throws here, and it must throw before anything else about it has been changed.
             submission.Ended(terminal);
+            submission.FiguresAre(tokensUsed, toolCalls, entriesLost);
+
+            // One change on disk, too. Written as a state and then a figure, a stop between the two
+            // would leave a submission reading done or failed beside the figures it had one moment
+            // earlier — and RUNS-010 has the final figures survive exactly that stop.
+            if (submission.RunId is { } run)
+            {
+                store.Ended(submissionId, terminal, run, tokensUsed, toolCalls, entriesLost);
+                return;
+            }
+
+            // A submission that ends without ever having had a run has no figures to write. Nothing
+            // reaches this today — the board only ends a submission it handed out — and the state still
+            // has to be recorded if anything ever does.
             store.SetState(submissionId, terminal);
         }
     }
@@ -312,7 +338,13 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
     {
         lock (gate)
         {
-            if (Located(submissionId) is not { RunId: { } run } submission)
+            // Nothing after the ending. The conductor reads a run and then reports on it in two steps,
+            // so a tool call racing a stop can arrive here after the final figures were published —
+            // and it would raise the count past the run's last snapshot, to a figure that is in no
+            // record, because the moment behind it was dropped for arriving after the tail. RUNS-010
+            // has the figures stand as the run's final ones once it has ended, and this is where a
+            // terminal submission is known.
+            if (Located(submissionId) is not { IsUnderWay: true, RunId: { } run } submission)
             {
                 return;
             }
