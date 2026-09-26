@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Grimoire.Agent;
 using Grimoire.Runs;
 using Grimoire.Runs.Adapters;
@@ -126,15 +127,21 @@ public sealed class MarkdownRunRecordTests : IDisposable
         var text = File.ReadAllText(Path.Combine(runs, $"{head.RunId}.md"));
 
         // The gap is where it happened: in front of the entry that finally got through, so a reader
-        // sees it between the moment before it and the moment after. The count is what is asserted,
-        // not the sentence around it — the wording of the record's lines is the adapter's and is not
+        // sees it between the moment before it and the moment after.
+        //
+        // The count is read out of the record with a pattern of this test's own, not by asking
+        // RecordText what it would have written: expected and actual coming from the same method
+        // would agree however the wording changed, and would assert nothing at all.
+        //
+        // What it matches is the segment opening contracts/run-record.md promises for a gap — a count
+        // followed by "entries" — which run.js depends on to find the segment, so it is contract
+        // rather than the adapter's own wording. The rest of the sentence is not matched and is not
         // tested (Constitution III.8).
-        var notice = RecordText.EntriesLost(2, Noon);
+        var notice = Assert.Single(
+            Regex.Matches(text, @"^## .*?(\d+) entries\b.*$", RegexOptions.Multiline));
 
-        Assert.Contains(notice.Trim(), text, StringComparison.Ordinal);
-        Assert.True(
-            text.IndexOf(notice.Trim(), StringComparison.Ordinal)
-            < text.IndexOf("read_page returned", StringComparison.Ordinal));
+        Assert.Equal("2", notice.Groups[1].Value);
+        Assert.True(notice.Index < text.IndexOf("read_page returned", StringComparison.Ordinal));
         Assert.Equal(2, record.EntriesLost(head.RunId));
     }
 

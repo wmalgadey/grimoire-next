@@ -126,6 +126,9 @@ internal sealed class HubUnderTest : IAsyncDisposable
     /// </summary>
     private readonly bool ownsTheDirectory;
 
+    /// <summary>Records this fixture made unwritable, so that it can undo it before cleaning up.</summary>
+    private readonly List<string> madeReadOnly = [];
+
     private HubUnderTest(WebApplication app, DrivableHarness agent, string directory, string address, bool ownsTheDirectory)
     {
         this.app = app;
@@ -252,6 +255,7 @@ internal sealed class HubUnderTest : IAsyncDisposable
         // SetAttributes rather than SetUnixFileMode: the latter is not supported on Windows, and a
         // test helper that only builds on some of them is a suite that only runs on some of them.
         File.SetAttributes(record, FileAttributes.ReadOnly);
+        madeReadOnly.Add(record);
     }
 
     /// <summary>
@@ -274,6 +278,14 @@ internal sealed class HubUnderTest : IAsyncDisposable
     {
         client.Dispose();
         await app.DisposeAsync().ConfigureAwait(false);
+
+        // What was made unwritable is made writable again before the directory goes. A read-only file
+        // is not always one a recursive delete can remove, and a fixture that leaves the suite unable
+        // to clean up after itself has failed after its assertions passed.
+        foreach (var record in madeReadOnly)
+        {
+            File.SetAttributes(record, FileAttributes.Normal);
+        }
 
         if (ownsTheDirectory)
         {

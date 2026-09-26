@@ -57,11 +57,17 @@ stories stand at:
 
 | Story | Scenarios | |
 | --- | --- | --- |
-| US1 — read back a finished run | 6 | `Run_IsOpenedFromItsRowAndReadInOrder`, `Result_IsFoldedUntilTheUserOpensItAndIsThenWhole`, `Result_IsOneSegment_WhenItHoldsALineStartingWithTwoHashes`, `AgentText_IsShownWhole_WhenItHoldsAFencedBlock`, `View_SaysLinesAreMissing_WhenTheRecordCouldNotHoldThem`, and on the list side `List_ShowsTheModelAndBothFigures_ForARunThatHasEnded`, `List_ShowsNoRunFigures_ForASubmissionWaitingItsTurn`, `List_PutsANewSubmissionFirst_WhileThePageIsOpen` |
+| US1 — read back a finished run, on the run's page | 5 | `Run_IsOpenedFromItsRowAndReadInOrder`, `Result_IsFoldedUntilTheUserOpensItAndIsThenWhole`, `Result_IsOneSegment_WhenItHoldsALineStartingWithTwoHashes`, `AgentText_IsShownWhole_WhenItHoldsAFencedBlock`, `View_SaysLinesAreMissing_WhenTheRecordCouldNotHoldThem` |
+| US1 — read back a finished run, on the list | 3 | `List_ShowsTheModelAndBothFigures_ForARunThatHasEnded`, `List_ShowsNoRunFigures_ForASubmissionWaitingItsTurn`, `List_PutsANewSubmissionFirst_WhileThePageIsOpen` |
 | US2 — watch a run under way | 3 | `Figures_RiseWhileTheRunIsUnderWay_WithoutMovingTheRows`, `Row_IsNotRebuiltUnderTheUser_WhileTheListPolls`, `Moments_ArriveBelowWhatIsThere_WithoutDisturbingIt` |
 | US3 — without Grimoire | 1 | `Record_ServedIsTheFileOnDisk_AndTheWikiHoldsNoneOfIt` |
 
-US3 is inside the rule. US1 and US2 are not.
+**US1 stands at eight**, split across two rows above only to show where they sit; III.4 counts them per
+*story*, and both rows are US1. US2 stands at three. US3 is the only one inside the rule.
+
+(An earlier version of this table said six for US1 while listing eight names. The count was wrong, not
+the list — which is the same kind of error as a test name promising what its assertions do not
+deliver, and it was found by review rather than by me.)
 
 **How it happened**: almost every one of these was added in answer to a review finding, and each was
 justified on its own — the folding, the fence inside a result, the agent's prose, the missing-lines

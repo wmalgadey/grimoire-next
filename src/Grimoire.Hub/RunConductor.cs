@@ -282,9 +282,30 @@ public sealed class RunConductor(
             }
         }
 
-        // Both of these talk to the agent's process, so neither is done holding the run's lock.
+        // Both of these talk to the agent's process, so neither is done holding the run's lock — a
+        // `lock` cannot be held across an await, and a pipe write is not something to hold a run's
+        // ending behind.
         if (decision == RunDecision.Nudge)
         {
+            // Asked once more, as late as it can be asked. A ceiling can reach the run between the
+            // decision above and this send, and nudging then would put an agent back to work on a run
+            // Grimoire has ended (RUNS-006).
+            //
+            // **The window is narrowed and not closed**, and that is admitted rather than argued away:
+            // closing it needs the run's lock held across the write, which `lock` cannot do, so it
+            // would take an async-aware lock — a mechanism this feature has no other consumer for
+            // (Constitution II.1). What bounds the harm is that the ending stops the agent on its own
+            // way out, by the interrupt or by closing stdin, so a nudge that loses this race reaches a
+            // process that is already being ended. The same admission `HarnessProcess.Terminate` makes
+            // about the gap between reading a process's identity and killing it.
+            lock (watched.Gate)
+            {
+                if (HasEnded(submissionId))
+                {
+                    return;
+                }
+            }
+
             await harness.NudgeAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
             return;
         }
@@ -305,24 +326,11 @@ public sealed class RunConductor(
             return;
         }
 
-        RunEnding ending;
-
-        lock (watched.Gate)
-        {
-            if (HasEnded(submissionId))
-            {
-                return;
-            }
-
-            // The verdict is taken from fields a cost report also writes, so it is read under the
-            // run's lock like everything else about it.
-            ending = watched.Run.Exited(exitCode, clock.GetUtcNow() - watched.Run.StartedAt);
-        }
-
-        // The lock is given up and taken again. Another ending reaching the run in between — a ceiling
-        // firing at the same moment — simply wins, and this one finds no run to remove: a run ends
-        // once, which is the rule rather than the exception here.
-        RunEnded(submissionId, ending.Outcome, ending.Because);
+        // The verdict is computed inside the same pass of the lock that removes the run and writes the
+        // tail. Computed in one pass and used in another, a cost report landing in between could push
+        // the run past a ceiling after a clean exit had already been judged done — and that stale
+        // verdict would be the one written down.
+        Ended(submissionId, run => run.Exited(exitCode, clock.GetUtcNow() - run.StartedAt));
     }
 
     /// <summary>
@@ -334,7 +342,21 @@ public sealed class RunConductor(
     /// Whatever the run had already written stays in the wiki, in every failed case: nothing here
     /// reaches back into it (WIKI-003).
     /// </remarks>
-    private void RunEnded(Guid submissionId, RunOutcome outcome, RunEndedBecause because)
+    private void RunEnded(Guid submissionId, RunOutcome outcome, RunEndedBecause because) =>
+        Ended(submissionId, _ => new RunEnding(outcome, because));
+
+    /// <summary>
+    /// The run ends: the verdict taken, the run removed, and the tail and the final figures written —
+    /// all in one pass of that run's lock.
+    /// </summary>
+    /// <remarks>
+    /// The verdict is a function rather than a value because one caller has to compute it from the run
+    /// itself, and computing it outside this lock would let a report land between the computing and
+    /// the writing. A report already under way finishes first and every report after this finds no
+    /// run; removing inside the lock is also what makes two endings racing — a ceiling and an exit —
+    /// end the run once.
+    /// </remarks>
+    private void Ended(Guid submissionId, Func<Run, RunEnding> verdict)
     {
         if (Reporting(submissionId) is not { } watched)
         {
@@ -343,15 +365,14 @@ public sealed class RunConductor(
 
         lock (watched.Gate)
         {
-            // Taken under the run's own lock, so a report already under way finishes first and every
-            // report after this finds no run. Removing inside the lock is also what makes two endings
-            // racing — a ceiling and an exit — end the run once.
             if (!runs.TryRemove(submissionId, out _))
             {
                 return;
             }
 
-            Finish(watched, outcome, because);
+            var ending = verdict(watched.Run);
+
+            Finish(watched, ending.Outcome, ending.Because);
         }
 
         // The queue moves, outside the run's lock: what starts behind this one must not be started

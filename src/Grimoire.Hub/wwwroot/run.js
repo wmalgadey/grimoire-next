@@ -278,8 +278,18 @@ function element(segment) {
   const fenced = isFenced(segment.said) ? fencedIn(segment.body) : null;
 
   if (fenced === null) {
-    // Prose, or one of the record's tables — the tail is a table just as the head is.
-    item.append(...framed(segment.body.join("\n")));
+    // The tail is a two-column table, just as the head is, and is read as one. Everything else
+    // unfenced is the agent's own words or Grimoire's, and prose is shown whole — an agent that
+    // writes a table in its answer must not have it taken apart and rebuilt (ACCESS-006).
+    if (segment.said.startsWith("ended ")) {
+      item.append(...framed(segment.body.join("\n")));
+      return item;
+    }
+
+    const prose = document.createElement("div");
+    prose.className = "prose";
+    prose.textContent = segment.body.join("\n").trim();
+    item.append(prose);
     return item;
   }
 
@@ -292,20 +302,23 @@ function element(segment) {
   return item;
 }
 
-// Where a result belongs: inside the entry of the call it answers, if that call is the last thing on
-// the page and is still waiting. Appended to it — never replacing what is there, which is what keeps
-// the scroll and an opened block where the user put them (ACCESS-006).
+// Where a result belongs: inside the entry of the call it answers. Appended to it — never replacing
+// what is there, which is what keeps the scroll and an opened block where the user put them
+// (ACCESS-006).
+//
+// The **oldest** entry still waiting for that tool, not the last one on the page. One message can
+// carry several tool calls and their results arrive together, oldest first, so after calls A and B
+// the first result is A's while the last entry is B's — matched against the last entry, A's result
+// would start an entry of its own and the page would read out of order. This is the same ordering the
+// transcript uses to attribute a result to its call, one layer up.
 function resultBelongsTo(segment) {
   if (!segment.said.endsWith(" returned")) {
     return null;
   }
 
-  const last = record.lastElementChild;
-  if (last === null || last.dataset.awaiting !== toolOf(segment.said)) {
-    return null;
-  }
+  const tool = toolOf(segment.said);
 
-  return last;
+  return [...record.children].find((entry) => entry.dataset.awaiting === tool) ?? null;
 }
 
 async function refresh() {
