@@ -242,11 +242,20 @@ public sealed class RunRecordViewTests : PageTest
 
         // And the wiki holds none of it. Grimoire's bookkeeping in the user's repository would turn up
         // in the version history that is their only undo (Invariants 1 and 3, DEC-023).
+        //
+        // Every file under the wiki, whatever it is called: a record written there under another name
+        // or another extension is the same mistake, and an assertion that only looked at `.md` files
+        // would pass on it.
         var inTheWiki = Directory.GetFiles(hub.WikiDirectory, "*", SearchOption.AllDirectories);
 
-        Assert.DoesNotContain(inTheWiki, f => Path.GetFileName(f).EndsWith(".md", StringComparison.Ordinal)
-            && File.ReadAllText(f).Contains("ended done", StringComparison.Ordinal));
-        Assert.DoesNotContain(inTheWiki, f => records.Any(r => Path.GetFileName(r) == Path.GetFileName(f)));
+        foreach (var file in inTheWiki)
+        {
+            var held = await File.ReadAllTextAsync(file, token);
+
+            Assert.DoesNotContain($"# Run {Path.GetFileNameWithoutExtension(records[0])}", held, StringComparison.Ordinal);
+            Assert.DoesNotContain("ended done", held, StringComparison.Ordinal);
+            Assert.NotEqual(Path.GetFileName(records[0]), Path.GetFileName(file));
+        }
     }
 
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
