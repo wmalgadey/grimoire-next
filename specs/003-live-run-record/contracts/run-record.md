@@ -106,6 +106,17 @@ Markdown. **The wording is the adapter's and is not part of this contract** — 
 5. **Nothing of a tool result is cut or escaped.** It goes in whole, byte for byte, however large
    (RUNS-009, the owner's decision in the spec's Clarifications).
 
+   That promise is about the **file and the endpoint**, which is where the owner's editor and any
+   other reader get it, and a test asserts the endpoint serves the file byte for byte. The page is
+   allowed to lay out what it shows: a two-column table as a table, and a block that parses as JSON
+   indented, with its escapes undone and a string holding newlines written as lines. Shown as written,
+   a returned wiki page is one line with every umlaut spelled `\u00FC` — correct and close to
+   unreadable, which is the owner's own finding from the first real run.
+
+   What the page must never do is make the file agree with it. Two things it loses in laying JSON out
+   are named here rather than left to be discovered: the exact spelling of whitespace and escapes, and
+   a duplicate key, which a parser keeps only once. Both remain in the file.
+
 ### What a record holds, in order
 
 | Part | Written at | Holds |

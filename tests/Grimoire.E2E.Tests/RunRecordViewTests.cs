@@ -308,6 +308,38 @@ public sealed class RunRecordViewTests : PageTest
         await Expect(Heading(0)).ToContainTextAsync("called read_page");
     }
 
+    [Fact]
+    public async Task Answer_ArrivesWhileThePageIsOpen_InTheCallItAnswers()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Said(submission, "I will read what the wiki already holds.");
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
+
+        var calls = Segments().Nth(0).Locator("details.calls");
+        await Expect(calls.Locator("summary").First).ToHaveTextAsync("1 tool call");
+        await Expect(calls.Locator(".call details.result")).ToHaveCountAsync(0);
+
+        // The answer arrives while the page is open. It is written inside the call it answers, so it
+        // adds no segment at the top level — and a page that only watched the top level would show it
+        // just after a reload, which is not what ACCESS-006 promises.
+        hub.Agent.Returned(submission, "read_page", ALongResult);
+
+        await Expect(calls.Locator(".call details.result")).ToHaveCountAsync(1);
+        await Expect(calls.Locator(".call details.result > summary")).ToContainTextAsync("7 lines");
+
+        // And a second call of the same turn arrives the same way, into the fold that is already there.
+        hub.Agent.Called(submission, "list_pages", "{}");
+
+        await Expect(calls.Locator("summary").First).ToHaveTextAsync("2 tool calls");
+        await Expect(calls.Locator(".call")).ToHaveCountAsync(2);
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator Segments() => Page.Locator("#record li");

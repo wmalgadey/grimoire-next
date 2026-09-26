@@ -12,9 +12,14 @@ const message = document.getElementById("message");
 // has exactly one run (INGEST-002), so naming it names the run (contracts/hub-http-api.md).
 const submission = new URLSearchParams(window.location.search).get("submission");
 
-// How many segments are already on the page. Segments are only ever appended, so the record's own
-// order is the page's order and what is already there is never touched.
-let shown = 0;
+// What is already on the page: one entry per segment, with the element drawn for it and how many
+// sections had been written inside it at the time.
+//
+// The count alone is not enough. A record grows in two ways: a new segment at the end, and a new
+// section inside a segment already shown — which is how an answer arrives, written inside the call it
+// answers. Counting only the top-level segments, an answer changes nothing the count can see, and the
+// page would show it only after a reload (ACCESS-006: lines must arrive as they are appended).
+const shown = [];
 
 // Two polls can be in flight at once, and they can answer out of order. The newest request's answer is
 // the current one: an older answer arriving after it would put `shown` back to a smaller number, and
@@ -472,18 +477,94 @@ async function refresh() {
   frame.replaceChildren(...framed(head));
 
   // Appended, and only what is not already there. An element already on the page is never replaced,
-  // which is what keeps the scroll where the user left it and a result they had opened open. A result
-  // is appended *into* the entry of the call it answers, which is an addition and not a replacement.
-  for (const segment of segments.slice(shown)) {
-    record.append(element(segment));
-  }
+  // which is what keeps the scroll where the user left it and a result they had opened open.
+  segments.forEach((segment, at) => {
+    if (at >= shown.length) {
+      const drawn = element(segment);
+      record.append(drawn);
+      shown.push({ element: drawn, ...countsIn(segment) });
+      return;
+    }
 
-  shown = segments.length;
+    // A segment already on the page that has grown since. A record grows at both levels: a call added
+    // to a turn, and an answer added to a call. Each is added to the element that is there; nothing
+    // already drawn is touched, which is what keeps the scroll and an opened block where the user put
+    // them (ACCESS-006).
+    grew(shown[at], segment);
+  });
   message.textContent = "";
 }
 
 // How many entries of this run's record could not be written. It comes off the list, which is where
 // the count lives: the figures are state and the record is prose (research.md R-06).
+// How much of a segment is written: the sections inside it, and the sections inside each of those.
+function countsIn(segment) {
+  const { inside } = sections(segment.body, 3);
+
+  return { inside: inside.length, within: inside.map((part) => sections(part.body, 4).inside.length) };
+}
+
+// What a segment has gained since it was drawn, added where it belongs.
+function grew(held, segment) {
+  const { inside } = sections(segment.body, 3);
+
+  // A call at the top level holds its own answer, not calls.
+  if (segment.said.startsWith("called ")) {
+    for (const part of inside.slice(held.inside)) {
+      held.element.append(...bodyOf(part, part.body));
+    }
+
+    held.inside = inside.length;
+    return;
+  }
+
+  const calls = held.element.querySelector(":scope > details.calls");
+
+  // An answer written inside a call that is already on the page.
+  inside.slice(0, held.inside).forEach((call, at) => {
+    const { inside: within } = sections(call.body, 4);
+
+    if (within.length <= held.within[at]) {
+      return;
+    }
+
+    const drawn = calls.querySelectorAll(":scope > .call")[at];
+
+    for (const part of within.slice(held.within[at])) {
+      drawn.append(...bodyOf(part, part.body));
+    }
+
+    held.within[at] = within.length;
+  });
+
+  if (inside.length <= held.inside) {
+    return;
+  }
+
+  // And calls added to the turn since.
+  const fold = calls ?? foldFor(held.element);
+
+  for (const part of inside.slice(held.inside)) {
+    fold.append(nested(part));
+    held.within.push(sections(part.body, 4).inside.length);
+  }
+
+  held.inside = inside.length;
+
+  const drawn = fold.querySelectorAll(":scope > .call").length;
+  fold.querySelector(":scope > summary").textContent =
+    `${drawn} ${drawn === 1 ? "tool call" : "tool calls"}`;
+}
+
+/// The fold a turn's calls go in, made where the turn had none yet.
+function foldFor(item) {
+  const fold = document.createElement("details");
+  fold.className = "calls";
+  fold.append(document.createElement("summary"));
+  item.append(fold);
+  return fold;
+}
+
 async function refreshMissing() {
   const request = ++newestMissingRequest;
 

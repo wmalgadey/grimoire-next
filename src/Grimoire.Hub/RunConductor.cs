@@ -39,12 +39,40 @@ public sealed class RunConductor(
     /// about what the run did. Under this lock a report falls <b>entirely</b> before the ending or
     /// entirely after it, and one that falls after finds no run and does nothing.
     /// <para>
-    /// Always the outermost lock taken here. The record's and the board's are taken inside it and
+    /// A <see cref="SemaphoreSlim"/> and not a <c>lock</c>, for one reason: RUNS-005's nudge is sent
+    /// with an await, and RUNS-006 forbids an agent going on working on a run Grimoire has ended. A
+    /// <c>lock</c> cannot be held across an await, so the send had to happen outside it and a ceiling
+    /// could end the run in that window while the nudge still reached its agent. This one is held
+    /// across the send, which closes it; every other caller takes it synchronously.
+    /// </para>
+    /// <para>
+    /// Always the outermost one taken here. The record's lock and the board's are taken inside it and
     /// never the other way about, which is what keeps the three from making a cycle.
     /// </para>
     /// </param>
-    private sealed record Watched(Run Run, ITimer Deadline, Lock Gate)
+    private sealed record Watched(Run Run, ITimer Deadline, SemaphoreSlim Gate)
     {
+        /// <summary>Hold this run's gate until the returned value is disposed.</summary>
+        public IDisposable Held()
+        {
+            Gate.Wait();
+
+            return new Holding(Gate);
+        }
+
+        /// <summary>The same, for the one caller that has to hold it across an await.</summary>
+        public async Task<IDisposable> HeldAsync()
+        {
+            await Gate.WaitAsync().ConfigureAwait(false);
+
+            return new Holding(Gate);
+        }
+
+        private sealed class Holding(SemaphoreSlim gate) : IDisposable
+        {
+            public void Dispose() => gate.Release();
+        }
+
         /// <summary>
         /// The tool of the moment written last for this run, where that moment was a call.
         /// </summary>
@@ -119,7 +147,7 @@ public sealed class RunConductor(
             dueTime: run.Ceilings.Elapsed,
             period: Timeout.InfiniteTimeSpan);
 
-        runs[submissionId] = new Watched(run, deadline, new Lock());
+        runs[submissionId] = new Watched(run, deadline, new SemaphoreSlim(1, 1));
         return run;
     }
 
@@ -182,7 +210,7 @@ public sealed class RunConductor(
         var run = watched.Run;
         TimeSpan elapsed;
 
-        lock (watched.Gate)
+        using (watched.Held())
         {
             if (HasEnded(submissionId))
             {
@@ -224,7 +252,7 @@ public sealed class RunConductor(
             return;
         }
 
-        lock (watched.Gate)
+        using (watched.Held())
         {
             // Read again inside the lock. The run may have ended while this callback waited for it,
             // and a moment that arrives after the ending belongs to neither the record nor the count:
@@ -324,11 +352,13 @@ public sealed class RunConductor(
 
         RunDecision decision;
 
-        lock (watched.Gate)
+        // Held across the send, which is the whole reason this gate is a semaphore and not a `lock`.
+        // A ceiling reaching the run cannot get between the decision and the nudge, so no agent is
+        // ever told to carry on with a run Grimoire has already ended (RUNS-006).
+        using (await watched.HeldAsync().ConfigureAwait(false))
         {
             // The run may have ended while the log was being read — a ceiling reached, or Grimoire
-            // stopped. Deciding anything now would judge a run that is already judged, and nudging
-            // would put an agent back to work on a run Grimoire has ended (RUNS-006).
+            // stopped. Deciding anything now would judge a run that is already judged.
             if (HasEnded(submissionId))
             {
                 return;
@@ -342,43 +372,18 @@ public sealed class RunConductor(
 
             if (decision == RunDecision.Nudge)
             {
-                // Recorded here, under the lock, so that it lands before the tail rather than after it.
+                // Recorded before it is sent, so that it lands before the tail rather than after it.
                 // Appended by the hub, which knows it nudged: the CLI does not echo what is written to
-                // its stdin, so the nudge cannot appear twice (RUNS-009, research.md R-03). Written
-                // before it is sent — a send that then fails ends the run, and the tail says so.
+                // its stdin, so the nudge cannot appear twice (RUNS-009, research.md R-03). A send that
+                // then fails ends the run, and the tail says so.
                 record.Append(RunMoment.GrimoireSaid(
                     watched.Run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
 
                 watched.CallWrittenLast = null;
-            }
-        }
 
-        // Both of these talk to the agent's process, so neither is done holding the run's lock — a
-        // `lock` cannot be held across an await, and a pipe write is not something to hold a run's
-        // ending behind.
-        if (decision == RunDecision.Nudge)
-        {
-            // Asked once more, as late as it can be asked. A ceiling can reach the run between the
-            // decision above and this send, and nudging then would put an agent back to work on a run
-            // Grimoire has ended (RUNS-006).
-            //
-            // **The window is narrowed and not closed**, and that is admitted rather than argued away:
-            // closing it needs the run's lock held across the write, which `lock` cannot do, so it
-            // would take an async-aware lock — a mechanism this feature has no other consumer for
-            // (Constitution II.1). What bounds the harm is that the ending stops the agent on its own
-            // way out, by the interrupt or by closing stdin, so a nudge that loses this race reaches a
-            // process that is already being ended. The same admission `HarnessProcess.Terminate` makes
-            // about the gap between reading a process's identity and killing it.
-            lock (watched.Gate)
-            {
-                if (HasEnded(submissionId))
-                {
-                    return;
-                }
+                await harness.NudgeAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
+                return;
             }
-
-            await harness.NudgeAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
-            return;
         }
 
         // Done or failed, nothing further is sent. The CLI reads stdin for as long as it is open,
@@ -434,7 +439,7 @@ public sealed class RunConductor(
             return;
         }
 
-        lock (watched.Gate)
+        using (watched.Held())
         {
             if (!runs.TryRemove(submissionId, out _))
             {
