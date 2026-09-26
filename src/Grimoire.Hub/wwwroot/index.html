@@ -42,11 +42,18 @@
         font-variant-numeric: tabular-nums;
         text-align: right;
       }
-      /* Wide enough for the largest figure either can reach: the cost ceiling is 2 000 000, and a
-         run makes tens of calls. Reserved, so the column does not widen as the figures climb and the
-         excerpt beside it does not reflow (ACCESS-005). */
-      .tokens { min-width: 9ch; }
-      .calls { min-width: 4ch; }
+      /* A width rather than a floor, so a figure gaining a digit changes a number and moves nothing
+         at all — not the row, and not the state, model or link beside it inside the row (ACCESS-005,
+         docs/ux.md: live content grows in place).
+
+         Both widths come from the cost ceiling, which is what bounds either figure: a run is stopped
+         at 2 000 000 tokens (GUARD-004), so the token figure cannot pass "2 000 000" — nine
+         characters with the thin spaces this page groups them by. Every tool call spends tokens on
+         the call and on its result, so the same ceiling bounds the number of calls far below the
+         "99 999" six characters hold. Neither is an assumption about how a run behaves; both follow
+         from the ceiling it is held to. */
+      .tokens { width: 9ch; }
+      .calls { width: 6ch; }
       .model { flex: none; opacity: 0.7; }
       .open-run { flex: none; }
       /* One row per submission however long the text was: the opening is cut to the same length

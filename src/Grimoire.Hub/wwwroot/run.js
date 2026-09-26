@@ -23,6 +23,11 @@ let shown = 0;
 // a large record's fetch takes longer than the second between polls.
 let newestRequest = 0;
 
+// And its own counter for the list, which is a second poll with a second answer that can arrive out of
+// order. Shared with the record's, a slow record answer would silence a fresh warning — and the warning
+// is the one thing on this page that says the record is incomplete (RUNS-007).
+let newestMissingRequest = 0;
+
 // The five first lines a segment can have, after the time — plus the one a record gets when entries
 // could not be written. A `## ` line that matches none of them is not a boundary: the agent's own
 // text is prose and goes in unfenced, so it may hold one, and treating that as a segment would split
@@ -204,6 +209,8 @@ async function refresh() {
 // How many entries of this run's record could not be written. It comes off the list, which is where
 // the count lives: the figures are state and the record is prose (research.md R-06).
 async function refreshMissing() {
+  const request = ++newestMissingRequest;
+
   let response;
   try {
     response = await fetch("/api/submissions", { cache: "no-store" });
@@ -216,6 +223,13 @@ async function refreshMissing() {
   }
 
   const body = await response.json().catch(() => null);
+
+  // An older answer than one already shown would put back a count that has since risen — hiding a
+  // warning the newest state still calls for.
+  if (request !== newestMissingRequest) {
+    return;
+  }
+
   const mine = body?.submissions?.find((s) => s.id === submission);
 
   // Said only where lines are actually missing. The run went on; a gap that passed for an agent doing
