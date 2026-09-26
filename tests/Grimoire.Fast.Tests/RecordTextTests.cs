@@ -129,6 +129,45 @@ public sealed class RecordTextTests
 
     [Fact]
     [Trait("req", "RUNS-008")]
+    public void Tail_HoldsWhatEachModelWasGivenAndProduced()
+    {
+        // One row per model, in the CLI's own four counts, ordered by name so that two records of
+        // the same run read the same way. Found by the mutation measurement: the per-model row was
+        // the one part of the tail no test rendered, and both the row and its ordering are
+        // decisions this change made (RUNS-008, DEC-015).
+        var tail = new RunFrameTail(
+            Guid.NewGuid(),
+            FastSuite.Start,
+            RunOutcome.Done,
+            RunEndedBecause.StoppedWithItsLogEntry,
+            TimeSpan.FromMinutes(3),
+            CostSpent: 73_676,
+            new ModelTokens(41_009, 3_202, 22_016, 7_228),
+            Ceilings.Fixed,
+            new Dictionary<string, ModelTokens>(StringComparer.Ordinal)
+            {
+                ["claude-opus-4-5-20251101"] = new(40_112, 3_190, 22_016, 7_228),
+                ["claude-haiku-4-5-20251001"] = new(897, 12, 0, 0),
+            });
+
+        var rendered = RecordText.Tail(tail);
+
+        // The background call the run never asked for is a row of its own, with its own counts:
+        // one number for both models would say the Opus row spent what the Haiku one did.
+        Assert.Contains("| claude-haiku-4-5-20251001 | 897 in · 12 out ·", rendered, StringComparison.Ordinal);
+        Assert.Contains("| claude-opus-4-5-20251101 | 40,112 in · 3,190 out ·", rendered, StringComparison.Ordinal);
+
+        // Haiku before Opus, because the names order that way and not because that model came
+        // first. A record ordered by what the dictionary happened to hold would read differently
+        // from one written a moment later.
+        Assert.True(
+            rendered.IndexOf("claude-haiku", StringComparison.Ordinal)
+                < rendered.IndexOf("claude-opus", StringComparison.Ordinal),
+            "the model rows are not ordered by name");
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-008")]
     public void Tail_SaysTheTimeWasNotMeasured_WithoutOne()
     {
         // The one ending nobody timed: a run ended by the next start-up, which knows when it began
