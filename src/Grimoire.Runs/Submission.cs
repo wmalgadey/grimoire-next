@@ -19,11 +19,12 @@ public enum SubmissionState
 /// A run's figures as the list shows them: which model it runs on, what it has spent, how many calls
 /// it has made, and how many entries its record could not hold (ACCESS-005, RUNS-010, RUNS-007).
 /// </summary>
-/// <param name="TokensUsed">
-/// The same quantity the cost ceiling counts, over every model the run touched — not a second
-/// definition of cost, and never currency (GUARD-004, DEC-015).
+/// <param name="CostSpent">
+/// What the run has cost, in input-token equivalents: the same quantity the cost ceiling counts,
+/// over every model the run touched — not a second definition of cost, and never currency
+/// (GUARD-004, DEC-015).
 /// </param>
-public sealed record RunFigures(string Model, long TokensUsed, int ToolCalls, int EntriesLost);
+public sealed record RunFigures(string Model, long CostSpent, int ToolCalls, int EntriesLost);
 
 /// <summary>
 /// What a submission reads at one instant: its state, whether its failure is still waiting to be
@@ -228,7 +229,7 @@ public sealed partial class Submission
         // The figures come back with the run, which is what makes a run cut off by a stop read failed
         // and still carry what it spent (RUNS-010, RUNS-004).
         figures = held.Run is { } run
-            ? new RunFigures(run.Model, run.TokensUsed, run.ToolCalls, run.EntriesLost)
+            ? new RunFigures(run.Model, run.CostSpent, run.ToolCalls, run.EntriesLost)
             : null;
     }
 
@@ -248,7 +249,7 @@ public sealed partial class Submission
         // The model is known the moment the run exists, and the three figures start at nothing. From
         // here on the submission has a run, which is what the browser reads the fields off
         // (ACCESS-005).
-        figures = new RunFigures(model, TokensUsed: 0, ToolCalls: 0, EntriesLost: 0);
+        figures = new RunFigures(model, CostSpent: 0, ToolCalls: 0, EntriesLost: 0);
     }
 
     /// <summary>
@@ -256,7 +257,7 @@ public sealed partial class Submission
     /// board writes the store only where one has risen (RUNS-010, research.md R-06). Assumes the
     /// board's lock.
     /// </summary>
-    internal bool FiguresAre(long tokensUsed, int toolCalls, int entriesLost)
+    internal bool FiguresAre(long costSpent, int toolCalls, int entriesLost)
     {
         if (figures is not { } held)
         {
@@ -265,7 +266,7 @@ public sealed partial class Submission
             return false;
         }
 
-        var risen = held with { TokensUsed = tokensUsed, ToolCalls = toolCalls, EntriesLost = entriesLost };
+        var risen = held with { CostSpent = costSpent, ToolCalls = toolCalls, EntriesLost = entriesLost };
 
         if (risen == held)
         {

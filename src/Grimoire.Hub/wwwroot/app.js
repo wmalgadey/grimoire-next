@@ -160,7 +160,7 @@ function update(item, submission) {
 
   if (submission.model !== undefined) {
     ensureRunParts(item, submission);
-    textOf(item.querySelector(".tokens"), figure(submission.tokensUsed));
+    textOf(item.querySelector(".tokens"), figure(submission.costSpent));
     textOf(item.querySelector(".calls"), figure(submission.toolCalls));
   }
 

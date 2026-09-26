@@ -167,11 +167,11 @@
 
 ## DEC-021 — The agent adapter's Contract suite runs against the real CLI, outside CI
 
-**Decision**: The real `claude` CLI with the owner's real sign-in, at most three tests, marked `[Trait("requires", "signin")]`, run locally before the PR and excluded from CI with `--filter-not-trait "requires=signin"`.
+**Decision**: The real `claude` CLI with the owner's real sign-in, at most four tests, marked `[Trait("requires", "signin")]`, run locally before the PR and excluded from CI with `--filter-not-trait "requires=signin"`.
 
 **Reason**: III.4 puts a Contract suite against the real external thing, and the real external thing here is the CLI. CI has no subscription sign-in, so it cannot run them; a scripted endpoint would be a component we write and maintain that makes none of the CLI's observed behaviour more true (II.1). The cost — that their execution time is not measured in CI — is carried in the plan's Complexity Tracking.
 
-**Made by**: plan `001-first-ingest`.
+**Made by**: plan `001-first-ingest`. Raised from three to four when GUARD-004's cost became weighted: the weights are ratios of Anthropic's prices, `costUSD` is the CLI's own reading of the same ratios, and it exists only on a real run — so nothing below this level can check them. A fourth cheap run is what that check costs.
 
 ## DEC-022 — Three generated project metrics, none of them a gate
 

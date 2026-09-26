@@ -319,7 +319,7 @@ public sealed class MarkdownRunRecordTests : IDisposable
         outcome,
         because,
         TimeSpan.FromMinutes(3),
-        TokensUsed: 148_233,
+        CostSpent: 148_233,
         Ceilings.Fixed,
         new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
 
@@ -329,7 +329,7 @@ public sealed class MarkdownRunRecordTests : IDisposable
         RunOutcome.Failed,
         RunEndedBecause.GrimoireStopped,
         Elapsed: null,
-        TokensUsed: 12_400,
+        CostSpent: 12_400,
         Ceilings.Fixed,
         new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
 

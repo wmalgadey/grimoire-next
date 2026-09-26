@@ -59,9 +59,8 @@ internal sealed class DrivableHarness : IAgentHarness
         Of(submissionId).RunEnded(submissionId, outcome, because);
 
     /// <summary>What the streamed usage of a turn does (GUARD-004, RUNS-010).</summary>
-    public void Spend(Guid submissionId, long tokensUsed) =>
-        Of(submissionId).CostSoFar(
-            submissionId, tokensUsed, new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
+    public void Spend(Guid submissionId, long costSpent) =>
+        Of(submissionId).CostSoFar(submissionId, RunSpend.Nothing with { Cost = costSpent });
 
     /// <summary>One thing the run did (RUNS-009).</summary>
     public void Did(Guid submissionId, TranscriptMoment moment) =>

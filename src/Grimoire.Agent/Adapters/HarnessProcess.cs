@@ -436,7 +436,7 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
                         break;
 
                     case TranscriptSays.CostSoFar:
-                        report.CostSoFar(dispatch.SubmissionId, said.TokensUsed, said.TokensPerModel);
+                        report.CostSoFar(dispatch.SubmissionId, said.Spend);
                         break;
 
                     // What the run did, reported one moment at a time and in the order the blocks
@@ -451,7 +451,7 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
                         break;
 
                     case TranscriptSays.AgentStopped:
-                        report.CostSoFar(dispatch.SubmissionId, said.TokensUsed, said.TokensPerModel);
+                        report.CostSoFar(dispatch.SubmissionId, said.Spend);
 
                         // The hub decides what a stop means — done, one nudge, or failed. A
                         // nudged run carries on, so more messages may follow this one.

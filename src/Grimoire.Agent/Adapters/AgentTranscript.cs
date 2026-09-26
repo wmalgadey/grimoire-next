@@ -21,7 +21,7 @@ public enum TranscriptSays
     /// </summary>
     InitIsNotAcceptable,
 
-    /// <summary>What the run has caused so far, in tokens.</summary>
+    /// <summary>What the run has cost so far, in input-token equivalents.</summary>
     CostSoFar,
 
     /// <summary>The agent has stopped. The hub reads the log and decides (RUNS-005).</summary>
@@ -43,20 +43,27 @@ public enum TranscriptSays
 /// One line of the CLI's stream, read as the port event it carries.
 /// </summary>
 /// <param name="Says">Which event it is.</param>
-/// <param name="TokensUsed">
-/// Every token the run has caused up to and including this line. Never goes backwards. The CLI's
-/// streamed <c>usage</c> is cumulative within one response and starts again at the next, and the
-/// <c>result</c>'s <c>modelUsage</c> is cumulative across the whole session — so the running
-/// figure is the last reconciled session total plus this response's own, and neither a sum of the
-/// deltas nor a sum of the results (research.md R-04,
+/// <param name="Cost">
+/// What the run has cost up to and including this line, in input-token equivalents. Never goes
+/// backwards. The CLI's streamed <c>usage</c> is cumulative within one response and starts again at
+/// the next, and the <c>result</c>'s <c>modelUsage</c> is cumulative across the whole session — so
+/// the running figure is the last reconciled session total plus this response's own, and neither a
+/// sum of the deltas nor a sum of the results (research.md R-04,
 /// <c>contracts/agent-cli-protocol.md</c> §What the two usage figures count).
 /// </param>
 /// <param name="EndedAbnormally">
 /// On <see cref="TranscriptSays.AgentStopped"/>: the agent did not stop of its own accord — an
 /// interrupted stream, or a subtype that is not success.
 /// </param>
-public sealed record TranscriptEvent(TranscriptSays Says, long TokensUsed = 0, bool EndedAbnormally = false)
+public sealed record TranscriptEvent(TranscriptSays Says, long Cost = 0, bool EndedAbnormally = false)
 {
+    /// <summary>
+    /// The four raw counts <see cref="Cost"/> was weighed from, added over every model. Reported
+    /// beside the figure because the weighting cannot be undone, and the raw four are what the
+    /// ceiling's own value is calibrated from (GUARD-004, RUNS-008).
+    /// </summary>
+    public ModelTokens Tokens { get; init; }
+
     /// <summary>
     /// What this line says the run did, in the order the blocks arrived. Empty for every line that is
     /// not a complete <c>assistant</c> or <c>user</c> message (RUNS-009).
@@ -70,6 +77,9 @@ public sealed record TranscriptEvent(TranscriptSays Says, long TokensUsed = 0, b
     /// </summary>
     public IReadOnlyDictionary<string, ModelTokens> TokensPerModel { get; init; } =
         new Dictionary<string, ModelTokens>(StringComparer.Ordinal);
+
+    /// <summary>What this line says the run has spent, as the port reports it.</summary>
+    public RunSpend Spend => new(Cost, Tokens, TokensPerModel);
 }
 
 /// <summary>
@@ -84,9 +94,9 @@ public sealed record TranscriptEvent(TranscriptSays Says, long TokensUsed = 0, b
 /// then <em>does</em> about each — the states, the ceilings, the single nudge — stays the hub's.
 /// </para>
 /// <para>
-/// It keeps one thing between lines: the highest cost seen so far. That is what makes the streamed
-/// <c>usage</c>, which is cumulative within a response, add up to a turn rather than to a multiple
-/// of it.
+/// It keeps one thing between lines: the highest count of each token class seen so far. That is what
+/// makes the streamed <c>usage</c>, which is cumulative within a response, add up to a turn rather
+/// than to a multiple of it.
 /// </para>
 /// <para>
 /// The CLI namespaces every MCP tool as <c>mcp__wiki__&lt;name&gt;</c>, and this file owns that
@@ -104,14 +114,18 @@ public sealed class AgentTranscript(ToolGrant grant)
 
     private const string InterruptCapability = "interrupt_receipt_v1";
 
-    /// <summary>The highest cost this run has reported, across every line read so far.</summary>
-    private long spent;
+    /// <summary>
+    /// The highest count of each class this run has reported, across every line read so far. The
+    /// cost is weighed from these and never kept beside them, so the figure the ceiling is read
+    /// against is always the one these four make.
+    /// </summary>
+    private ModelTokens spentTokens;
 
     /// <summary>
-    /// The session total the last <c>result</c> reconciled to. Every turn after it streams on top
-    /// of this rather than starting the run's counter again.
+    /// The session's counts as the last <c>result</c> reconciled them. Every turn after it streams
+    /// on top of these rather than starting the run's counter again.
     /// </summary>
-    private long reconciled;
+    private ModelTokens reconciled;
 
     /// <summary>
     /// The tools whose calls have not yet returned, oldest first, so that each result can say which
@@ -166,19 +180,28 @@ public sealed class AgentTranscript(ToolGrant grant)
                 // result reconciled to, rather than compared against it: measured, turn two's
                 // 57 895 beside turn one's 51 094 is a run that has caused 108 989, and a bare
                 // Math.Max would have read it as 57 895 until the next result corrected it.
-                spent = Math.Max(spent, reconciled + StreamedTotal(message));
-                return new TranscriptEvent(TranscriptSays.CostSoFar, spent);
+                //
+                // Added class by class and weighted afterwards, which is what makes this figure and
+                // the one the next result reconciles to comparable at all (GUARD-004).
+                Keep(reconciled + StreamedTokens(message));
+                return Spent(TranscriptSays.CostSoFar);
 
             case "result":
                 // modelUsage is the authority and it is cumulative across the session, so the
                 // whole run's cost is the last one and not the sum of them (R-04, measured).
                 var perModel = ModelUsage(message);
-                reconciled = Math.Max(reconciled, Ceilings.CostOf(perModel.Values));
-                spent = Math.Max(spent, reconciled);
-                return new TranscriptEvent(TranscriptSays.AgentStopped, spent, EndedAbnormally(message))
+
+                // Class by class, because modelUsage only ever grows: a result that adds tokens
+                // without adding a whole equivalent — nine more cache reads — must still move the
+                // base the next turn streams on top of, or that turn is counted from a figure a
+                // result out of date.
+                reconciled = reconciled.HighestOf(Ceilings.Sum(perModel.Values));
+                Keep(reconciled);
+
+                return Spent(TranscriptSays.AgentStopped, EndedAbnormally(message)) with
                 {
-                    // The breakdown travels with the total it is the sum of, so the record's tail
-                    // cannot name models that do not add up to the figure beside them (RUNS-008).
+                    // The breakdown travels with the figure it is the sum of, so the record's tail
+                    // cannot name models that do not add up to what stands beside them (RUNS-008).
                     TokensPerModel = perModel,
                 };
 
@@ -196,6 +219,16 @@ public sealed class AgentTranscript(ToolGrant grant)
                 return new TranscriptEvent(TranscriptSays.Nothing);
         }
     }
+
+    /// <summary>
+    /// The run has reported counts. The four are kept class by class, and the cost is what they
+    /// weigh to — so neither can go backwards and the figure is always the one these four make.
+    /// </summary>
+    private void Keep(ModelTokens reported) => spentTokens = spentTokens.HighestOf(reported);
+
+    /// <summary>What the run has spent, as every line that reports cost says it.</summary>
+    private TranscriptEvent Spent(TranscriptSays says, bool endedAbnormally = false) =>
+        new(says, Ceilings.CostOf(spentTokens), endedAbnormally) { Tokens = spentTokens };
 
     /// <summary>
     /// The moments one complete message holds, in the order its blocks arrived (RUNS-009).
@@ -342,17 +375,23 @@ public sealed class AgentTranscript(ToolGrant grant)
         return names;
     }
 
-    private static long StreamedTotal(JsonObject message)
+    /// <summary>
+    /// The four counts one streamed <c>usage</c> reports — this response so far, and nothing of the
+    /// responses before it. Its field names are the API's snake case, where <c>modelUsage</c> uses
+    /// camel case for the same four classes.
+    /// </summary>
+    private static ModelTokens StreamedTokens(JsonObject message)
     {
         if (message["event"]?["usage"] is not JsonObject usage)
         {
-            return 0;
+            return default;
         }
 
-        return Field(usage, "input_tokens")
-            + Field(usage, "output_tokens")
-            + Field(usage, "cache_read_input_tokens")
-            + Field(usage, "cache_creation_input_tokens");
+        return new ModelTokens(
+            Field(usage, "input_tokens"),
+            Field(usage, "output_tokens"),
+            Field(usage, "cache_read_input_tokens"),
+            Field(usage, "cache_creation_input_tokens"));
     }
 
     /// <summary>

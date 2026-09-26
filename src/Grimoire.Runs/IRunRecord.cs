@@ -23,7 +23,7 @@ public sealed record RunFrameHead(
 /// What only the ending knows, written as the record's tail (RUNS-008).
 /// </summary>
 /// <param name="Ceilings">
-/// Both ceilings, so that <see cref="Elapsed"/> and <see cref="TokensUsed"/> are read against what
+/// Both ceilings, so that <see cref="Elapsed"/> and <see cref="CostSpent"/> are read against what
 /// they were held to. A figure without the ceiling beside it says nothing about how close the run
 /// came to it.
 /// </param>
@@ -45,7 +45,7 @@ public sealed record RunFrameTail(
     RunOutcome Outcome,
     RunEndedBecause EndedBecause,
     TimeSpan? Elapsed,
-    long TokensUsed,
+    long CostSpent,
     Ceilings Ceilings,
     IReadOnlyDictionary<string, ModelTokens> TokensPerModel);
 

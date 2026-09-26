@@ -73,7 +73,7 @@ public sealed class RunFrameTests
         Assert.Equal(hub.Clock.GetUtcNow(), tail.EndedAt);
         Assert.Equal(RunOutcome.Done, tail.Outcome);
         Assert.Equal(TimeSpan.FromMinutes(3), tail.Elapsed);
-        Assert.Equal(Ceilings.CostOf(spent.Values), tail.TokensUsed);
+        Assert.Equal(Ceilings.CostOf(spent.Values), tail.CostSpent);
 
         // Both ceilings travel with the figures, because a figure without the ceiling beside it says
         // nothing about how close the run came to it.
@@ -135,7 +135,7 @@ public sealed class RunFrameTests
         var run = hub.Conductor.Of(submission.Id)!;
 
         hub.Harness.ReportIn(submission.Id);
-        hub.Harness.Spend(submission.Id, Ceilings.Fixed.Tokens);
+        hub.Harness.Spend(submission.Id, Ceilings.Fixed.Cost);
 
         Assert.Equal(RunEndedBecause.CostCeiling, hub.Record.TailOf(run.Id)!.EndedBecause);
     }

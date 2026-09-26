@@ -100,10 +100,10 @@ public sealed class RestartTests
         Assert.Equal(RunOutcome.Failed, tail.Outcome);
         Assert.Equal(RunEndedBecause.GrimoireStopped, tail.EndedBecause);
 
-        // What the store kept is what the tail can say: the total the run spent survived with the
-        // run, the per-model breakdown did not (RUNS-010, DEC-015). The time nobody measured is not
+        // What the store kept is what the tail can say: what the run cost survived with the run,
+        // the per-model breakdown did not (RUNS-010, DEC-015). The time nobody measured is not
         // guessed from the run's start — that span is mostly the stop itself (RUNS-008).
-        Assert.Equal(12_400, tail.TokensUsed);
+        Assert.Equal(((10 * 12_000) + (50 * 400)) / 10, tail.CostSpent);
         Assert.Empty(tail.TokensPerModel);
         Assert.Null(tail.Elapsed);
     }

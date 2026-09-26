@@ -43,7 +43,7 @@ public static class RecordText
         Row(text, "Granted tools", string.Join(", ", head.GrantedTools));
         Row(text, "Grant recorded", Moment(head.GrantRecordedAt));
         Row(text, "Time ceiling", Duration(head.Ceilings.Elapsed));
-        Row(text, "Cost ceiling", Tokens(head.Ceilings.Tokens));
+        Row(text, "Cost ceiling", Figure(head.Ceilings.Cost));
         Row(text, "Started", Moment(head.StartedAt));
 
         return text.Append('\n').ToString();
@@ -106,7 +106,7 @@ public static class RecordText
 
     /// <summary>
     /// The tail: when the run ended, done or failed, why, where it stood against both ceilings, and
-    /// the tokens of every model it touched (RUNS-008, DEC-015).
+    /// what every model it touched cost (RUNS-008, DEC-015).
     /// </summary>
     public static string Tail(RunFrameTail tail)
     {
@@ -127,13 +127,16 @@ public static class RecordText
         Row(text, "Elapsed", tail.Elapsed is { } elapsed
             ? $"{Duration(elapsed)} of {Duration(tail.Ceilings.Elapsed)}"
             : "not measured");
-        Row(text, "Tokens", $"{Tokens(tail.TokensUsed)} of {Tokens(tail.Ceilings.Tokens)}");
+        Row(text, "Cost", $"{Figure(tail.CostSpent)} of {Figure(tail.Ceilings.Cost)}");
 
-        // Which model spent them, so that a figure on the row can be read against the models behind
-        // it. Ordered by name, so that two records of the same run read the same way.
+        // Which model was given and produced what, in the CLI's own four counts. Not each model's
+        // cost: the weighting divides once for the whole run, and weighing each model on its own
+        // would drop a tenth per model — two models with five cache reads each would show nothing
+        // twice where the run was charged one. These add up exactly. Ordered by name, so that two
+        // records of the same run read the same way.
         foreach (var (model, spent) in tail.TokensPerModel.OrderBy(m => m.Key, StringComparer.Ordinal))
         {
-            Row(text, model, Tokens(spent.Total));
+            Row(text, model, Counts(spent));
         }
 
         return text.Append('\n').ToString();
@@ -212,8 +215,17 @@ public static class RecordText
             ? string.Create(CultureInfo.InvariantCulture, $"{(int)elapsed.TotalMinutes} min {elapsed.Seconds} s")
             : string.Create(CultureInfo.InvariantCulture, $"{elapsed.Seconds} s");
 
-    /// <summary>Tokens, grouped, because the ceiling is seven digits long (DEC-015).</summary>
-    private static string Tokens(long tokens) => tokens.ToString("N0", CultureInfo.InvariantCulture);
+    /// <summary>
+    /// One model's four counts on one line, in the order the rows above state them: what it was
+    /// given, what it produced, what it read back and what it wrote away (RUNS-008).
+    /// </summary>
+    private static string Counts(ModelTokens spent) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{Figure(spent.InputTokens)} in · {Figure(spent.OutputTokens)} out · "
+            + $"{Figure(spent.CacheReadInputTokens)} cache read · {Figure(spent.CacheCreationInputTokens)} cache write");
+
+    /// <summary>A figure, grouped, because the cost ceiling is seven digits long (DEC-015).</summary>
+    private static string Figure(long figure) => figure.ToString("N0", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Why the run ended, as a sentence. Seven values of one requirement, and each is a state the

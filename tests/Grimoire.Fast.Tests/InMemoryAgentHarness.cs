@@ -154,19 +154,25 @@ internal sealed class InMemoryAgentHarness(HubJournal? journal = null) : IAgentH
     }
 
     /// <summary>
-    /// What the streamed usage of a turn does: the run has spent this much so far. A streamed line
-    /// carries no breakdown per model, which is what the empty dictionary says.
+    /// What the streamed usage of a turn does: the run has cost this much so far.
     /// </summary>
-    public void Spend(Guid submissionId, long tokensUsed) =>
-        reports[submissionId].CostSoFar(submissionId, tokensUsed, EmptyBreakdown);
+    /// <remarks>
+    /// The cost is given rather than weighed from counts, which is what lets a test say "at the
+    /// ceiling" without arithmetic. What the weights do is <c>AgentTranscript</c>'s and is proven
+    /// against the CLI's own lines, never here (Constitution III.9).
+    /// </remarks>
+    public void Spend(Guid submissionId, long costSpent) =>
+        reports[submissionId].CostSoFar(submissionId, RunSpend.Nothing with { Cost = costSpent });
 
     /// <summary>
-    /// What a <c>result</c>'s <c>modelUsage</c> does: the run has spent this much, and this is which
-    /// model spent it (RUNS-008).
+    /// What a <c>result</c>'s <c>modelUsage</c> does: this is what each model was given and produced,
+    /// and the cost is what those counts weigh to (RUNS-008, GUARD-004).
     /// </summary>
     public void Spend(Guid submissionId, IReadOnlyDictionary<string, ModelTokens> tokensPerModel) =>
         reports[submissionId].CostSoFar(
-            submissionId, Ceilings.CostOf(tokensPerModel.Values), tokensPerModel);
+            submissionId,
+            new RunSpend(
+                Ceilings.CostOf(tokensPerModel.Values), Ceilings.Sum(tokensPerModel.Values), tokensPerModel));
 
     /// <summary>One thing the run did, as the transcript reports it (RUNS-009).</summary>
     public void Did(Guid submissionId, TranscriptMoment moment) =>
@@ -178,9 +184,6 @@ internal sealed class InMemoryAgentHarness(HubJournal? journal = null) : IAgentH
         Did(submissionId, new TranscriptMoment(RunMomentKind.ToolCalled, tool, arguments));
         toolsCalled.Add(tool);
     }
-
-    private static readonly IReadOnlyDictionary<string, ModelTokens> EmptyBreakdown =
-        new Dictionary<string, ModelTokens>(StringComparer.Ordinal);
 
     /// <summary>What the CLI's <c>result</c> message does: the agent has stopped, and the hub decides.</summary>
     public Task StoppedAsync(Guid submissionId, bool endedAbnormally = false) =>
