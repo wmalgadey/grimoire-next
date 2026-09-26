@@ -1,3 +1,4 @@
+using System.Text;
 using Grimoire.Agent;
 using Grimoire.Runs;
 using Grimoire.Runs.Adapters;
@@ -181,6 +182,66 @@ public sealed class MarkdownRunRecordTests : IDisposable
         // (contracts/run-record.md).
         Assert.Equal(ended, File.ReadAllText(file));
         Assert.Equal(0, record.EntriesLost(head.RunId));
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-006")]
+    public async Task Read_IsAlwaysAWholeRecord_WhileTheRunIsStillAppendingToIt()
+    {
+        var head = AHead();
+        var record = new MarkdownRunRecord(state);
+
+        record.Begin(head);
+
+        var headText = RecordText.Head(head);
+
+        // About a megabyte, which is large enough that one append is several writes to the disk rather
+        // than one — measured: at a few kilobytes the window is so small that a read misses it two
+        // times in three, and a test that passes on broken code proves nothing. The character outside
+        // ASCII is there so that a read landing inside a write is not even valid UTF-8.
+        var moment = Returned(head.RunId, string.Concat(Enumerable.Repeat("Ada Lovelace — 42\n", 60_000)));
+        var momentText = RecordText.Moment(moment);
+
+        const int appends = 12;
+
+        var appending = Task.Run(
+            () =>
+            {
+                for (var i = 0; i < appends; i++)
+                {
+                    record.Append(moment);
+                }
+            },
+            TestContext.Current.CancellationToken);
+
+        var readings = 0;
+
+        while (!appending.IsCompleted)
+        {
+            if (record.Read(head.RunId) is not { } bytes)
+            {
+                continue;
+            }
+
+            readings++;
+
+            // Every answer is a record taken at an append boundary: the head, and some whole number of
+            // moments behind it. `File.AppendAllText` is not atomic, so a read that did not wait for
+            // one would serve a segment cut in half — a record the browser cannot segment, on the very
+            // poll where the run is most alive (ACCESS-006).
+            var text = Encoding.UTF8.GetString(bytes);
+            var behindTheHead = text.Length - headText.Length;
+
+            Assert.StartsWith(headText, text, StringComparison.Ordinal);
+            Assert.Equal(0, behindTheHead % momentText.Length);
+            Assert.Equal(headText + string.Concat(Enumerable.Repeat(momentText, behindTheHead / momentText.Length)), text);
+        }
+
+        await appending;
+
+        // The loop has to have actually looked. A run that finished appending before the first read
+        // would pass this without having read anything at all.
+        Assert.True(readings > 0, "the record was never read while it was being appended to");
     }
 
     private static RunFrameHead AHead() => new(

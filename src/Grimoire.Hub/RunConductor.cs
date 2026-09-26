@@ -271,11 +271,16 @@ public sealed class RunConductor(
             run.Ceilings,
             run.TokensPerModel));
 
-        FiguresRose(run);
-
+        // The terminal state and the final figures in one pass of the board's lock. Told separately, a
+        // poll landing between them would read `running` beside a final figure — and a tail whose write
+        // just failed would raise the count of lost entries on a row still reading `running`
+        // (ACCESS-005).
         board.Ended(
             submissionId,
-            outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed);
+            outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed,
+            run.TokensUsed,
+            run.ToolCalls,
+            record.EntriesLost(run.Id));
 
         // The queue moves. Nothing awaits this: a run ends on whatever thread the harness reads
         // on, and the run being reported is over either way — what happens behind it is the

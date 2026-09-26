@@ -78,7 +78,8 @@ public sealed class SubmissionStateTests
         // There is no transition out of either. Acknowledging a failure is not one: the
         // acknowledged run still reads failed (RUNS-003).
         Assert.Throws<InvalidOperationException>(() => hub.Board.ReportedIn(submission.Id));
-        Assert.Throws<InvalidOperationException>(() => hub.Board.Ended(submission.Id, SubmissionState.Done));
+        Assert.Throws<InvalidOperationException>(
+            () => hub.Board.Ended(submission.Id, SubmissionState.Done, tokensUsed: 0, toolCalls: 0, entriesLost: 0));
         Assert.Equal(terminal, submission.State);
     }
 

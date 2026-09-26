@@ -284,8 +284,18 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
         }
     }
 
-    /// <summary>This submission's run has ended, done or failed (RUNS-001).</summary>
-    public void Ended(Guid submissionId, SubmissionState terminal)
+    /// <summary>
+    /// This submission's run has ended, done or failed, with the figures it ended on (RUNS-001,
+    /// RUNS-010).
+    /// </summary>
+    /// <remarks>
+    /// The terminal state and the final figures are written in <b>one</b> pass of the one lock. Written
+    /// as two — the figures, then the state — a poll landing between them would read <c>running</c>
+    /// beside a final figure, and a tail whose write failed would raise the count of lost entries on a
+    /// row still reading <c>running</c>. ACCESS-005 has the state and the figures read as one instant,
+    /// and a reading is only as atomic as the writing behind it.
+    /// </remarks>
+    public void Ended(Guid submissionId, SubmissionState terminal, long tokensUsed, int toolCalls, int entriesLost)
     {
         lock (gate)
         {
@@ -294,8 +304,18 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
                 return;
             }
 
+            // The state first, because it is the one that refuses: a submission already done or failed
+            // throws here, and it must throw before anything else about it has been changed.
             submission.Ended(terminal);
+
+            var risen = submission.FiguresAre(tokensUsed, toolCalls, entriesLost);
+
             store.SetState(submissionId, terminal);
+
+            if (risen)
+            {
+                store.RecordFigures(submission.RunId!.Value, tokensUsed, toolCalls, entriesLost);
+            }
         }
     }
 

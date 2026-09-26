@@ -126,6 +126,42 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-005")]
+    public async Task TerminalState_AndTheFinalFigures_ArePublishedTogether()
+    {
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.Spend(submission.Id, 148_233);
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+
+        // The tail cannot be written, so the count of lost entries rises in the same breath as the
+        // ending — which is the moment the two could most easily be published apart (RUNS-007).
+        hub.Record.FailWrites = true;
+
+        // What a poll would read at every moment one could land inside the ending. The board's lock is
+        // re-entrant, so this is the reading a poll on this thread would get.
+        var readings = new List<SubmissionStatus>();
+        hub.Store.WhileWriting = () => readings.Add(submission.Status);
+
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        hub.Store.WhileWriting = null;
+
+        // Never `running` beside a figure the ending produced. Written as two passes of the lock — the
+        // figures, then the state — a reader landing between them would see exactly that pair, and it
+        // never existed (ACCESS-005, contracts/hub-http-api.md).
+        Assert.NotEmpty(readings);
+        Assert.DoesNotContain(
+            readings,
+            reading => reading.State == SubmissionState.Running && reading.Run!.EntriesLost > 0);
+
+        // And the reading that carries the final figures carries the terminal state with them.
+        Assert.All(
+            readings.Where(r => r.Run!.EntriesLost > 0),
+            reading => Assert.Equal(SubmissionState.Failed, reading.State));
+    }
+
+    [Fact]
     [Trait("req", "RUNS-004")]
     public async Task Figures_ComeBackWithTheRun_AfterAStop()
     {
