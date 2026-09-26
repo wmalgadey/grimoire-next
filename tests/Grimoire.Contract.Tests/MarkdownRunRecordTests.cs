@@ -256,6 +256,54 @@ public sealed class MarkdownRunRecordTests : IDisposable
         Assert.True(readings > 0, "the record was never read while it was being appended to");
     }
 
+    [Fact]
+    [Trait("req", "RUNS-008")]
+    public void Tail_IsAppendedAfterWhatIsAlreadyThere_WhenAFreshAdapterEndsTheRun()
+    {
+        var head = AHead();
+
+        // The process that began the record is gone — killed, or the power cut — so the file holds a
+        // head and its moments and no ending. Start-up ends it from a new adapter, which has none of
+        // what the last one kept in memory: no set of runs that already have a tail, no lost count
+        // (HubApplication.RestoreAfterAStop).
+        var before = new MarkdownRunRecord(state);
+        before.Begin(head);
+        before.Append(Called(head.RunId, "read_page", """{"path":"ada.md"}"""));
+
+        new MarkdownRunRecord(state).Ended(Interrupted(head.RunId));
+
+        var text = File.ReadAllText(Path.Combine(state, "runs", $"{head.RunId}.md"));
+
+        // Appended, not rewritten: the head and the moment are where they were, byte for byte, and
+        // the ending is behind them (RUNS-007).
+        Assert.StartsWith(RecordText.Head(head), text, StringComparison.Ordinal);
+        Assert.Contains("called read_page", text, StringComparison.Ordinal);
+        Assert.True(
+            text.IndexOf("called read_page", StringComparison.Ordinal)
+            < text.IndexOf("ended failed", StringComparison.Ordinal));
+        Assert.Contains("Grimoire was stopped while the run was in progress", text, StringComparison.Ordinal);
+        Assert.Contains("| Elapsed | not measured |", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-008")]
+    public void Tail_IsTheWholeRecord_WhenNoHeadWasEverWritten()
+    {
+        // The head was the entry that was lost — an unwritable directory when the run began, a state
+        // directory that moved. A run still ends, and the ending is worth more on its own than a
+        // file that never says the run is over: nothing special-cases the missing head here either
+        // (MarkdownRunRecord, research.md R-10).
+        var runId = Guid.NewGuid();
+
+        new MarkdownRunRecord(state).Ended(Interrupted(runId));
+
+        var text = File.ReadAllText(Path.Combine(state, "runs", $"{runId}.md"));
+
+        Assert.StartsWith("## ", text, StringComparison.Ordinal);
+        Assert.Contains("ended failed", text, StringComparison.Ordinal);
+        Assert.DoesNotContain($"# Run {runId}", text, StringComparison.Ordinal);
+    }
+
     private static RunFrameHead AHead() => new(
         Guid.NewGuid(),
         Guid.NewGuid(),
@@ -272,6 +320,16 @@ public sealed class MarkdownRunRecordTests : IDisposable
         because,
         TimeSpan.FromMinutes(3),
         TokensUsed: 148_233,
+        Ceilings.Fixed,
+        new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
+
+    private static RunFrameTail Interrupted(Guid runId) => new(
+        runId,
+        Noon.AddHours(62),
+        RunOutcome.Failed,
+        RunEndedBecause.GrimoireStopped,
+        Elapsed: null,
+        TokensUsed: 12_400,
         Ceilings.Fixed,
         new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
 

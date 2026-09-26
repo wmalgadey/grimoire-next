@@ -30,7 +30,9 @@ internal sealed class FastHub
     /// <remarks>
     /// The record comes across the restart with the store because that is what it does on disk: the
     /// files in <c>runs/</c> outlive the process that wrote them, and a record the new hub could not
-    /// see would hide whether the interrupted run's ending ever reached it (RUNS-007).
+    /// see would hide whether the interrupted run's ending ever reached it (RUNS-007). It comes
+    /// across <em>reopened</em> — what the last process kept in its head is gone with it, which is
+    /// the line the adapter is cut on (<c>InMemoryRunRecord.Reopened</c>).
     /// </remarks>
     public FastHub(InMemorySubmissionStore store, HubJournal journal, InMemoryRunRecord record)
     {
@@ -69,7 +71,7 @@ internal sealed class FastHub
     /// Grimoire stopped and started again over the same store. The clock starts afresh, as a new
     /// process's does.
     /// </summary>
-    public FastHub Restarted() => new(Store, Journal, Record);
+    public FastHub Restarted() => new(Store, Journal, Record.Reopened());
 
     public const string Model = "claude-opus-4-5-20251101";
 

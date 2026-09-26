@@ -101,6 +101,29 @@ public sealed class RecordTextTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-008")]
+    public void Tail_SaysTheTimeWasNotMeasured_WithoutOne()
+    {
+        // The one ending nobody timed: a run ended by the next start-up, which knows when it began
+        // and not when it stopped. The row says so rather than standing a guessed span against the
+        // ceiling — the tokens beside it were measured and are still read against theirs.
+        var tail = new RunFrameTail(
+            Guid.NewGuid(),
+            FastSuite.Start,
+            RunOutcome.Failed,
+            RunEndedBecause.GrimoireStopped,
+            Elapsed: null,
+            TokensUsed: 12_400,
+            Ceilings.Fixed,
+            new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
+
+        var rendered = RecordText.Tail(tail);
+
+        Assert.Contains("| Elapsed | not measured |", rendered, StringComparison.Ordinal);
+        Assert.Contains("12,400", rendered, StringComparison.Ordinal);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-007")]
     public void LostEntries_AreOneSegmentOfTheirOwn()
     {

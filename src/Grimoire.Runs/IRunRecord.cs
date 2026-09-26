@@ -27,6 +27,14 @@ public sealed record RunFrameHead(
 /// they were held to. A figure without the ceiling beside it says nothing about how close the run
 /// came to it.
 /// </param>
+/// <param name="Elapsed">
+/// How long the run ran, or <c>null</c> where nobody measured it. Null has one cause and it is not
+/// a missing feature: a run whose process died with Grimoire's is ended by the next start-up, which
+/// knows when the run began but not when it stopped running. The span from its start to that
+/// start-up would include however long Grimoire was down, and a record must not state a duration
+/// nobody timed — so the record says the time was not measured, and the run's own start in the head
+/// is what a reader has (RUNS-008, RUNS-004).
+/// </param>
 /// <param name="TokensPerModel">
 /// Every entry of the run's <c>modelUsage</c>, so that the user can see <em>which</em> model spent
 /// them (DEC-015). Empty for a run that never reached a model call.
@@ -36,7 +44,7 @@ public sealed record RunFrameTail(
     DateTimeOffset EndedAt,
     RunOutcome Outcome,
     RunEndedBecause EndedBecause,
-    TimeSpan Elapsed,
+    TimeSpan? Elapsed,
     long TokensUsed,
     Ceilings Ceilings,
     IReadOnlyDictionary<string, ModelTokens> TokensPerModel);

@@ -27,12 +27,39 @@ internal sealed record LostEntriesNotice(int Count);
 /// </remarks>
 internal sealed class InMemoryRunRecord : IRunRecord
 {
-    private readonly Dictionary<Guid, List<object>> written = [];
+    /// <summary>
+    /// What is on disk, and the only thing a restart finds again. Shared with the instance a
+    /// <see cref="Reopened"/> returns, because the files outlive the process that wrote them.
+    /// </summary>
+    private readonly Dictionary<Guid, List<object>> written;
+
     private readonly Dictionary<Guid, int> lost = [];
 
     /// <summary>What has been lost and not yet announced in the record.</summary>
     private readonly Dictionary<Guid, int> unannounced = [];
     private readonly Lock gate = new();
+
+    public InMemoryRunRecord()
+        : this([])
+    {
+    }
+
+    private InMemoryRunRecord(Dictionary<Guid, List<object>> written) => this.written = written;
+
+    /// <summary>
+    /// The same records, opened by a new process: the files are still there and everything the last
+    /// process was keeping in its head is gone.
+    /// </summary>
+    /// <remarks>
+    /// This is the persistence boundary, and the double has to be cut on it or it would prove
+    /// something the adapter does not do. <c>MarkdownRunRecord</c> keeps three things in memory —
+    /// which runs have a tail, how many entries were lost, how many of those are still unannounced —
+    /// and every one of them dies with the process while the Markdown files do not. An in-memory
+    /// record carried whole across a restart would answer "this run already ended" from a set the
+    /// real adapter would have lost, and a test could then pass against a hub that never writes the
+    /// tail RUNS-008 asks for.
+    /// </remarks>
+    public InMemoryRunRecord Reopened() => new(written);
 
     /// <summary>
     /// While set, every call is counted as lost instead of written — an unwritable directory, a full

@@ -101,9 +101,28 @@ public sealed class RestartTests
         Assert.Equal(RunEndedBecause.GrimoireStopped, tail.EndedBecause);
 
         // What the store kept is what the tail can say: the total the run spent survived with the
-        // run, the per-model breakdown did not (RUNS-010, DEC-015).
+        // run, the per-model breakdown did not (RUNS-010, DEC-015). The time nobody measured is not
+        // guessed from the run's start — that span is mostly the stop itself (RUNS-008).
         Assert.Equal(12_400, tail.TokensUsed);
         Assert.Empty(tail.TokensPerModel);
+        Assert.Null(tail.Elapsed);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-008")]
+    public async Task Restart_EndsTheRecordOfTheRunThatWasInProgress_OnlyOnce()
+    {
+        // The first restart ends it; from then on the run reads failed, so the second finds nothing
+        // in progress. Worth holding because the guard is the store's and not the record's: a new
+        // process has no memory of a tail it did not write, so a record closed twice would be closed
+        // twice on disk, in a file nothing may rewrite (RUNS-007).
+        var running = await SubmittedAsync("The text being worked when Grimoire was killed twice.");
+        before.Harness.ReportIn(running.Id);
+
+        var runId = In(before, running.Id).RunId!.Value;
+        var after = before.Restarted().Restarted();
+
+        Assert.Single(after.Record.Of(runId).OfType<RunFrameTail>());
     }
 
     [Fact]

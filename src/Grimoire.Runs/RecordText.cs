@@ -121,7 +121,12 @@ public static class RecordText
         // same way wherever they are read.
         text.Append("| | |\n| --- | --- |\n");
         Row(text, "Ended", Moment(tail.EndedAt));
-        Row(text, "Elapsed", $"{Duration(tail.Elapsed)} of {Duration(tail.Ceilings.Elapsed)}");
+        // A run ended by the next start-up was never timed: that start-up knows when the run began
+        // and not when it stopped, and the span between would be mostly the stop itself. The row says
+        // so rather than standing a figure nobody measured against the ceiling (RUNS-008).
+        Row(text, "Elapsed", tail.Elapsed is { } elapsed
+            ? $"{Duration(elapsed)} of {Duration(tail.Ceilings.Elapsed)}"
+            : "not measured");
         Row(text, "Tokens", $"{Tokens(tail.TokensUsed)} of {Tokens(tail.Ceilings.Tokens)}");
 
         // Which model spent them, so that a figure on the row can be read against the models behind

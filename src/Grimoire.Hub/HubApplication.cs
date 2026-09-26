@@ -100,10 +100,11 @@ public static class HubApplication
     /// model would claim a figure nobody measured.
     /// </para>
     /// <para>
-    /// <c>EndedAt</c> is now, and <c>Elapsed</c> the span from the run's start to it: the run was in
-    /// progress until this restart ended it, and the time Grimoire was down is part of how long it
-    /// stood open. That can read past the elapsed ceiling, which is why the reason beside it is the
-    /// one that is true — a run ended here did not reach a ceiling, Grimoire was stopped under it.
+    /// <c>EndedAt</c> is now, because now is when the run was ended, and <c>Elapsed</c> is
+    /// <c>null</c>: this start-up knows when the run began and not when it stopped running, and the
+    /// span between the two is mostly however long Grimoire was down. A record that stated it would
+    /// be stating a duration nobody timed — and one that could read past the elapsed ceiling beside
+    /// a reason that is not a ceiling. The head still holds the run's start.
     /// </para>
     /// </remarks>
     private static RunFrameTail TailOfAnInterruptedRun(StoredRun run, DateTimeOffset at) =>
@@ -112,7 +113,7 @@ public static class HubApplication
             at,
             RunOutcome.Failed,
             RunEndedBecause.GrimoireStopped,
-            at - run.StartedAt,
+            Elapsed: null,
             run.TokensUsed,
             Ceilings.Fixed,
             new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
