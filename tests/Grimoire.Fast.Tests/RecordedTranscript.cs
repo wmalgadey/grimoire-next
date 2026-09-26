@@ -175,10 +175,88 @@ internal static class RecordedTranscript
         {"type":"result","subtype":"error_during_execution","terminal_reason":"aborted_streaming","output_tokens":0}
         """;
 
-    /// <summary>A message the hub reads nothing from.</summary>
-    internal const string Assistant =
+    /// <summary>
+    /// The <c>assistant</c> message's <c>tool_use</c> block: the tool the agent reached for, and the
+    /// arguments it reached with. Recorded on 2026-09-26 from <c>claude</c> 2.1.283 on
+    /// <c>claude-haiku-4-5-20251001</c> (research.md R-03), trimmed to the fields the hub reads.
+    /// </summary>
+    internal const string ToolCall =
         """
-        {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Reading the wiki."}]}}
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01GjqrP3CWV5nAbrmUKKKYHK","name":"Read","input":{"file_path":"…/notes.md"}}]}}
+        """;
+
+    /// <summary>
+    /// The <c>user</c> message's <c>tool_result</c> block, from the same probe. A <c>user</c> line on
+    /// stdout is a tool result and never something Grimoire said: the CLI does not echo what is
+    /// written to its stdin (measured, research.md R-03).
+    /// </summary>
+    internal const string ToolResult =
+        """
+        {"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_01GjqrP3CWV5nAbrmUKKKYHK","type":"tool_result","content":"1\t# Probe Notes\n2\t\n3\tThe answer is forty-two.\n4\t"}]}}
+        """;
+
+    /// <summary>What <see cref="ToolResult"/>'s <c>content</c> holds, as the record must hold it.</summary>
+    internal const string ToolResultContent = "1\t# Probe Notes\n2\t\n3\tThe answer is forty-two.\n4\t";
+
+    /// <summary>The <c>assistant</c> message's <c>text</c> block, from the same probe.</summary>
+    internal const string AgentText =
+        """
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The number in notes.md is **42** …"}]}}
+        """;
+
+    /// <summary>What <see cref="AgentText"/>'s one text block holds.</summary>
+    internal const string AgentTextContent = "The number in notes.md is **42** …";
+
+    /// <summary>
+    /// A <c>tool_result</c> whose <c>content</c> is an array of blocks, which the protocol allows
+    /// beside a bare string. The record holds the text of its text blocks.
+    /// </summary>
+    internal const string ToolResultInBlocks =
+        """
+        {"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_01GjqrP3CWV5nAbrmUKKKYHK","type":"tool_result","content":[{"type":"text","text":"# Probe Notes"},{"type":"text","text":"forty-two"}]}]}}
+        """;
+
+    /// <summary>
+    /// A <c>tool_result</c> whose <c>content</c> is neither a string nor an array of blocks. Refused
+    /// rather than read around: it is recorded as a result that could not be read, never dropped.
+    /// </summary>
+    internal const string ToolResultThatCannotBeRead =
+        """
+        {"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_01GjqrP3CWV5nAbrmUKKKYHK","type":"tool_result","content":17}]}}
+        """;
+
+    /// <summary>
+    /// An <c>assistant</c> message carrying two blocks, because <c>content</c> is an array and the
+    /// API allows several. Each is a moment of its own, in the order they arrived.
+    /// </summary>
+    internal const string TextThenToolCall =
+        """
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Reading the wiki."},{"type":"tool_use","id":"toolu_02","name":"mcp__wiki__read_page","input":{"path":"ada.md"}}]}}
+        """;
+
+    /// <summary>
+    /// Two <c>tool_use</c> blocks in one <c>assistant</c> message. <c>content</c> is an array and the
+    /// API allows several calls in one turn, which is what makes attributing their results by order
+    /// rather than by the last name seen the only correct reading (RUNS-009).
+    /// </summary>
+    internal const string TwoToolCalls =
+        """
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_0A","name":"mcp__wiki__read_page","input":{"path":"ada.md"}},{"type":"tool_use","id":"toolu_0B","name":"mcp__wiki__list_pages","input":{}}]}}
+        """;
+
+    /// <summary>Their two results, arriving together in the next <c>user</c> message, in the same order.</summary>
+    internal const string TwoToolResults =
+        """
+        {"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_0A","type":"tool_result","content":"# Ada"},{"tool_use_id":"toolu_0B","type":"tool_result","content":"ada.md"}]}}
+        """;
+
+    /// <summary>
+    /// The complete <c>assistant</c> message's <c>thinking</c> block, measured: an empty string and a
+    /// signature blob. Nothing a person reads, so nothing the record holds (research.md R-05).
+    /// </summary>
+    internal const string Thinking =
+        """
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"EqoCCkYIBxgCKkCCVmMvnptFqUSBiJcbYQjLm0Y9Kf3CpZoRFnWWjLQk"}]}}
         """;
 
     /// <summary>The CLI's own diagnostics go to stderr; a line like this is not a message.</summary>

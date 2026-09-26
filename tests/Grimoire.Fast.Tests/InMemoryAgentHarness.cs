@@ -21,6 +21,7 @@ internal sealed class InMemoryAgentHarness(HubJournal? journal = null) : IAgentH
     private readonly List<Guid> nudged = [];
     private readonly List<Guid> stopped = [];
     private readonly List<Guid> toldNothingFurther = [];
+    private readonly List<string> toolsCalled = [];
     private readonly Dictionary<Guid, RunReport> reports = [];
 
     /// <summary>Every dispatch this harness was given, in the order it was given them.</summary>
@@ -41,6 +42,9 @@ internal sealed class InMemoryAgentHarness(HubJournal? journal = null) : IAgentH
 
     /// <summary>The runs the hub has told that nothing further is coming.</summary>
     public IReadOnlyList<Guid> ToldNothingFurther => toldNothingFurther;
+
+    /// <summary>The tools this harness has reported calls to, in order.</summary>
+    public IReadOnlyList<string> ToolsCalled => toolsCalled;
 
     /// <summary>
     /// What the run's process exits with once its stdin is closed. Zero unless a test says
@@ -90,7 +94,8 @@ internal sealed class InMemoryAgentHarness(HubJournal? journal = null) : IAgentH
             // A surface that is not the grant ends the run failed here, before any model call:
             // the agent never reports in (GUARD-001).
             RunUnderWay = false;
-            report.RunEnded(dispatch.SubmissionId, RunOutcome.Failed);
+            report.RunEnded(
+                dispatch.SubmissionId, RunOutcome.Failed, RunEndedBecause.ToolsWereNotTheGrant);
         }
 
         return Task.CompletedTask;
@@ -148,17 +153,46 @@ internal sealed class InMemoryAgentHarness(HubJournal? journal = null) : IAgentH
         reports[submissionId].AgentReportedIn(submissionId);
     }
 
-    /// <summary>What the streamed usage of a turn does: the run has spent this much so far.</summary>
-    public void Spend(Guid submissionId, long tokensUsed) => reports[submissionId].CostSoFar(submissionId, tokensUsed);
+    /// <summary>
+    /// What the streamed usage of a turn does: the run has spent this much so far. A streamed line
+    /// carries no breakdown per model, which is what the empty dictionary says.
+    /// </summary>
+    public void Spend(Guid submissionId, long tokensUsed) =>
+        reports[submissionId].CostSoFar(submissionId, tokensUsed, EmptyBreakdown);
+
+    /// <summary>
+    /// What a <c>result</c>'s <c>modelUsage</c> does: the run has spent this much, and this is which
+    /// model spent it (RUNS-008).
+    /// </summary>
+    public void Spend(Guid submissionId, IReadOnlyDictionary<string, ModelTokens> tokensPerModel) =>
+        reports[submissionId].CostSoFar(
+            submissionId, Ceilings.CostOf(tokensPerModel.Values), tokensPerModel);
+
+    /// <summary>One thing the run did, as the transcript reports it (RUNS-009).</summary>
+    public void Did(Guid submissionId, TranscriptMoment moment) =>
+        reports[submissionId].MomentHappened(submissionId, moment);
+
+    /// <summary>A tool call and what it returned, which is the pair a run makes over and over.</summary>
+    public void Called(Guid submissionId, string tool, string arguments)
+    {
+        Did(submissionId, new TranscriptMoment(RunMomentKind.ToolCalled, tool, arguments));
+        toolsCalled.Add(tool);
+    }
+
+    private static readonly IReadOnlyDictionary<string, ModelTokens> EmptyBreakdown =
+        new Dictionary<string, ModelTokens>(StringComparer.Ordinal);
 
     /// <summary>What the CLI's <c>result</c> message does: the agent has stopped, and the hub decides.</summary>
     public Task StoppedAsync(Guid submissionId, bool endedAbnormally = false) =>
         reports[submissionId].AgentStopped(submissionId, endedAbnormally);
 
     /// <summary>An ending the hub reaches without asking — a dispatch that never began, say.</summary>
-    public void End(Guid submissionId, RunOutcome outcome)
+    public void End(
+        Guid submissionId,
+        RunOutcome outcome,
+        RunEndedBecause because = RunEndedBecause.AgentProcessDied)
     {
         RunUnderWay = false;
-        reports[submissionId].RunEnded(submissionId, outcome);
+        reports[submissionId].RunEnded(submissionId, outcome, because);
     }
 }

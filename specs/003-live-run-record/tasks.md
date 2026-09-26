@@ -58,21 +58,21 @@ US1's phase (Constitution II.1: every part has a consumer in this feature).
 
 **Branch**: `003-live-run-record-phase-2-record`
 
-- [ ] T001 Register RUNS-007, RUNS-008, RUNS-009, RUNS-010 in `docs/capabilities/runs.md` and
+- [X] T001 Register RUNS-007, RUNS-008, RUNS-009, RUNS-010 in `docs/capabilities/runs.md` and
       ACCESS-005, ACCESS-006 in `docs/capabilities/access.md`, each with proof `test`, and the notes
       the spec's Requirements section gives them. **This is the first task of the feature: it comes
       before any test is written.** ACCESS-002 is *not* retired here — see T025 — **Req:** Principle IV.2
-- [ ] T002 Declare the port in `src/Grimoire.Runs/IRunRecord.cs`: `Begin(RunFrameHead)`,
+- [X] T002 Declare the port in `src/Grimoire.Runs/IRunRecord.cs`: `Begin(RunFrameHead)`,
       `Append(RunMoment)`, `End(RunFrameTail)`, `EntriesLost(Guid)`, with the record types of
       data-model.md. Synchronous, no read, no delete, no rewrite, and **nothing throws** — **Req:** RUNS-007
-- [ ] T003 [P] Add `RunEndedBecause` to `src/Grimoire.Runs/IRunRecord.cs` with exactly the seven
+- [X] T003 [P] Add `RunEndedBecause` to `src/Grimoire.Runs/IRunRecord.cs` with exactly the seven
       values of data-model.md §Why a run ended: `StoppedWithItsLogEntry`,
       `StoppedWithoutItsLogEntry`, `TimeCeiling`, `CostCeiling`, `ToolsWereNotTheGrant`,
       `AgentProcessDied`, `GrimoireStopped`. Seven values inside one requirement, never one
       requirement per value (IV.7) — **Req:** RUNS-008
-- [ ] T004 [P] Add `InMemoryRunRecord` to `tests/Grimoire.Fast.Tests/`, an in-memory adapter at the
+- [X] T004 [P] Add `InMemoryRunRecord` to `tests/Grimoire.Fast.Tests/`, an in-memory adapter at the
       port — never a generated mock — **Req:** Principle III.9
-- [ ] T005 [P] Add the three lines the spike recorded to
+- [X] T005 [P] Add the three lines the spike recorded to
       `tests/Grimoire.Fast.Tests/RecordedTranscript.cs`: the `assistant` message's `tool_use` block,
       the `user` message's `tool_result` block, and the `assistant` message's `text` block, verbatim
       from research.md R-03 — **Req:** RUNS-009
@@ -81,77 +81,77 @@ US1's phase (Constitution II.1: every part has a consumer in this feature).
 
 > Written first and seen failing before the implementation below.
 
-- [ ] T006 [P] `RunRecordTests` in `tests/Grimoire.Fast.Tests/`: one record per run; head, then the
+- [X] T006 [P] `RunRecordTests` in `tests/Grimoire.Fast.Tests/`: one record per run; head, then the
       moments, then the tail, in that order; nothing already written is changed; a second `End`
       appends nothing — **Req:** RUNS-007 | **Level:** Fast — **Why not lower:** there is no lower level; the ordering is our own code's and needs no filesystem
-- [ ] T007 [P] `RunRecordTests`: a write that fails is counted and **does not throw**, the run goes
+- [X] T007 [P] `RunRecordTests`: a write that fails is counted and **does not throw**, the run goes
       on, and the count is appended to the record once a write succeeds again — **Req:** RUNS-007 | **Level:** Fast — **Why not lower:** the in-memory adapter can be made to fail on demand; a real disk cannot be made full on demand
-- [ ] T008 [P] `RunFrameTests` in `tests/Grimoire.Fast.Tests/`: the head holds the run's and the
+- [X] T008 [P] `RunFrameTests` in `tests/Grimoire.Fast.Tests/`: the head holds the run's and the
       submission's identifiers, the pinned model, the granted tools, both ceilings and when the run
       started; the tail holds when it ended, `done` or `failed`, why, elapsed against the elapsed
       ceiling, tokens against the cost ceiling, and the tokens of every model the run touched — **Req:** RUNS-008 | **Level:** Fast — **Why not lower:** every field comes from domain objects the Fast suite already drives
-- [ ] T009 [P] `RunFrameTests`: each of the seven reasons a run ended is the one the tail records,
+- [X] T009 [P] `RunFrameTests`: each of the seven reasons a run ended is the one the tail records,
       driven through the conductor with `FakeTimeProvider` for the two ceilings (DEC-018) — **Req:** RUNS-008 | **Level:** Fast — **Why not lower:** the Fast suite has 15 s in total, so no test may wait for a real ceiling
-- [ ] T010 [P] `RunNarrativeTests` in `tests/Grimoire.Fast.Tests/`: from `RecordedTranscript`, the
+- [X] T010 [P] `RunNarrativeTests` in `tests/Grimoire.Fast.Tests/`: from `RecordedTranscript`, the
       record holds the tool call with its arguments, what the call returned **whole**, the agent's own
       text, and Grimoire's nudge — in the order they happened — **Req:** RUNS-009 | **Level:** Fast — **Why not lower:** the lines are recorded, so no process and no sign-in is needed
-- [ ] T011 [P] `RunNarrativeTests`: a `tool_result` whose `content` is an array of blocks is read as
+- [X] T011 [P] `RunNarrativeTests`: a `tool_result` whose `content` is an array of blocks is read as
       the text of its text blocks; one that is neither a string nor such an array is recorded as a
       result that could not be read, never dropped — **Req:** RUNS-009 | **Level:** Fast — **Why not lower:** the shapes are recorded lines
-- [ ] T012 [P] `RecordTextTests` in `tests/Grimoire.Fast.Tests/`: a result containing a run of
+- [X] T012 [P] `RecordTextTests` in `tests/Grimoire.Fast.Tests/`: a result containing a run of
       backticks is fenced with a run one longer and closed with one of the same length; a line
       starting with `## ` inside a result is **not** a segment boundary; a result is never cut and
       never escaped — **Req:** RUNS-009 | **Level:** Fast — **Why not lower:** the rendering is a pure function and touches no disk, which is why it is a class of its own
-- [ ] T013 [P] `RunFiguresTests` in `tests/Grimoire.Fast.Tests/`: the tokens and the tool-call count
+- [X] T013 [P] `RunFiguresTests` in `tests/Grimoire.Fast.Tests/`: the tokens and the tool-call count
       rise with the run, never go backwards, stand as the final figures once it has ended, and are
       read as **one instant** with the state and the acknowledgement — **Req:** RUNS-010 | **Level:** Fast — **Why not lower:** the figures are the board's state, read through the in-memory store
-- [ ] T014 [P] `RunFiguresTests`: a run restored after a stop comes back with the figures it had
+- [X] T014 [P] `RunFiguresTests`: a run restored after a stop comes back with the figures it had
       reached, and a run cut off by the stop reads `failed` carrying them — **Req:** RUNS-010, RUNS-004 | **Level:** Fast — **Why not lower:** the in-memory store makes the restore path reachable without a file
-- [ ] T015 `MarkdownRunRecordTests` in `tests/Grimoire.Contract.Tests/`: the file is at
+- [X] T015 `MarkdownRunRecordTests` in `tests/Grimoire.Contract.Tests/`: the file is at
       `<state>/runs/<runId>.md`, is text, holds everything appended to it after the process is
       stopped part-way through the narrative, and an unwritable directory is counted rather than
       thrown — **Req:** RUNS-007 | **Level:** Contract — **Why not lower:** the real filesystem decides all four, and an in-memory adapter cannot make any of them true
-- [ ] T016 `SqliteSubmissionStoreTests` in `tests/Grimoire.Contract.Tests/`: the four figures
+- [X] T016 `SqliteSubmissionStoreTests` in `tests/Grimoire.Contract.Tests/`: the four figures
       round-trip through a real file, and a file written by the **older** schema comes back with its
       submissions intact and its figures at zero — **Req:** RUNS-010 | **Level:** Contract — **Why not lower:** what is being read is a real file an older Grimoire wrote; no double can be one
 
 ### Implementation for the foundation
 
-- [ ] T017 `src/Grimoire.Runs/RecordText.cs`: the head, one moment and the tail rendered to Markdown,
+- [X] T017 `src/Grimoire.Runs/RecordText.cs`: the head, one moment and the tail rendered to Markdown,
       and the fence rule — a run of backticks one longer than the longest run in the content, and at
       least three (contracts/run-record.md). Pure, no filesystem, which is what makes the shape the
       browser depends on provable in the Fast suite — **Req:** RUNS-008, RUNS-009
-- [ ] T018 `src/Grimoire.Runs/Adapters/MarkdownRunRecord.cs`: creates `<state>/runs/`, appends what
+- [X] T018 `src/Grimoire.Runs/Adapters/MarkdownRunRecord.cs`: creates `<state>/runs/`, appends what
       `RecordText` renders, and catches and counts its own IO failures. **The only place a record file
       is written** (Constitution V.2) — **Req:** RUNS-007
-- [ ] T019 `src/Grimoire.Agent/Adapters/AgentTranscript.cs`: read every `tool_use`, `tool_result` and
+- [X] T019 `src/Grimoire.Agent/Adapters/AgentTranscript.cs`: read every `tool_use`, `tool_result` and
       `text` block of a complete `assistant` or `user` message as three new `TranscriptSays` values.
       `thinking` blocks are not read (research.md R-05), and the partial stream stays the cost
       ceiling's alone. **Still the only reader of the CLI protocol** — **Req:** RUNS-009
-- [ ] T020 `src/Grimoire.Agent/IAgentHarness.cs` and `Adapters/HarnessProcess.cs`: `RunReport` gains
+- [X] T020 `src/Grimoire.Agent/IAgentHarness.cs` and `Adapters/HarnessProcess.cs`: `RunReport` gains
       **one** delegate carrying a moment, and the reader reports the three new events through it. The
       adapter still decides nothing — **Req:** RUNS-009
-- [ ] T021 `src/Grimoire.Runs/RunStateMachine.cs`: `Run` carries `Model`, `ToolCalls` and
+- [X] T021 `src/Grimoire.Runs/RunStateMachine.cs`: `Run` carries `Model`, `ToolCalls` and
       `EndedBecause`. `Model` moves here from `RunQueue`, because the grant and both ceilings are
       already recorded at `Begin` and the model belongs in the same breath (data-model.md §Run) — **Req:** RUNS-008, RUNS-010
-- [ ] T022 `src/Grimoire.Hub/RunConductor.cs`: `Begin` writes the head; each reported moment is
+- [X] T022 `src/Grimoire.Hub/RunConductor.cs`: `Begin` writes the head; each reported moment is
       appended; the nudge is appended by the hub itself, which knows it nudged, so it cannot appear
       twice (research.md R-03); `RunEnded` writes the tail with the reason and the tokens per model —
       **Req:** RUNS-007, RUNS-008, RUNS-009
-- [ ] T023 `src/Grimoire.Hub/RunQueue.cs`: reads `run.Model` for the dispatch instead of holding the
+- [X] T023 `src/Grimoire.Hub/RunQueue.cs`: reads `run.Model` for the dispatch instead of holding the
       model itself. One fewer place the model lives, not one more — **Req:** RUNS-008
-- [ ] T024 `src/Grimoire.Runs/ISubmissionStore.cs`: `StoredRun` gains `Model`, `TokensUsed`,
+- [X] T024 `src/Grimoire.Runs/ISubmissionStore.cs`: `StoredRun` gains `Model`, `TokensUsed`,
       `ToolCalls` and `EntriesLost`, and the port gains
       `RecordFigures(Guid runId, long tokensUsed, int toolCalls, int entriesLost)` — one member for
       the three, because one event writes them. The comment saying the tokens are "deliberately not
       here" goes with them, and `002-ingest-queue`'s assumption is recorded as withdrawn — **Req:** RUNS-010
-- [ ] T025 `src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs`: the four columns on `runs`, added
+- [X] T025 `src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs`: the four columns on `runs`, added
       where they are missing — `PRAGMA table_info(runs)`, then `ALTER TABLE runs ADD COLUMN`. No
       version table and no scripts (research.md R-07) — **Req:** RUNS-010
-- [ ] T026 `src/Grimoire.Runs/Submission.cs` and `SubmissionBoard.cs`: `SubmissionStatus` gains
+- [X] T026 `src/Grimoire.Runs/Submission.cs` and `SubmissionBoard.cs`: `SubmissionStatus` gains
       `RunFigures?`, null for a submission with no run; the figures are written under the board's one
       lock and **only where one has risen**, and restored from the store — **Req:** RUNS-010
-- [ ] T027 `src/Grimoire.Hub/HubApplication.cs` and `Program.cs`: `MarkdownRunRecord` at its port,
+- [X] T027 `src/Grimoire.Hub/HubApplication.cs` and `Program.cs`: `MarkdownRunRecord` at its port,
       `runs/` under `--state`. Wiring is not tested (III.8); what it wires is — **Req:** Principle V.2
 
 **Checkpoint**: every run leaves a record on disk that a person can read, and the figures survive a

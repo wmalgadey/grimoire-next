@@ -299,7 +299,10 @@ public sealed class AgentTranscriptTests
 
     [Fact]
     public void Line_SaysNothing_WhenTheHubReadsNothingFromIt() =>
-        Assert.Equal(TranscriptSays.Nothing, Transcript().Read(RecordedTranscript.Assistant).Says);
+        // A complete `assistant` message whose one block is `thinking`. Measured, it carries an empty
+        // string and a signature blob, and there is nothing in it a person reads — so it is no moment
+        // of the run and the hub reads nothing from the line at all (research.md R-05).
+        Assert.Equal(TranscriptSays.Nothing, Transcript().Read(RecordedTranscript.Thinking).Says);
 
     [Fact]
     public void Line_SaysNothing_WhenTheSystemMessageIsNotAnInit() =>

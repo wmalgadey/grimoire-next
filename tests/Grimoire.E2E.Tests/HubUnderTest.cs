@@ -51,8 +51,21 @@ internal sealed class DrivableHarness : IAgentHarness
     /// <summary>What the CLI's <c>system/init</c> does to the run: submitted becomes running.</summary>
     public void ReportIn(Guid submissionId) => Of(submissionId).AgentReportedIn(submissionId);
 
-    /// <summary>The run is over, one way or the other.</summary>
-    public void End(Guid submissionId, RunOutcome outcome) => Of(submissionId).RunEnded(submissionId, outcome);
+    /// <summary>The run is over, one way or the other, and for the reason the record's tail names.</summary>
+    public void End(
+        Guid submissionId,
+        RunOutcome outcome,
+        RunEndedBecause because = RunEndedBecause.StoppedWithItsLogEntry) =>
+        Of(submissionId).RunEnded(submissionId, outcome, because);
+
+    /// <summary>What the streamed usage of a turn does (GUARD-004, RUNS-010).</summary>
+    public void Spend(Guid submissionId, long tokensUsed) =>
+        Of(submissionId).CostSoFar(
+            submissionId, tokensUsed, new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
+
+    /// <summary>One thing the run did (RUNS-009).</summary>
+    public void Did(Guid submissionId, TranscriptMoment moment) =>
+        Of(submissionId).MomentHappened(submissionId, moment);
 
     /// <summary>The run's process is gone, with this exit code. Where a run ends.</summary>
     public void Exit(Guid submissionId, int exitCode) => Of(submissionId).AgentExited(submissionId, exitCode);
@@ -162,6 +175,7 @@ internal sealed class HubUnderTest : IAsyncDisposable
             agent,
             new FileSystemWikiStore(wiki),
             new SqliteSubmissionStore(state),
+            new MarkdownRunRecord(state),
             TimeProvider.System);
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);

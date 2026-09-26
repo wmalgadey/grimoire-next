@@ -16,17 +16,33 @@ public enum SubmissionState
 }
 
 /// <summary>
-/// What a submission reads at one instant: its state, and whether its failure is still waiting to
-/// be acknowledged.
+/// A run's figures as the list shows them: which model it runs on, what it has spent, how many calls
+/// it has made, and how many entries its record could not hold (ACCESS-005, RUNS-010, RUNS-007).
+/// </summary>
+/// <param name="TokensUsed">
+/// The same quantity the cost ceiling counts, over every model the run touched — not a second
+/// definition of cost, and never currency (GUARD-004, DEC-015).
+/// </param>
+public sealed record RunFigures(string Model, long TokensUsed, int ToolCalls, int EntriesLost);
+
+/// <summary>
+/// What a submission reads at one instant: its state, whether its failure is still waiting to be
+/// acknowledged, and — where it has a run — that run's figures.
 /// </summary>
 /// <remarks>
-/// The two travel together because they have to be <em>read</em> together. Asked for one after the
+/// They travel together because they have to be <em>read</em> together. Asked for one after the
 /// other, a submission ending between the two answers would report <c>running</c> beside an
 /// acknowledgement that is available — a pair the browser's contract says cannot occur, and one
-/// that would put a control on a row whose run is still under way
-/// (contracts/hub-http-api.md, ACCESS-003).
+/// that would put a control on a row whose run is still under way — or <c>running</c> beside a final
+/// figure, a pair that never existed (contracts/hub-http-api.md, ACCESS-003, ACCESS-005).
+/// <para>
+/// <see cref="Run"/> is null for a submission that has no run — one waiting its turn (RUNS-002). That
+/// is what makes ACCESS-005's "for a submission that has a run" a property of the response rather than
+/// a rule the browser applies: there is nothing true to say about a run that does not exist, and zeros
+/// would claim a run that spent nothing.
+/// </para>
 /// </remarks>
-public sealed record SubmissionStatus(SubmissionState State, bool AwaitingAcknowledgement);
+public sealed record SubmissionStatus(SubmissionState State, bool AwaitingAcknowledgement, RunFigures? Run);
 
 /// <summary>
 /// A text the user handed to Grimoire and that was <em>accepted</em>, together with its state and
@@ -60,6 +76,7 @@ public sealed partial class Submission
     private SubmissionState state = SubmissionState.Submitted;
     private Guid? runId;
     private DateTimeOffset? acknowledgedAt;
+    private RunFigures? figures;
 
     internal Submission(Guid id, string text, DateTimeOffset submittedAt, Lock gate)
     {
@@ -109,7 +126,8 @@ public sealed partial class Submission
     /// The run this submission was given, or null while it waits its turn. Not a state — RUNS-001's
     /// four stay four — but what tells a submission waiting its turn apart from one whose agent has
     /// not yet reported in, since both read <c>submitted</c> (research.md R-04). It does not reach
-    /// the browser (ACCESS-002).
+    /// the browser: the record endpoint addresses the submission, which has exactly one run
+    /// (INGEST-002), so nothing needs it — a design property now rather than a requirement.
     /// </summary>
     public Guid? RunId
     {
@@ -142,7 +160,8 @@ public sealed partial class Submission
             {
                 return new SubmissionStatus(
                     state,
-                    state == SubmissionState.Failed && acknowledgedAt is null);
+                    state == SubmissionState.Failed && acknowledgedAt is null,
+                    figures);
             }
         }
     }
@@ -205,13 +224,19 @@ public sealed partial class Submission
         state = held.State;
         runId = held.Run?.Id;
         acknowledgedAt = held.AcknowledgedAt;
+
+        // The figures come back with the run, which is what makes a run cut off by a stop read failed
+        // and still carry what it spent (RUNS-010, RUNS-004).
+        figures = held.Run is { } run
+            ? new RunFigures(run.Model, run.TokensUsed, run.ToolCalls, run.EntriesLost)
+            : null;
     }
 
     /// <summary>
     /// The board has handed this submission out to a run. Assumes the board's lock, which is what
     /// makes handing the same submission out twice impossible rather than unlikely.
     /// </summary>
-    internal void HandedTo(Guid run)
+    internal void HandedTo(Guid run, string model)
     {
         if (runId is not null)
         {
@@ -219,6 +244,36 @@ public sealed partial class Submission
         }
 
         runId = run;
+
+        // The model is known the moment the run exists, and the three figures start at nothing. From
+        // here on the submission has a run, which is what the browser reads the fields off
+        // (ACCESS-005).
+        figures = new RunFigures(model, TokensUsed: 0, ToolCalls: 0, EntriesLost: 0);
+    }
+
+    /// <summary>
+    /// The run's figures as they now stand. Returns whether any of them actually changed, so that the
+    /// board writes the store only where one has risen (RUNS-010, research.md R-06). Assumes the
+    /// board's lock.
+    /// </summary>
+    internal bool FiguresAre(long tokensUsed, int toolCalls, int entriesLost)
+    {
+        if (figures is not { } held)
+        {
+            // No run, so there are no figures to be. A report for a run this submission does not have
+            // is a report about something else.
+            return false;
+        }
+
+        var risen = held with { TokensUsed = tokensUsed, ToolCalls = toolCalls, EntriesLost = entriesLost };
+
+        if (risen == held)
+        {
+            return false;
+        }
+
+        figures = risen;
+        return true;
     }
 
     /// <summary>
