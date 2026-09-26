@@ -40,6 +40,16 @@ internal sealed class InMemoryRunRecord : IRunRecord
     /// </summary>
     public bool FailWrites { get; set; }
 
+    /// <summary>
+    /// Run inside <see cref="Append"/>, while the conductor still holds that run's lock.
+    /// </summary>
+    /// <remarks>
+    /// This is how "a report falls entirely before the ending or entirely after it" becomes observable:
+    /// a test cannot win a race by racing it, but it can stop a report half way and ask whether an
+    /// ending can get past it (RUNS-009, RUNS-010).
+    /// </remarks>
+    public Action? WhileAppending { get; set; }
+
     /// <summary>Whether this record was asked to write anything at all for that run.</summary>
     public bool Holds(Guid runId)
     {
@@ -86,6 +96,8 @@ internal sealed class InMemoryRunRecord : IRunRecord
             {
                 return;
             }
+
+            WhileAppending?.Invoke();
 
             Write(moment.RunId, moment);
         }

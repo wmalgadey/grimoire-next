@@ -186,6 +186,42 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
+    public async Task Ending_WaitsForAMomentAlreadyBeingAccountedFor()
+    {
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+
+        var endingGotPast = false;
+        Task? ending = null;
+
+        // Stop half way through a tool call — the record being written, the count not yet raised — and
+        // let the run end from another thread.
+        hub.Record.WhileAppending = () =>
+        {
+            hub.Record.WhileAppending = null;
+            ending = Task.Run(() => hub.Harness.End(submission.Id, RunOutcome.Failed));
+
+            // It must not get through. Appended on one side of the ending and counted on the other,
+            // the row would say fewer tool calls than the record holds.
+            endingGotPast = ending.Wait(TimeSpan.FromMilliseconds(250));
+        };
+
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+
+        await ending!;
+
+        Assert.False(endingGotPast, "the run ended while a moment was still being accounted for");
+
+        // And the row agrees with the record about what the run did.
+        var run = hub.Store.Load().Single(s => s.Id == submission.Id).Run!;
+        Assert.Equal(
+            hub.Record.MomentsOf(run.Id).Count(m => m.Kind == RunMomentKind.ToolCalled),
+            run.ToolCalls);
+        Assert.Equal(1, run.ToolCalls);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-004")]
     public async Task Figures_ComeBackWithTheRun_AfterAStop()
     {
