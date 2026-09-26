@@ -146,7 +146,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
-    public async Task Run_EndsFailed_WhenTheTokensItSpentReachTheCeiling()
+    public async Task Run_EndsFailed_WhenWhatItSpentReachesTheCostCeiling()
     {
         var hub = new FastHub();
         var submission = await hub.AcceptedAsync();

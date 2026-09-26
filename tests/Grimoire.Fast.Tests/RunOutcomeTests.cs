@@ -62,7 +62,7 @@ public sealed class RunOutcomeTests
     [InlineData(true)]
     [InlineData(false)]
     [Trait("req", "GUARD-004")]
-    public void AgentStops_EndsTheRunFailed_WhenTheTokenCeilingIsReached(bool logEntry) =>
+    public void AgentStops_EndsTheRunFailed_WhenTheCostCeilingIsReached(bool logEntry) =>
         Assert.Equal(
             RunDecision.Failed,
             run.AgentStopped(new AgentStop(logEntry, TimeSpan.Zero, Ceilings.Fixed.Cost)));
