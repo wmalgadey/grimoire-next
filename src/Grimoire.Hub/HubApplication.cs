@@ -48,25 +48,75 @@ public static class HubApplication
     /// longer a live process is left alone by the adapter. Nothing is resumed and nothing is
     /// retried; what an interrupted run wrote stays in the wiki (WIKI-003).
     /// </para>
+    /// <para>
+    /// Between those two the record is closed. A stop Grimoire could act on writes the tail as the
+    /// run ends (<c>RunConductor.Finish</c>); a kill or a power cut leaves the file head-and-moments
+    /// only, and this is the next moment Grimoire has. Without it the record and the submission
+    /// would disagree for good — the row reading failed beside a record that never says the run
+    /// ended, let alone why (RUNS-007, RUNS-008). It is written <b>before</b> the board is told, for
+    /// the reason the conductor writes it there: the browser reads the row and the record with the
+    /// same poll, so a row that reads ended must not reach one that does not.
+    /// </para>
     /// </remarks>
-    public static void RestoreAfterAStop(ISubmissionStore submissions, SubmissionBoard board, IAgentHarness harness)
+    public static void RestoreAfterAStop(
+        ISubmissionStore submissions,
+        SubmissionBoard board,
+        IAgentHarness harness,
+        IRunRecord record,
+        TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(submissions);
         ArgumentNullException.ThrowIfNull(board);
         ArgumentNullException.ThrowIfNull(harness);
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentNullException.ThrowIfNull(clock);
 
         var held = submissions.Load();
+        var interrupted = held.Where(s => s.WasUnderWay).Select(s => s.Run!).ToList();
 
-        foreach (var identity in held
-            .Where(s => s.WasUnderWay)
-            .Select(s => s.Run!.AgentProcess)
-            .OfType<AgentProcessIdentity>())
+        foreach (var identity in interrupted.Select(r => r.AgentProcess).OfType<AgentProcessIdentity>())
         {
             harness.Terminate(identity);
         }
 
+        foreach (var run in interrupted)
+        {
+            record.Ended(TailOfAnInterruptedRun(run, clock.GetUtcNow()));
+        }
+
         board.Restore(held);
     }
+
+    /// <summary>
+    /// The tail of a run that was in progress when Grimoire stopped without being given the chance
+    /// to write one (RUNS-008's seventh reason).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The ending is read off what the store kept, because it is all there is: the process that
+    /// knew the rest is gone. <c>TokensPerModel</c> is therefore empty — the per-model breakdown of
+    /// DEC-015 is streamed and never stored, and the run's own total is kept and written. An empty
+    /// breakdown beside a total says which of the two survived; inventing one entry for the run's
+    /// model would claim a figure nobody measured.
+    /// </para>
+    /// <para>
+    /// <c>EndedAt</c> is now, because now is when the run was ended, and <c>Elapsed</c> is
+    /// <c>null</c>: this start-up knows when the run began and not when it stopped running, and the
+    /// span between the two is mostly however long Grimoire was down. A record that stated it would
+    /// be stating a duration nobody timed — and one that could read past the elapsed ceiling beside
+    /// a reason that is not a ceiling. The head still holds the run's start.
+    /// </para>
+    /// </remarks>
+    private static RunFrameTail TailOfAnInterruptedRun(StoredRun run, DateTimeOffset at) =>
+        new(
+            run.Id,
+            at,
+            RunOutcome.Failed,
+            RunEndedBecause.GrimoireStopped,
+            Elapsed: null,
+            run.TokensUsed,
+            Ceilings.Fixed,
+            new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
 
     /// <summary>
     /// The hub is going down: nothing further may start, and what is under way is stopped with it
@@ -96,6 +146,7 @@ public static class HubApplication
         IAgentHarness harness,
         IWikiStore wiki,
         ISubmissionStore submissions,
+        IRunRecord record,
         TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -156,18 +207,20 @@ public static class HubApplication
         // the conductor a run to watch. The composition root is where that is allowed to be known
         // (plan.md, Structure Decision).
         RunQueue? queue = null;
-        var conductor = new RunConductor(board, harness, wiki, clock, () => queue!.PumpAsync());
-        queue = new RunQueue(board, conductor, harness, instructions.Assemble, options.Model);
+        var conductor = new RunConductor(
+            board, harness, wiki, record, clock, options.Model, () => queue!.PumpAsync());
+        queue = new RunQueue(board, conductor, harness, instructions.Assemble);
 
         var intake = new SubmissionIntake(board, queue);
 
         app.MapSubmissions(intake, board, queue, instructions.Read);
+        app.MapRunRecord(board, record);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to
         // its run. Unauthenticated and on loopback, per docs/product.md §2.
         app.MapMcp("/mcp/runs/{runId}");
 
-        RestoreAfterAStop(submissions, board, harness);
+        RestoreAfterAStop(submissions, board, harness, record, clock);
 
         // The pump waits for the server. A run is told where its own tools are served before it
         // starts, so starting one before this hub is listening would hand the agent an address

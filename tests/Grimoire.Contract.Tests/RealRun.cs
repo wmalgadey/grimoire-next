@@ -60,6 +60,7 @@ internal sealed class RealRun : IAsyncDisposable
             new HarnessProcess(HarnessSettings.Default(new Uri("http://127.0.0.1:1"))),
             new FileSystemWikiStore(wikiRoot),
             new SqliteSubmissionStore(Path.Combine(root, "state")),
+            new MarkdownRunRecord(Path.Combine(root, "state")),
             TimeProvider.System);
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);

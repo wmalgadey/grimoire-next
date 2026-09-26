@@ -25,6 +25,10 @@ var app = HubApplication.Build(
     new HarnessProcess(HarnessSettings.Default(startUp.Address)),
     new FileSystemWikiStore(startUp.Options.WikiRoot),
     new SqliteSubmissionStore(startUp.StateDirectory),
+
+    // The records live in `runs/` inside the same directory, which is already guarded against sitting
+    // inside the wiki (contracts/run-record.md, RUNS-007).
+    new MarkdownRunRecord(startUp.StateDirectory),
     TimeProvider.System);
 
 app.Run();

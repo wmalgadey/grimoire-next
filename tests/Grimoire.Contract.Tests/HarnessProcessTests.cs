@@ -92,7 +92,7 @@ public sealed class HarnessProcessTests
         var report = new RunReport(
             AgentProcessIs: (_, _) => { },
             AgentReportedIn: _ => reportedIn = true,
-            CostSoFar: (_, _) => { },
+            CostSoFar: (_, _, _) => { },
             AgentExited: (_, _) => { },
             AgentStopped: async (_, _) =>
             {
@@ -107,7 +107,8 @@ public sealed class HarnessProcessTests
                     finished.TrySetResult();
                 }
             },
-            RunEnded: (_, _) => finished.TrySetResult());
+            RunEnded: (_, _, _) => finished.TrySetResult(),
+            MomentHappened: (_, _) => { });
 
         await run.Harness.DispatchAsync(dispatch, report, TestContext.Current.CancellationToken);
         await finished.Task.WaitAsync(Patience, TestContext.Current.CancellationToken);
@@ -133,7 +134,7 @@ public sealed class HarnessProcessTests
 
             // The first tokens mean a model call is under way, which is the moment a stop has to
             // reach: nothing can prevent the next call without ending the one in flight (R-04).
-            CostSoFar: (_, _) => stopSent ??= run.Harness.StopAsync(dispatch.RunId, CancellationToken.None),
+            CostSoFar: (_, _, _) => stopSent ??= run.Harness.StopAsync(dispatch.RunId, CancellationToken.None),
             AgentExited: (_, _) => { },
             AgentStopped: (_, endedAbnormally) =>
             {
@@ -141,7 +142,8 @@ public sealed class HarnessProcessTests
                 finished.TrySetResult();
                 return Task.CompletedTask;
             },
-            RunEnded: (_, _) => finished.TrySetResult());
+            RunEnded: (_, _, _) => finished.TrySetResult(),
+            MomentHappened: (_, _) => { });
 
         await run.Harness.DispatchAsync(dispatch, report, TestContext.Current.CancellationToken);
         await finished.Task.WaitAsync(Patience, TestContext.Current.CancellationToken);

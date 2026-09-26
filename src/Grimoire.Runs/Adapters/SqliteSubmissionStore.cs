@@ -9,9 +9,19 @@ namespace Grimoire.Runs.Adapters;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The only file in the repository that names SQLite (Constitution V.2). Raw SQL over two tables
-/// that do not change shape in this feature, which is why there is no ORM and no migration
-/// mechanism — one would be a mechanism with no consumer (II.1, research.md R-01).
+/// The only file in the repository that names SQLite (Constitution V.2). Raw SQL over two tables,
+/// which is why there is no ORM.
+/// </para>
+/// <para>
+/// <b>The run table gains columns, without a migration framework.</b> DEC-023 turned a migration
+/// <em>mechanism</em> down as having no consumer, and that still holds — but a consumer for bringing
+/// an existing file up to date exists now: the owner's own <c>submissions.db</c>, holding the ingests
+/// they have already made. The alternative is asking them to delete it, which throws their list away
+/// to save eight lines. So: <c>CREATE TABLE IF NOT EXISTS</c> as before, then
+/// <c>PRAGMA table_info(runs)</c> and one <c>ALTER TABLE runs ADD COLUMN</c> for each column that is
+/// not there. No version table and no ordered scripts. That a committed <c>ALTER TABLE</c> survives is
+/// SQLite's decision and is not tested; that an older file comes back with its submissions intact and
+/// its figures at zero is ours, and the Contract suite proves it (research.md R-07).
 /// </para>
 /// <para>
 /// Every statement here commits before the call returns, which is SQLite's own default and the
@@ -71,6 +81,57 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
                 agent_process_started_at TEXT NULL
             );
             """);
+
+        BringTheRunTableUpToDate();
+    }
+
+    /// <summary>
+    /// The columns this Grimoire needs on <c>runs</c>, added where an older file does not have them
+    /// (research.md R-07).
+    /// </summary>
+    /// <remarks>
+    /// The default is what an older run's figures are worth: it ran before Grimoire counted, so nothing
+    /// is known about what it spent, and zero is the only honest answer a column can give. The model is
+    /// the one thing that cannot be defaulted honestly, so it is left empty rather than guessed at —
+    /// the current <c>--model</c> would claim an older run had used a model it may never have seen.
+    /// </remarks>
+    private void BringTheRunTableUpToDate()
+    {
+        var wanted = new (string Column, string Definition)[]
+        {
+            ("model", "TEXT NOT NULL DEFAULT ''"),
+            ("tokens_used", "INTEGER NOT NULL DEFAULT 0"),
+            ("tool_calls", "INTEGER NOT NULL DEFAULT 0"),
+            ("entries_lost", "INTEGER NOT NULL DEFAULT 0"),
+        };
+
+        var present = ColumnsOfTheRunTable();
+
+        foreach (var (column, definition) in wanted.Where(c => !present.Contains(c.Column)))
+        {
+            // Not parameterised, and it cannot be: a column name is not a value, and SQLite takes no
+            // parameter in that position. Every name here is a literal in this file, so nothing the
+            // user or the agent ever touches reaches it.
+            Execute($"ALTER TABLE runs ADD COLUMN {column} {definition}");
+        }
+    }
+
+    private HashSet<string> ColumnsOfTheRunTable()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = "SELECT name FROM pragma_table_info('runs')";
+
+        using var rows = command.ExecuteReader();
+        var columns = new HashSet<string>(StringComparer.Ordinal);
+
+        while (rows.Read())
+        {
+            columns.Add(rows.GetString(0));
+        }
+
+        return columns;
     }
 
     public IReadOnlyList<StoredSubmission> Load()
@@ -87,7 +148,8 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
         command.CommandText = """
             SELECT s.id, s.text, s.submitted_at, s.state, s.acknowledged_at,
                    r.id, r.submission_id, r.started_at, r.granted_tools, r.grant_recorded_at,
-                   r.agent_process_id, r.agent_process_started_at
+                   r.agent_process_id, r.agent_process_started_at,
+                   r.model, r.tokens_used, r.tool_calls, r.entries_lost
             FROM submissions s
             LEFT JOIN runs r ON r.id = s.run_id
             ORDER BY s.rowid
@@ -116,12 +178,16 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
         Moment(rows.GetString(7)),
         rows.GetString(8).Split(ToolSeparator, StringSplitOptions.RemoveEmptyEntries),
         Moment(rows.GetString(9)),
+        rows.GetString(12),
 
         // Both halves or neither: an identifier without the moment its process started is not an
         // identity, and acting on one would be acting on a number (research.md R-11).
         rows.IsDBNull(10) || rows.IsDBNull(11)
             ? null
-            : new AgentProcessIdentity(rows.GetInt32(10), Moment(rows.GetString(11))));
+            : new AgentProcessIdentity(rows.GetInt32(10), Moment(rows.GetString(11))),
+        rows.GetInt64(13),
+        rows.GetInt32(14),
+        rows.GetInt32(15));
 
     public void Add(StoredSubmission submission)
     {
@@ -149,8 +215,10 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
         Execute(
             """
             INSERT INTO runs (id, submission_id, started_at, granted_tools, grant_recorded_at,
-                              agent_process_id, agent_process_started_at)
-            VALUES ($run, $submission, $started_at, $tools, $recorded_at, NULL, NULL);
+                              agent_process_id, agent_process_started_at,
+                              model, tokens_used, tool_calls, entries_lost)
+            VALUES ($run, $submission, $started_at, $tools, $recorded_at, NULL, NULL,
+                    $model, $tokens, $calls, $lost);
 
             UPDATE submissions SET run_id = $run WHERE id = $submission;
             """,
@@ -158,7 +226,11 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             ("$submission", submissionId.ToString()),
             ("$started_at", Text(run.StartedAt)),
             ("$tools", string.Join(ToolSeparator, run.GrantedTools)),
-            ("$recorded_at", Text(run.GrantRecordedAt)));
+            ("$recorded_at", Text(run.GrantRecordedAt)),
+            ("$model", run.Model),
+            ("$tokens", run.TokensUsed),
+            ("$calls", run.ToolCalls),
+            ("$lost", run.EntriesLost));
     }
 
     public void RecordAgentProcess(Guid runId, AgentProcessIdentity identity)
@@ -174,6 +246,40 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             ("$started_at", Text(identity.StartedAt)),
             ("$run", runId.ToString()));
     }
+
+    /// <summary>
+    /// All three figures in one statement, because one event writes them and one row reads them
+    /// (RUNS-010, RUNS-007).
+    /// </summary>
+    public void RecordFigures(Guid runId, long tokensUsed, int toolCalls, int entriesLost) =>
+        Execute(
+            """
+            UPDATE runs SET tokens_used = $tokens, tool_calls = $calls, entries_lost = $lost
+            WHERE id = $run
+            """,
+            ("$tokens", tokensUsed),
+            ("$calls", toolCalls),
+            ("$lost", entriesLost),
+            ("$run", runId.ToString()));
+
+    /// <summary>
+    /// Both statements, one transaction, committed before this returns (RUNS-010).
+    /// </summary>
+    public void Ended(
+        Guid submissionId, SubmissionState terminal, Guid runId, long tokensUsed, int toolCalls, int entriesLost) =>
+        Execute(
+            """
+            UPDATE submissions SET state = $state WHERE id = $id;
+
+            UPDATE runs SET tokens_used = $tokens, tool_calls = $calls, entries_lost = $lost
+            WHERE id = $run;
+            """,
+            ("$state", WireNameOf(terminal)),
+            ("$id", submissionId.ToString()),
+            ("$tokens", tokensUsed),
+            ("$calls", toolCalls),
+            ("$lost", entriesLost),
+            ("$run", runId.ToString()));
 
     public void SetState(Guid submissionId, SubmissionState state) =>
         Execute(

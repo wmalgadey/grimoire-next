@@ -11,8 +11,8 @@ namespace Grimoire.E2E.Tests;
 
 /// <summary>
 /// A run that does nothing until the test says so: it reports in, or it ends, when it is told to.
-/// That is all the browser needs of the agent — what the browser shows is a submission's state
-/// (ACCESS-002), and driving a submission to each of the four states is how the states get there.
+/// That is all the browser needs of the agent — what the browser shows is a submission's state and,
+/// where it has a run, that run's model and figures (ACCESS-005) and what it did (ACCESS-006).
 /// </summary>
 /// <remarks>
 /// An in-memory adapter at an owned port, like the Fast suite's (Constitution III.9). The real
@@ -51,8 +51,33 @@ internal sealed class DrivableHarness : IAgentHarness
     /// <summary>What the CLI's <c>system/init</c> does to the run: submitted becomes running.</summary>
     public void ReportIn(Guid submissionId) => Of(submissionId).AgentReportedIn(submissionId);
 
-    /// <summary>The run is over, one way or the other.</summary>
-    public void End(Guid submissionId, RunOutcome outcome) => Of(submissionId).RunEnded(submissionId, outcome);
+    /// <summary>The run is over, one way or the other, and for the reason the record's tail names.</summary>
+    public void End(
+        Guid submissionId,
+        RunOutcome outcome,
+        RunEndedBecause because = RunEndedBecause.StoppedWithItsLogEntry) =>
+        Of(submissionId).RunEnded(submissionId, outcome, because);
+
+    /// <summary>What the streamed usage of a turn does (GUARD-004, RUNS-010).</summary>
+    public void Spend(Guid submissionId, long tokensUsed) =>
+        Of(submissionId).CostSoFar(
+            submissionId, tokensUsed, new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
+
+    /// <summary>One thing the run did (RUNS-009).</summary>
+    public void Did(Guid submissionId, TranscriptMoment moment) =>
+        Of(submissionId).MomentHappened(submissionId, moment);
+
+    /// <summary>A tool call, which is also what raises the run's call count (RUNS-010).</summary>
+    public void Called(Guid submissionId, string tool, string arguments) =>
+        Did(submissionId, new TranscriptMoment(RunMomentKind.ToolCalled, tool, arguments));
+
+    /// <summary>What that call returned, whole (RUNS-009).</summary>
+    public void Returned(Guid submissionId, string tool, string result) =>
+        Did(submissionId, new TranscriptMoment(RunMomentKind.ToolReturned, tool, result));
+
+    /// <summary>The agent's own text between the calls (RUNS-009).</summary>
+    public void Said(Guid submissionId, string text) =>
+        Did(submissionId, new TranscriptMoment(RunMomentKind.AgentSaid, Tool: null, text));
 
     /// <summary>The run's process is gone, with this exit code. Where a run ends.</summary>
     public void Exit(Guid submissionId, int exitCode) => Of(submissionId).AgentExited(submissionId, exitCode);
@@ -101,6 +126,9 @@ internal sealed class HubUnderTest : IAsyncDisposable
     /// </summary>
     private readonly bool ownsTheDirectory;
 
+    /// <summary>Records this fixture made unwritable, so that it can undo it before cleaning up.</summary>
+    private readonly List<string> madeReadOnly = [];
+
     private HubUnderTest(WebApplication app, DrivableHarness agent, string directory, string address, bool ownsTheDirectory)
     {
         this.app = app;
@@ -112,6 +140,14 @@ internal sealed class HubUnderTest : IAsyncDisposable
     }
 
     public string Address { get; }
+
+    /// <summary>
+    /// Where Grimoire keeps its own bookkeeping — the submissions and the records — and the wiki it
+    /// writes into. Siblings, never one inside the other (contracts/submission-store.md).
+    /// </summary>
+    public string StateDirectory => Path.Combine(directory, "state");
+
+    public string WikiDirectory => Path.Combine(directory, "wiki");
 
     /// <summary>The run the hub dispatched to, which a test drives from state to state.</summary>
     public DrivableHarness Agent { get; }
@@ -140,7 +176,8 @@ internal sealed class HubUnderTest : IAsyncDisposable
         string directory, bool ownsTheDirectory, CancellationToken cancellationToken)
     {
         // Both texts every run receives (V.1). Their content does not matter here — the browser
-        // door is ACCESS-001 and ACCESS-002; what a run is given is INGEST-002, proven a level down.
+        // door is ACCESS-001, ACCESS-005 and ACCESS-006; what a run is given is INGEST-002, proven a
+        // level down.
         //
         // The wiki and the queue are siblings, never one inside the other: the wiki store lists
         // every non-hidden file it finds, so a queue kept inside the wiki would be served to the
@@ -162,6 +199,7 @@ internal sealed class HubUnderTest : IAsyncDisposable
             agent,
             new FileSystemWikiStore(wiki),
             new SqliteSubmissionStore(state),
+            new MarkdownRunRecord(state),
             TimeProvider.System);
 
         await app.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -201,10 +239,53 @@ internal sealed class HubUnderTest : IAsyncDisposable
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Make this run's record refuse every further write, the way a full disk or a permission does.
+    /// </summary>
+    /// <remarks>
+    /// The E2E hub writes real records through <c>MarkdownRunRecord</c>, so the only way to lose an
+    /// entry here is to make the real filesystem refuse one. The file is left readable, so the page
+    /// still shows the run as far as it got — which is the case ACCESS-006 is about: a record with a
+    /// gap in it, and the view saying so (RUNS-007).
+    /// </remarks>
+    public void StopTheRecordBeingWritten()
+    {
+        var record = Directory.GetFiles(Path.Combine(StateDirectory, "runs"), "*.md").Single();
+
+        // SetAttributes rather than SetUnixFileMode: the latter is not supported on Windows, and a
+        // test helper that only builds on some of them is a suite that only runs on some of them.
+        File.SetAttributes(record, FileAttributes.ReadOnly);
+        madeReadOnly.Add(record);
+    }
+
+    /// <summary>
+    /// One run's record as the endpoint answers it, unaltered. Read as bytes and not as text: what
+    /// ACCESS-006 promises is the file's bytes, and a string comparison would pass on a response that
+    /// had been re-encoded, reordered or had its blank lines dropped.
+    /// </summary>
+    public async Task<byte[]> RecordBytesAsync(Guid submission, CancellationToken cancellationToken)
+    {
+        var response = await client
+            .GetAsync(new Uri($"/api/submissions/{submission}/record", UriKind.Relative), cancellationToken)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async ValueTask DisposeAsync()
     {
         client.Dispose();
         await app.DisposeAsync().ConfigureAwait(false);
+
+        // What was made unwritable is made writable again before the directory goes. A read-only file
+        // is not always one a recursive delete can remove, and a fixture that leaves the suite unable
+        // to clean up after itself has failed after its assertions passed.
+        foreach (var record in madeReadOnly)
+        {
+            File.SetAttributes(record, FileAttributes.Normal);
+        }
 
         if (ownsTheDirectory)
         {

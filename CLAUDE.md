@@ -18,9 +18,10 @@ This repository is spec-driven, and the rules are enforceable, not advisory. Bef
 | The rules (`I.`–`V.`, Governance) every change is held to | `.specify/memory/constitution.md` |
 | The as-is behaviour, per capability, with requirement IDs | `docs/capabilities/*.md` |
 | What is proven and by which tests | `docs/trace.md` (generated — never edit by hand) |
-| Why the stack is what it is (`DEC-001`…`DEC-021`) | `docs/decisions.md` |
+| Why the stack is what it is | `docs/decisions.md` — every technical decision in force, one `DEC-NNN` each, with its reason |
+| How every screen must look and read | `docs/ux.md` (owner-written; binds anything with a UI) |
 | What a PR is checked against (12 items) | `docs/review-checklist.md` |
-| How the current feature came about | `specs/001-first-ingest/` — `spec.md`, `plan.md`, `tasks.md`, `research.md`, `contracts/`, `quickstart.md` |
+| How the current feature came about | `specs/` — the highest-numbered directory is the current feature; `spec.md`, `plan.md`, `tasks.md` and whatever else that feature needed |
 
 Consequences worth internalising:
 
@@ -28,6 +29,7 @@ Consequences worth internalising:
 - Nothing is built without a consumer in the same feature (II.1). No option, abstraction, gate or placeholder "for later".
 - An interface exists only at a port to something outside the process, or where two real implementations exist (II.4). That is why `RunReport` is delegates and `SubmissionBoard` is a plain class.
 - Not tested (III.8): framework behaviour, argument parsing, dependency wiring, static config, the wording of instructions. Such a test is deleted, not fixed.
+- A brief's or a spec's screen descriptions are the owner's *concerns*, not a contract on layout: `docs/ux.md` says so, and the implementing agent decides components and wording as long as the concern is visibly addressed. Its constants are binding — text-first, monospace where the content is a log or a file, live content growing in place, no modal confirmations and no self-dismissing toasts.
 - The code comments carry the *reasons* (requirement IDs, `research.md` findings, DEC numbers). When changing behaviour, follow the citation before rewriting the code — most odd-looking constructions are load-bearing.
 - Spec Kit skills (`/speckit-*`) drive the workflow: specify → plan → tasks → implement → converge. `tasks.md` has no converge task, but Governance 2 requires one run of `/speckit-converge` per feature, in the closing phase.
 
@@ -87,7 +89,7 @@ Run the hub by hand — `.env` at the root (copy `.env-example`), a real wiki, a
 
 ```
 ./scripts/run-hub.sh            # --fresh throws the configured wiki away first
-dotnet run --project src/Grimoire.Hub -- --wiki <dir> --purpose <file> --model <pinned-id>
+dotnet run --project src/Grimoire.Hub -- --wiki <dir> --purpose <file> --model <pinned-id> [--state <dir>]
 ```
 
 `GRIMOIRE_MODEL` / `--model` must be a pinned model id; aliases are refused (DEC-010). No `ANTHROPIC_API_KEY` — runs go through the owner's subscription sign-in (DEC-001), and the harness strips the variable from the child.
@@ -100,15 +102,17 @@ dotnet run --project src/Grimoire.Hub -- --wiki <dir> --purpose <file> --model <
 
 Three bounded contexts plus a composition root (`plan.md`, Structure Decision). Each context declares its own ports and owns its adapters; an external system appears only inside its adapter (V.2).
 
-- **`src/Grimoire.Runs`** — what a submission and a run *are*. `SubmissionBoard` accepts or refuses a text (one run at a time, both start-up inputs present, non-empty); `Submission` holds one of four states behind the board's single lock; `Run` (`RunStateMachine.cs`) makes every judgment about a run — the nudge decision and the final verdict.
+- **`src/Grimoire.Runs`** — what a submission and a run *are*. `SubmissionBoard` accepts or refuses a text (one run at a time, both start-up inputs present, non-empty); `Submission` holds one of four states behind the board's single lock; `Run` (`RunStateMachine.cs`) makes every judgment about a run — the nudge decision and the final verdict. `ISubmissionStore` is its port to where the submissions survive a stop, with `Adapters/SqliteSubmissionStore.cs` the only file in the tree that names SQLite (DEC-023).
 - **`src/Grimoire.Agent`** — the port to the agent (`IAgentHarness`, `AgentDispatch`, `RunReport`), the `ToolGrant` (five bare tool names) and the fixed `Ceilings` (15 min, 2 000 000 tokens). Adapters: `HarnessProcess` owns the `claude` child process and the two things written to its stdin; `AgentTranscript` is the only place that reads the CLI's NDJSON protocol and the MCP name prefix.
-- **`src/Grimoire.Wiki`** — `IWikiStore` (list, read, write, append-log — deliberately no delete, move, revert or commit, because WIKI-003 leaves undo to the user's git history), `ProvenanceStamp` / `OkfFrontmatter` (the `generated` record is the only thing Grimoire writes into a page; the rest of the page comes back byte for byte). Adapter: `FileSystemWikiStore`, the only code that touches the filesystem, and it refuses paths that leave the wiki.
-- **`src/Grimoire.Hub`** — the only project that knows all three. `Program.cs` reads the arguments and puts the two real adapters at their ports; `HubApplication.Build` is what every suite builds too, with in-memory adapters (III.9). It serves the static page from `wwwroot/` (no bundler, DEC-019), `POST`/`GET /api/submissions`, and the five wiki tools over MCP at `/mcp/runs/{runId}` — unauthenticated, loopback only (DEC-014). `InstructionLoader` is the *only* thing that puts text into the agent's prompt (V.1); `SubmissionIntake` accepts and dispatches without the user waiting; `RunConductor` holds what happens while a run is under way.
+- **`src/Grimoire.Wiki`** — `IWikiStore` (list, read, write, append-log — deliberately no delete, move, revert or commit, because WIKI-003 leaves undo to the user's git history), `ProvenanceStamp` / `OkfFrontmatter` (the `generated` record is the only thing Grimoire writes into a page; the rest of the page comes back byte for byte). Adapter: `FileSystemWikiStore`, the only code that touches the **wiki's** files, and it refuses paths that leave the wiki. Grimoire's own bookkeeping is elsewhere on disk and never in the wiki (DEC-023).
+- **`src/Grimoire.Hub`** — the only project that knows all three, and the only one that decides anything. `Program.cs` reads the arguments and puts the real adapters at their ports; `HubApplication.Build` is what every suite builds too, with in-memory adapters (III.9). It serves the static page from `wwwroot/` (no bundler, DEC-019), the browser's HTTP API, and the wiki tools over MCP at a per-run endpoint — unauthenticated, loopback only (DEC-014). `InstructionLoader` is the *only* thing that puts text into the agent's prompt (V.1); `SubmissionIntake` accepts and dispatches without the user waiting; `RunQueue` starts what may start; `RunConductor` holds what happens while a run is under way. The endpoints and their bodies are in the current feature's `contracts/hub-http-api.md`, never here.
 - **`tools/Grimoire.Trace`** — the `trace-check` gate, the `write` command and the `summary` counts. Reads requirement IDs from `docs/capabilities/`, and `level`/`req` traits off built assemblies via `MetadataLoadContext` (DEC-005). Fails on what it cannot read rather than skipping it.
 
 ### The run lifecycle
 
 `SubmissionIntake.SubmitAsync` → `RunConductor.Begin` (grant and ceilings recorded, elapsed timer armed) → `HarnessProcess.DispatchAsync` spawns `claude` with the argv of `contracts/agent-cli-protocol.md` and returns while the run continues. Then, through `RunReport`: `system/init` must report *exactly* the grant, the wiki server connected and an interrupt capability, or the run ends failed before its first model call (GUARD-001); streamed usage raises the running cost, and either ceiling sends one interrupt with a process kill behind it (GUARD-004, DEC-015/016); a `result` makes the nudge decision (RUNS-005 — `log.md` is read for the run's GUID and nothing else in the wiki is read at all), never the verdict. **A run ends at its process's exit**, where result, log entry and exit code are read together. The harness decides nothing; the hub decides everything.
+
+What surrounds that — the queue, what a failure blocks, what survives a stop — is behaviour with requirement IDs, and `docs/capabilities/runs.md` is where it is written down. Read it there rather than here.
 
 ## Test conventions
 
@@ -125,4 +129,7 @@ Three bounded contexts plus a composition root (`plan.md`, Structure Decision). 
 One feature branch off `main`; each phase of `tasks.md` is a branch off the feature branch, merged back when its PR is reviewed and green, before the next phase starts. No PR based on another open PR, PRs stay drafts until their phase is complete, and nothing of a feature reaches `main` before the whole feature is done (I.9, I.10). The instruction under `instructions/` is Grimoire's own: changing it is an owner decision and must be named in the PR description.
 
 <!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+at specs/003-live-run-record/plan.md
 <!-- SPECKIT END -->

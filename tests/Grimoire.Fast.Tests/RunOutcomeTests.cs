@@ -17,7 +17,8 @@ public sealed class RunOutcomeTests
         Guid.NewGuid(),
         FastSuite.Start,
         ToolGrant.Ingest(FastSuite.Clock()),
-        Ceilings.Fixed);
+        Ceilings.Fixed,
+        FastHub.Model);
 
     private static AgentStop Stopped(bool logEntry) => new(logEntry, TimeSpan.FromMinutes(1), TokensUsed: 10);
 
@@ -78,6 +79,20 @@ public sealed class RunOutcomeTests
         run.AgentStopped(new AgentStop(LogEntryPresent: true, TimeSpan.Zero, TokensUsed: 4_211));
 
         Assert.Equal(4_211, run.TokensUsed);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-008")]
+    [Trait("req", "GUARD-004")]
+    public void Exit_SaysTheTimeCeiling_WhenTheRunStandsExactlyOnIt()
+    {
+        // Exactly on the ceiling is on it: `Ceilings.ReachedBy` says so, and the reason recorded has
+        // to agree — a run that ran out of time recorded as having run out of money would name the
+        // wrong one of RUNS-008's seven.
+        var ending = run.Exited(exitCode: 0, Ceilings.Fixed.Elapsed);
+
+        Assert.Equal(RunOutcome.Failed, ending.Outcome);
+        Assert.Equal(RunEndedBecause.TimeCeiling, ending.Because);
     }
 
     [Fact]
