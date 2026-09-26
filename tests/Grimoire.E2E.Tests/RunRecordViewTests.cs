@@ -157,21 +157,23 @@ public sealed class RunRecordViewTests : PageTest
         await result.Locator("summary").ClickAsync();
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
 
-        // Enough of the run to push the page past one screen, so that there is a scroll position to
-        // keep at all. Without this the document never scrolls and the assertion below would hold
+        // Enough of the run to push the page well past one screen, so that there is a scroll position
+        // to keep at all. Without this the document never scrolls and the assertion below would hold
         // whatever the implementation did.
         for (var i = 0; i < 12; i++)
         {
-            hub.Agent.Said(submission, $"Reading page {i}. {new string('x', 400)}");
+            hub.Agent.Said(submission, $"Reading page {i}. {new string('x', 2_000)}");
         }
 
         await Expect(Segments()).ToHaveCountAsync(14);
 
-        // The user scrolls to where they were reading and stays there.
-        await Page.Mouse.WheelAsync(0, 600);
-        await Expect(Page.Locator("body")).ToBeVisibleAsync();
+        // The user scrolls to where they were reading and stays there. Scrolled through the document
+        // rather than with the wheel: a wheel event is delivered and applied asynchronously, and on a
+        // CI runner it had not landed by the time the position was read — which the guard below caught
+        // rather than letting the test pass on an unscrolled page.
+        var scrolledTo = await Page.EvaluateAsync<double>(
+            "() => { window.scrollTo(0, Math.floor(document.body.scrollHeight / 2)); return window.scrollY; }");
 
-        var scrolledTo = await Page.EvaluateAsync<double>("window.scrollY");
         Assert.True(scrolledTo > 0, "the page did not scroll, so there is no scroll position to keep");
 
         var openedBefore = await Segments().Nth(1).BoundingBoxAsync();
