@@ -21,6 +21,72 @@ public enum RunOutcome
 }
 
 /// <summary>
+/// Why a run ended, as the record's tail states it. Seven values, one requirement — the values a
+/// requirement covers are a list inside it and never one requirement per value (RUNS-008,
+/// Constitution IV.7). Each is a state the code already reaches; none is new behaviour.
+/// </summary>
+/// <remarks>
+/// Beside <see cref="RunOutcome"/> rather than in <c>Grimoire.Runs/IRunRecord.cs</c>, where
+/// data-model.md puts it, for the reason that file's own header gives for reading GUARD's
+/// vocabulary: RUNS references this project and nothing goes the other way, and the reason travels
+/// out of the harness through <see cref="RunReport.RunEnded"/> exactly as the outcome does. A run
+/// ending for a reason only the adapter knows — a tool surface that was not the grant — cannot be
+/// inferred by the hub from anything else it holds, which is why it is reported rather than derived.
+/// </remarks>
+public enum RunEndedBecause
+{
+    /// <summary>The agent stopped inside both ceilings with its log entry present (RUNS-005).</summary>
+    StoppedWithItsLogEntry,
+
+    /// <summary>It stopped without that entry, after being told once (RUNS-005).</summary>
+    StoppedWithoutItsLogEntry,
+
+    /// <summary>The elapsed ceiling (GUARD-004).</summary>
+    TimeCeiling,
+
+    /// <summary>The cost ceiling (GUARD-004).</summary>
+    CostCeiling,
+
+    /// <summary>What <c>system/init</c> reported was not the grant (GUARD-001).</summary>
+    ToolsWereNotTheGrant,
+
+    /// <summary>A non-zero exit, a dispatch that never started a process, or a reader that lost one.</summary>
+    AgentProcessDied,
+
+    /// <summary>Grimoire was stopped while the run was in progress (RUNS-004, RUNS-006).</summary>
+    GrimoireStopped,
+}
+
+/// <summary>Which of the four things a moment of a run's record is (RUNS-009).</summary>
+public enum RunMomentKind
+{
+    /// <summary>A tool call: the tool's name, and its arguments as the content.</summary>
+    ToolCalled,
+
+    /// <summary>What a call returned, whole.</summary>
+    ToolReturned,
+
+    /// <summary>The agent's own text.</summary>
+    AgentSaid,
+
+    /// <summary>What Grimoire told the agent — today only the nudge.</summary>
+    GrimoireSaid,
+}
+
+/// <summary>
+/// One thing the transcript saw, as the adapter reports it.
+/// </summary>
+/// <param name="Tool">The tool's name for the two tool kinds, and null for the other two.</param>
+/// <param name="Content">
+/// The arguments, the result, or the text. <b>Null means the content could not be read</b> — a
+/// <c>tool_result</c> whose <c>content</c> is neither a string nor an array of blocks. Such a moment
+/// is recorded as a result that could not be read and never dropped: what cannot be read is refused
+/// rather than read around, the way a <c>tools</c> array that is not names already is (GUARD-001's
+/// precedent, data-model.md §RunMoment).
+/// </param>
+public sealed record TranscriptMoment(RunMomentKind Kind, string? Tool, string? Content);
+
+/// <summary>
 /// What a run is given, and what it is allowed to reach.
 /// </summary>
 /// <param name="RunId">
@@ -51,8 +117,17 @@ public sealed record AgentDispatch(Guid RunId, Guid SubmissionId, string Prompt,
 /// submission reads <c>submitted</c> until this and <c>running</c> from then on.
 /// </param>
 /// <param name="CostSoFar">
-/// Every token the run has caused so far. The hub watches it against the cost ceiling and stops
-/// the run itself where it is reached (GUARD-004).
+/// Every token the run has caused so far, and the breakdown per model where the line carried one.
+/// The hub watches the total against the cost ceiling and stops the run itself where it is reached
+/// (GUARD-004); the breakdown is what the record's tail says the run spent per model (RUNS-008).
+/// The two travel together because the total is the sum of the breakdown: reported apart, a tail
+/// could name models adding up to a figure beside them that they do not add up to. Empty for a
+/// streamed line, which carries no breakdown.
+/// </param>
+/// <param name="MomentHappened">
+/// One thing the run did — a tool call, what it returned, or the agent's own text (RUNS-009). The
+/// one delegate this feature adds: all four kinds of moment are one thing happening, so one
+/// delegate carries them, and the fourth kind is the hub's own and never arrives here.
 /// </param>
 /// <param name="AgentStopped">
 /// The agent has stopped — a <c>result</c>. The hub reads the wiki's log and decides whether to
@@ -66,7 +141,8 @@ public sealed record AgentDispatch(Guid RunId, Guid SubmissionId, string Prompt,
 /// </param>
 /// <param name="RunEnded">
 /// The run is over without a process exit to read — a dispatch that never started one, or a
-/// surface refused before the first model call.
+/// surface refused before the first model call — and why, which the caller knows and the hub cannot
+/// derive: those two endings are alike in every other fact the hub holds.
 /// </param>
 /// <param name="AgentProcessIs">
 /// Which process this run's agent is, reported as soon as the child exists and before anything is
@@ -75,11 +151,12 @@ public sealed record AgentDispatch(Guid RunId, Guid SubmissionId, string Prompt,
 /// </param>
 public sealed record RunReport(
     Action<Guid> AgentReportedIn,
-    Action<Guid, long> CostSoFar,
+    Action<Guid, long, IReadOnlyDictionary<string, ModelTokens>> CostSoFar,
     Func<Guid, bool, Task> AgentStopped,
     Action<Guid, int> AgentExited,
-    Action<Guid, RunOutcome> RunEnded,
-    Action<Guid, AgentProcessIdentity> AgentProcessIs);
+    Action<Guid, RunOutcome, RunEndedBecause> RunEnded,
+    Action<Guid, AgentProcessIdentity> AgentProcessIs,
+    Action<Guid, TranscriptMoment> MomentHappened);
 
 /// <summary>
 /// The port to the agent. Its one adapter is <c>HarnessProcess</c>, which with <c>AgentTranscript</c>
@@ -88,6 +165,19 @@ public sealed record RunReport(
 /// </summary>
 public interface IAgentHarness
 {
+    /// <summary>
+    /// The one thing Grimoire ever says to a running agent: that the wiki's log holds no entry for
+    /// its run (RUNS-005).
+    /// </summary>
+    /// <remarks>
+    /// Declared at the port rather than inside the adapter, because two places need the same words:
+    /// the adapter writes them to the agent, and the hub records them in the run's record as what
+    /// Grimoire said (RUNS-009). One constant, so the record cannot say something other than what was
+    /// sent. This is not the prompt, which <c>InstructionLoader</c> alone assembles (Constitution
+    /// V.1).
+    /// </remarks>
+    const string LogEntryMissing = "No log entry for this run was found in log.md.";
+
     /// <summary>
     /// Start a run. Returns once the run is under way — <em>not</em> once it has ended, and not
     /// once the agent has reported in: the user is not made to wait for either (INGEST-001).

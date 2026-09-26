@@ -17,7 +17,8 @@ public sealed class RunOutcomeTests
         Guid.NewGuid(),
         FastSuite.Start,
         ToolGrant.Ingest(FastSuite.Clock()),
-        Ceilings.Fixed);
+        Ceilings.Fixed,
+        FastHub.Model);
 
     private static AgentStop Stopped(bool logEntry) => new(logEntry, TimeSpan.FromMinutes(1), TokensUsed: 10);
 

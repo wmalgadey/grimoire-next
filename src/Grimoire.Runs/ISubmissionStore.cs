@@ -4,8 +4,21 @@ namespace Grimoire.Runs;
 
 /// <summary>
 /// A run as what survives a stop keeps it: its identifier, the submission it works, when it began,
-/// the tools it was granted, and which process its agent is.
+/// the tools it was granted, the model it ran on, which process its agent is, and its figures.
 /// </summary>
+/// <param name="Model">
+/// The pinned model id this run ran on. Kept because a record from last month must say which model
+/// served it, and the owner may change <c>--model</c> between runs (RUNS-008, DEC-010).
+/// </param>
+/// <param name="TokensUsed">
+/// Every token the run has caused. Kept because RUNS-010 makes the figures survive a stop: OUT-02 has
+/// the user read a failed run's cost, so the number now has a consumer (Constitution II.1).
+/// </param>
+/// <param name="ToolCalls">How many tool calls the run made, for the same reason (RUNS-010).</param>
+/// <param name="EntriesLost">
+/// How many entries this run's record could not hold (RUNS-007). Kept so that the gap is visible after
+/// a restart too: a record that could not be written must not look like a run that did nothing.
+/// </param>
 /// <param name="GrantedTools">
 /// The bare tool names this run was given, in order. Kept because GUARD-003 says the grant is
 /// recorded for every run, and once RUNS-004 makes the submission outlive the process a grant that
@@ -21,13 +34,21 @@ public sealed record StoredRun(
     DateTimeOffset StartedAt,
     IReadOnlyList<string> GrantedTools,
     DateTimeOffset GrantRecordedAt,
-    AgentProcessIdentity? AgentProcess)
+    string Model,
+    AgentProcessIdentity? AgentProcess,
+    long TokensUsed = 0,
+    int ToolCalls = 0,
+    int EntriesLost = 0)
 {
     /// <summary>
-    /// The tokens a run spent are deliberately not here. A run cut off by a stop reads failed, both
-    /// ceilings bind a run only while it is in progress, and nothing judges it again — a number
-    /// nothing reads would be a placeholder for later (Constitution II.1, research.md R-08).
+    /// A run as it is at the moment it is handed out: nothing spent, nothing called, nothing lost.
     /// </summary>
+    /// <remarks>
+    /// <c>002-ingest-queue</c> said the tokens a run spent were "deliberately not here", because a
+    /// number nothing reads would be a placeholder for later (Constitution II.1). That assumption is
+    /// <b>withdrawn</b>: OUT-02 has the user read a failed run's cost, so all three figures now have a
+    /// consumer and survive a stop with the run (RUNS-010, research.md R-06).
+    /// </remarks>
     public static StoredRun Of(Run run)
     {
         ArgumentNullException.ThrowIfNull(run);
@@ -38,6 +59,7 @@ public sealed record StoredRun(
             run.StartedAt,
             run.Grant.ToolNames,
             run.Grant.RecordedAt,
+            run.Model,
             AgentProcess: null);
     }
 }
@@ -122,6 +144,32 @@ public interface ISubmissionStore
     /// </summary>
     void SetState(Guid submissionId, SubmissionState state);
 
+    /// <summary>
+    /// The run ended: its submission's terminal state and the run's final figures, <b>in one
+    /// change</b> (RUNS-001, RUNS-010).
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="SetState"/> followed by <see cref="RecordFigures"/>. Those are two changes, and
+    /// a stop between them — which RUNS-004 covers, a kill or a power cut — would leave a submission
+    /// that reads done or failed beside the figures it had one moment earlier. RUNS-010 has the
+    /// figures stand as the run's final ones once it has ended <em>and</em> survive a stop, and two
+    /// changes cannot promise both.
+    /// </remarks>
+    void Ended(Guid submissionId, SubmissionState terminal, Guid runId, long tokensUsed, int toolCalls, int entriesLost);
+
     /// <summary>The user has acknowledged this submission's failed run (RUNS-003).</summary>
     void Acknowledge(Guid submissionId, DateTimeOffset at);
+
+    /// <summary>
+    /// What the run has spent, how many calls it has made, and how many entries its record could not
+    /// hold (RUNS-010, RUNS-007).
+    /// </summary>
+    /// <remarks>
+    /// One member for the three, because one event writes them and one row reads them: written
+    /// separately, a restart could come back with a token figure from one moment beside a call count
+    /// from another. Called only where a figure has actually risen — <c>Run.Spent</c> is already a
+    /// <c>Math.Max</c>, so the store sees two to four writes a turn rather than the sixty streamed
+    /// lines a turn carries (research.md R-06).
+    /// </remarks>
+    void RecordFigures(Guid runId, long tokensUsed, int toolCalls, int entriesLost);
 }

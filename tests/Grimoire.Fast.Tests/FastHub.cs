@@ -38,8 +38,8 @@ internal sealed class FastHub
         // The same knot the composition root ties: a run that ends lets the next one start
         // (HubApplication.Build).
         RunQueue? queue = null;
-        Conductor = new RunConductor(Board, Harness, Wiki, Clock, () => queue!.PumpAsync());
-        queue = new RunQueue(Board, Conductor, Harness, Prompt, Model);
+        Conductor = new RunConductor(Board, Harness, Wiki, Record, Clock, Model, () => queue!.PumpAsync());
+        queue = new RunQueue(Board, Conductor, Harness, Prompt);
         Queue = queue;
         Intake = new SubmissionIntake(Board, Queue);
 
@@ -77,6 +77,9 @@ internal sealed class FastHub
     public InMemoryAgentHarness Harness { get; }
 
     public InMemoryWikiStore Wiki { get; } = new();
+
+    /// <summary>Where this hub's runs leave their records (RUNS-007).</summary>
+    public InMemoryRunRecord Record { get; } = new();
 
     public SubmissionBoard Board { get; }
 

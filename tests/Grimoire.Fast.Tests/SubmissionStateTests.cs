@@ -8,7 +8,8 @@ namespace Grimoire.Fast.Tests;
 
 /// <summary>
 /// The four states and the transitions of data-model.md (RUNS-001), and the hub-side half of
-/// ACCESS-002: the response carries the state and nothing else about the run.
+/// ACCESS-005: the response carries the state, and for a submission that has a run its model and its
+/// two figures.
 /// </summary>
 [Trait("level", "fast")]
 public sealed class SubmissionStateTests
@@ -77,7 +78,8 @@ public sealed class SubmissionStateTests
         // There is no transition out of either. Acknowledging a failure is not one: the
         // acknowledged run still reads failed (RUNS-003).
         Assert.Throws<InvalidOperationException>(() => hub.Board.ReportedIn(submission.Id));
-        Assert.Throws<InvalidOperationException>(() => hub.Board.Ended(submission.Id, SubmissionState.Done));
+        Assert.Throws<InvalidOperationException>(
+            () => hub.Board.Ended(submission.Id, SubmissionState.Done, tokensUsed: 0, toolCalls: 0, entriesLost: 0));
         Assert.Equal(terminal, submission.State);
     }
 
@@ -127,25 +129,6 @@ public sealed class SubmissionStateTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-002")]
-    public async Task Report_CarriesNothingBeyondTheState()
-    {
-        var submission = await Accepted();
-        hub.Harness.ReportIn(submission.Id);
-
-        var json = JsonSerializer.SerializeToElement(SubmissionView.Of(submission));
-
-        // No run identifier, step, reasoning, duration, cost or history — ACCESS-002 says "and no
-        // further detail" about the run, and OUT-02 owns everything more. What is here besides the
-        // state are facts about the submission itself (ACCESS-004, contracts/hub-http-api.md).
-        Assert.Equal(
-            ["id", "state", "submittedAt", "excerpt"],
-            json.EnumerateObject().Select(p => p.Name));
-        Assert.Equal(submission.Id.ToString(), json.GetProperty("id").GetString());
-        Assert.Equal("running", json.GetProperty("state").GetString());
-    }
-
-    [Fact]
     [Trait("req", "ACCESS-003")]
     public async Task Report_OffersTheAcknowledgement_OnlyWhereAFailureIsUnacknowledged()
     {
@@ -168,23 +151,76 @@ public sealed class SubmissionStateTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-002")]
     public async Task Report_CarriesNoRunIdentifier_WhileAFailureIsUnacknowledged()
     {
         var submission = await Accepted();
         hub.Harness.End(submission.Id, RunOutcome.Failed);
 
-        // The acknowledgement addresses the submission, whose identifier the browser has carried
-        // since `001-first-ingest`. Nothing about the run reaches it (research.md R-06).
+        // No requirement id: with ACCESS-002 retired, nothing requires this any more. It holds because
+        // nothing needs a run identifier — the acknowledgement and the record endpoint both address
+        // the submission, which has exactly one run (INGEST-002) — so it is a design property, and a
+        // test of one carries no id (Constitution IV.3, tests/README.md).
         var reported = Reported(submission);
-        Assert.Equal(
-            ["id", "state", "submittedAt", "excerpt", "awaitingAcknowledgement"],
-            reported.EnumerateObject().Select(p => p.Name));
         Assert.NotNull(submission.RunId);
         Assert.DoesNotContain(
             submission.RunId!.Value.ToString(),
             reported.GetRawText(),
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-005")]
+    public async Task Report_CarriesTheModelAndBothFigures_ForASubmissionThatHasARun()
+    {
+        var submission = await Accepted();
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.Spend(submission.Id, 148_233);
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+
+        var reported = Reported(submission);
+
+        Assert.Equal("running", reported.GetProperty("state").GetString());
+        Assert.Equal(FastHub.Model, reported.GetProperty("model").GetString());
+        Assert.Equal(148_233, reported.GetProperty("tokensUsed").GetInt64());
+        Assert.Equal(1, reported.GetProperty("toolCalls").GetInt32());
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-005")]
+    public async Task Report_CarriesNoRunFieldsAtAll_ForASubmissionThatHasNoRun()
+    {
+        // The first submission's run holds the queue, so the second one is accepted and waits its
+        // turn — which is a submission with no run (RUNS-002).
+        var running = await Accepted("Ada Lovelace wrote the first program.");
+        var waiting = (await hub.SubmitAsync("Grace Hopper found the first bug.")).Accepted!;
+
+        Assert.NotNull(hub.Conductor.Of(running.Id));
+        Assert.Null(waiting.RunId);
+
+        // Not zeros. Zeros would claim a run that spent nothing rather than no run at all, and the
+        // browser would have a rule to apply where the response should simply say nothing
+        // (contracts/hub-http-api.md).
+        Assert.Equal(
+            ["id", "state", "submittedAt", "excerpt"],
+            Reported(waiting).EnumerateObject().Select(p => p.Name));
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-005")]
+    [Trait("req", "RUNS-007")]
+    public async Task Report_SaysEntriesAreLost_OnlyWhereTheRecordCouldNotHoldSomething()
+    {
+        var submission = await Accepted();
+        hub.Harness.ReportIn(submission.Id);
+
+        // Nothing lost: the field is not there at all, so a row says lines are missing only when they
+        // are (RUNS-007).
+        Assert.DoesNotContain("entriesLost", Reported(submission).EnumerateObject().Select(p => p.Name));
+
+        hub.Record.FailWrites = true;
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+
+        Assert.Equal(1, Reported(submission).GetProperty("entriesLost").GetInt32());
     }
 
     private static JsonElement Reported(Submission submission) =>
@@ -195,7 +231,7 @@ public sealed class SubmissionStateTests
     [InlineData(SubmissionState.Running, "running")]
     [InlineData(SubmissionState.Done, "done")]
     [InlineData(SubmissionState.Failed, "failed")]
-    [Trait("req", "ACCESS-002")]
+    [Trait("req", "ACCESS-005")]
     public void Report_NamesEachStateAsOneOfTheFour(SubmissionState state, string wire) =>
         Assert.Equal(wire, SubmissionView.WireNameOf(state));
 }
