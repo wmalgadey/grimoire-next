@@ -1,6 +1,5 @@
-// The browser half of ACCESS-001 and ACCESS-002: one form, posted with fetch, and one list of
-// states, polled. No build step and no framework — the browser surface is those two things and
-// nothing more (research.md R-10).
+// The browser half of ACCESS-001 and ACCESS-005: one form, posted with fetch, and one list of
+// states and figures, polled. No build step and no framework (research.md R-10).
 
 const form = document.getElementById("submission");
 const text = document.getElementById("text");
@@ -61,10 +60,19 @@ function whenSubmitted(submittedAt) {
   return `${new Date(submittedAt).toISOString().slice(0, 19).replace("T", " ")} UTC`;
 }
 
-// Each submission becomes one row: when it was made, the opening of the text, and its state.
-// Nothing about the run is here to render — the response carries no more (ACCESS-002). The
-// opening is what lets the user tell one row from another, and which text a failed run was
-// working on (ACCESS-004).
+// Whole numbers with a thin space between the thousands, which is what makes 2 004 118 readable at
+// a glance. Tokens are the same quantity the cost ceiling counts and are never currency (DEC-015).
+function figure(tokens) {
+  return tokens.toLocaleString("en-GB").replace(/,/g, "\u2009");
+}
+
+// Each submission becomes one row: when it was made, the opening of the text, its state, and — where
+// it has a run — that run's model, the tokens it has spent and the tool calls it has made
+// (ACCESS-005). The opening is what lets the user tell one row from another, and which text a failed
+// run was working on (ACCESS-004).
+//
+// A submission with no run carries no run fields at all, so there is nothing here to render for one:
+// a row shows a figure only where there is a run that has one (contracts/hub-http-api.md).
 function row(submission) {
   const item = document.createElement("li");
   item.dataset.id = submission.id;
@@ -84,6 +92,39 @@ function row(submission) {
   state.textContent = submission.state;
 
   item.append(when, " ", excerpt, " ", state);
+
+  if (submission.model !== undefined) {
+    const model = document.createElement("span");
+    model.className = "model";
+    model.textContent = submission.model;
+
+    const tokens = document.createElement("span");
+    tokens.className = "figure tokens";
+    tokens.textContent = figure(submission.tokensUsed);
+
+    const calls = document.createElement("span");
+    calls.className = "figure calls";
+    calls.textContent = figure(submission.toolCalls);
+
+    // The record is a second job, so it is a page of its own — which gives the back button and a
+    // shareable URL for nothing (ACCESS-006, research.md R-08). The link carries the submission's
+    // identifier, never the run's.
+    const open = document.createElement("a");
+    open.className = "open-run";
+    open.href = `run.html?submission=${submission.id}`;
+    open.textContent = "Open";
+
+    item.append(" ", model, " ", tokens, " ", calls, " ", open);
+  }
+
+  // Lines of this run's record could not be written. The run went on; saying so is what keeps the
+  // gap from passing for an agent that did nothing (RUNS-007).
+  if (submission.entriesLost !== undefined) {
+    const missing = document.createElement("span");
+    missing.className = "missing";
+    missing.textContent = `${figure(submission.entriesLost)} entries missing`;
+    item.append(" ", missing);
+  }
 
   // One control, and only on the row whose failure is still waiting to be acknowledged. A row
   // without it offers nothing: a control that did nothing would be a lie to the user (ACCESS-003,

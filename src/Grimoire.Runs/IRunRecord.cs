@@ -81,10 +81,16 @@ public sealed record RunMoment(
 /// what keeps this feature to one slice addition (Constitution I.6).
 /// </para>
 /// <para>
-/// <b>No read, no delete, no rewrite, no move.</b> The same shape the other two ports have and for
-/// the same reason: RUNS-007 says a record is never rewritten or removed, so no member exists that
-/// could. The browser reads the <em>file</em>, through the endpoint of
-/// contracts/hub-http-api.md, and not through this port.
+/// <b>No delete, no rewrite, no move.</b> The same shape the other two ports have and for the same
+/// reason: RUNS-007 says a record is never rewritten or removed, so no member exists that could.
+/// </para>
+/// <para>
+/// <b>There is one read</b>, <see cref="Read"/>, which contracts/run-record.md left off this port on
+/// the reasoning that the browser reads the file. It has to be here: the filesystem is an external
+/// system and appears only inside an adapter (Constitution V.2), so the endpoint that serves the
+/// record cannot open the file itself. Reading is not what RUNS-007 forbids — that sentence was
+/// reasoned from a record never changing, which a read does not touch — and the member has a consumer
+/// in this same feature, the record endpoint of ACCESS-006 (II.1).
 /// </para>
 /// <para>
 /// <b>Nothing here throws.</b> An IO failure — an unwritable directory, a full disk — is caught by
@@ -120,4 +126,15 @@ public interface IRunRecord
 
     /// <summary>How many of the calls above could not be written for that run.</summary>
     int EntriesLost(Guid runId);
+
+    /// <summary>
+    /// The record as it stands, byte for byte, or null where that run has no record at all.
+    /// </summary>
+    /// <remarks>
+    /// The bytes and not a rendering of them: the browser gets exactly what the owner's editor would
+    /// get, which is what keeps it a window onto the record rather than a second place the run lives
+    /// (ACCESS-006, US3). A run still under way answers with the record as far as it goes — the head
+    /// and however many moments have happened, and no tail.
+    /// </remarks>
+    byte[]? Read(Guid runId);
 }

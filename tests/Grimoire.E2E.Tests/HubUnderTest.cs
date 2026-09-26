@@ -11,8 +11,8 @@ namespace Grimoire.E2E.Tests;
 
 /// <summary>
 /// A run that does nothing until the test says so: it reports in, or it ends, when it is told to.
-/// That is all the browser needs of the agent — what the browser shows is a submission's state
-/// (ACCESS-002), and driving a submission to each of the four states is how the states get there.
+/// That is all the browser needs of the agent — what the browser shows is a submission's state and,
+/// where it has a run, that run's model and figures (ACCESS-005) and what it did (ACCESS-006).
 /// </summary>
 /// <remarks>
 /// An in-memory adapter at an owned port, like the Fast suite's (Constitution III.9). The real
@@ -66,6 +66,18 @@ internal sealed class DrivableHarness : IAgentHarness
     /// <summary>One thing the run did (RUNS-009).</summary>
     public void Did(Guid submissionId, TranscriptMoment moment) =>
         Of(submissionId).MomentHappened(submissionId, moment);
+
+    /// <summary>A tool call, which is also what raises the run's call count (RUNS-010).</summary>
+    public void Called(Guid submissionId, string tool, string arguments) =>
+        Did(submissionId, new TranscriptMoment(RunMomentKind.ToolCalled, tool, arguments));
+
+    /// <summary>What that call returned, whole (RUNS-009).</summary>
+    public void Returned(Guid submissionId, string tool, string result) =>
+        Did(submissionId, new TranscriptMoment(RunMomentKind.ToolReturned, tool, result));
+
+    /// <summary>The agent's own text between the calls (RUNS-009).</summary>
+    public void Said(Guid submissionId, string text) =>
+        Did(submissionId, new TranscriptMoment(RunMomentKind.AgentSaid, Tool: null, text));
 
     /// <summary>The run's process is gone, with this exit code. Where a run ends.</summary>
     public void Exit(Guid submissionId, int exitCode) => Of(submissionId).AgentExited(submissionId, exitCode);
@@ -153,7 +165,8 @@ internal sealed class HubUnderTest : IAsyncDisposable
         string directory, bool ownsTheDirectory, CancellationToken cancellationToken)
     {
         // Both texts every run receives (V.1). Their content does not matter here — the browser
-        // door is ACCESS-001 and ACCESS-002; what a run is given is INGEST-002, proven a level down.
+        // door is ACCESS-001, ACCESS-005 and ACCESS-006; what a run is given is INGEST-002, proven a
+        // level down.
         //
         // The wiki and the queue are siblings, never one inside the other: the wiki store lists
         // every non-hidden file it finds, so a queue kept inside the wiki would be served to the

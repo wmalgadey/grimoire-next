@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Grimoire.Agent;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit.v3;
@@ -6,8 +5,9 @@ using Microsoft.Playwright.Xunit.v3;
 namespace Grimoire.E2E.Tests;
 
 /// <summary>
-/// What the browser puts on the screen for every submission: exactly one of the four states, and
-/// nothing further about the run (ACCESS-002).
+/// What the browser puts on the screen for every submission: exactly one of the four states, and —
+/// where it has a run — that run's model, the tokens it has spent and the tool calls it has made
+/// (ACCESS-005).
 /// </summary>
 /// <remarks>
 /// Two scenarios, which is what a user story is allowed at this level (Constitution III.4). The
@@ -21,7 +21,7 @@ namespace Grimoire.E2E.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]
-[Trait("req", "ACCESS-002")]
+[Trait("req", "ACCESS-005")]
 [Trait("req", "ACCESS-004")]
 public sealed class SubmissionStatesTests : PageTest
 {
@@ -60,24 +60,49 @@ public sealed class SubmissionStatesTests : PageTest
     }
 
     [Fact]
-    public async Task List_ShowsNothingBeyondTheState()
+    public async Task List_ShowsTheModelAndBothFigures_ForARunThatHasEnded()
     {
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
         var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
         hub.Agent.ReportIn(submission);
+        hub.Agent.Spend(submission, 148_233);
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+        hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
         hub.Agent.End(submission, RunOutcome.Done);
 
         await Page.GotoAsync(hub.Address);
 
-        // The whole of what the row says: when the text was submitted, the opening of it, and the
-        // state. No identifier, no step, no reasoning, no duration, no cost, no history — OUT-02
-        // owns everything more.
-        await Expect(Row(submission)).ToHaveTextAsync(
-            new Regex(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC Ada Lovelace wrote the first program\. done$"));
+        // Beside the state: the model the run ran on and the two figures it ended with. This is the
+        // half of ACCESS-005 no in-process test reaches — what the browser actually renders.
+        await Expect(State(submission)).ToHaveTextAsync("done");
+        await Expect(Row(submission).Locator(".model")).ToHaveTextAsync("claude-opus-4-5-20251101");
+        await Expect(Row(submission).Locator(".tokens")).ToHaveTextAsync("148\u2009233");
+        await Expect(Row(submission).Locator(".calls")).ToHaveTextAsync("2");
 
-        await Expect(Page.Locator("#submissions li")).ToHaveCountAsync(1);
+        // And no identifier is rendered — neither the submission's nor the run's.
+        await Expect(Row(submission)).Not.ToContainTextAsync(submission.ToString());
+    }
+
+    [Fact]
+    public async Task List_ShowsNoRunFigures_ForASubmissionWaitingItsTurn()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        // The first submission's run holds the queue, so the second waits its turn and has no run
+        // (RUNS-002). A row with no run shows no figures at all — not zeros.
+        var running = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(running);
+        var waiting = await hub.SubmitAsync("Grace Hopper found the first bug.", token);
+
+        await Page.GotoAsync(hub.Address);
+
+        await Expect(State(waiting)).ToHaveTextAsync("submitted");
+        await Expect(Row(waiting).Locator(".model")).ToHaveCountAsync(0);
+        await Expect(Row(waiting).Locator(".figure")).ToHaveCountAsync(0);
+        await Expect(Row(running).Locator(".model")).ToHaveCountAsync(1);
     }
 
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");

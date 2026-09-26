@@ -1,3 +1,4 @@
+using System.Text;
 using Grimoire.Runs;
 
 namespace Grimoire.Fast.Tests;
@@ -119,6 +120,29 @@ internal sealed class InMemoryRunRecord : IRunRecord
             return lost.GetValueOrDefault(runId);
         }
     }
+
+    /// <summary>
+    /// The record as bytes, rendered the way the real adapter renders it — through the same
+    /// <c>RecordText</c>. A double that shaped the file differently from the adapter it stands in for
+    /// would not merely miss a difference; it would hide one.
+    /// </summary>
+    public byte[]? Read(Guid runId)
+    {
+        var entries = Of(runId);
+
+        return entries.Count == 0
+            ? null
+            : Encoding.UTF8.GetBytes(string.Concat(entries.Select(TextOf)));
+    }
+
+    private static string TextOf(object entry) => entry switch
+    {
+        RunFrameHead head => RecordText.Head(head),
+        RunMoment moment => RecordText.Moment(moment),
+        RunFrameTail tail => RecordText.Tail(tail),
+        LostEntriesNotice notice => RecordText.EntriesLost(notice.Count, FastSuite.Start),
+        _ => throw new ArgumentOutOfRangeException(nameof(entry), entry, "not something a record holds"),
+    };
 
     private void Write(Guid runId, object entry)
     {

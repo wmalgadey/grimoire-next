@@ -121,6 +121,21 @@ public sealed class MarkdownRunRecord : IRunRecord
         }
     }
 
+    public byte[]? Read(Guid runId)
+    {
+        try
+        {
+            return File.ReadAllBytes(PathOf(runId));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // No record, or one this process cannot read. Either way there is nothing to serve, and
+            // the endpoint answers 404 — a record that was never written at all is one of the three
+            // cases it already has that answer for (contracts/hub-http-api.md).
+            return null;
+        }
+    }
+
     /// <summary>
     /// One append, committed before this returns, with the gap that preceded it put where it
     /// happened. Answers whether it reached the disk.
