@@ -203,5 +203,16 @@ async function refreshMissing() {
     : "";
 }
 
-refresh();
-refreshMissing();
+// Once a second, the same interval the list uses: there is no push channel, and a run takes minutes,
+// so a second is soon enough to feel live and rare enough to be nothing. Every poll appends only the
+// segments that are not already on the page and never replaces one that is — which is what keeps the
+// scroll where the user put it and a result they have opened open (ACCESS-006, research.md R-08).
+const pollEveryMs = 1000;
+
+function poll() {
+  refresh();
+  refreshMissing();
+}
+
+setInterval(poll, pollEveryMs);
+poll();

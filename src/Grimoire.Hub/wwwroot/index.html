@@ -42,8 +42,11 @@
         font-variant-numeric: tabular-nums;
         text-align: right;
       }
-      .tokens { min-width: 5.5ch; }
-      .calls { min-width: 3ch; }
+      /* Wide enough for the largest figure either can reach: the cost ceiling is 2 000 000, and a
+         run makes tens of calls. Reserved, so the column does not widen as the figures climb and the
+         excerpt beside it does not reflow (ACCESS-005). */
+      .tokens { min-width: 9ch; }
+      .calls { min-width: 4ch; }
       .model { flex: none; opacity: 0.7; }
       .open-run { flex: none; }
       /* One row per submission however long the text was: the opening is cut to the same length
