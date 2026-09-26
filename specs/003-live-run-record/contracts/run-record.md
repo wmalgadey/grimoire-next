@@ -123,7 +123,7 @@ Markdown. **The wording is the adapter's and is not part of this contract** — 
 | --- | --- | --- |
 | Head | `Begin` | The run's identifier, the submission's, the pinned model, the granted tools, both ceilings, when the run started (RUNS-008) |
 | Moments | `Append` | Each tool call with its arguments; what each returned, whole; the agent's own text; anything Grimoire said to the agent — today only the nudge of RUNS-005 (RUNS-009) |
-| Tail | `Ended` | When it ended, `done` or `failed`, why, elapsed against the elapsed ceiling, what it cost against the cost ceiling, the four raw token counts behind that cost — input, output, cache read, cache write — and what every model the run touched cost (RUNS-008, DEC-015) |
+| Tail | `Ended` | When it ended, `done` or `failed`, why, elapsed against the elapsed ceiling, what it cost against the cost ceiling, the four raw token counts behind that cost — input, output, cache read, cache write — and the same four counts for **each model** the run touched (RUNS-008, DEC-015) |
 
 **A run that never reported a breakdown has no model rows.** The per-model figures come from a turn's
 own report; a run stopped inside its first turn — a cost ceiling reached, a process that died, a tool
@@ -135,8 +135,10 @@ which a run causes but never asks for, were made on it.
 **The four raw counts are in the tail beside the weighted figure**, because the weighting cannot be
 undone: a run that thought hard and a run that re-read a large cache can cost the same and are not
 the same run, and the ceiling's placeholder value is calibrated from what real runs caused
-(GUARD-004). The model rows are in the same weighted quantity as the cost above them, so they add up
-to it.
+(GUARD-004). **The model rows hold those same four counts, not a cost each**: the weighting divides
+once for the whole run, so weighing each model on its own would drop a tenth per model — two models
+with five cache reads apiece would show nothing twice where the run was charged one. Held as counts,
+the model rows add up to the four rows above them exactly.
 
 **A record of a run still under way is the head and however many moments have happened.** It has no
 tail, and that is the only difference between it and a run from last month (the owner's wish, brief §3).

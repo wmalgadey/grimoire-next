@@ -7,6 +7,13 @@ Everything not named here stands as those features left it.
 
 ---
 
+> **Amended 2026-09-26**, after this feature closed, by the GUARD-004 cost fix: the cost ceiling
+> counts input-token equivalents rather than raw tokens, and the four raw counts behind that figure
+> are kept with the run (`001-first-ingest` research.md R-15, DEC-015). The rows and signatures
+> below are amended where that changed them, because `contracts/README.md` points here for them; the
+> requirement changes themselves are in [spec.md](spec.md) under "Changed after this feature closed".
+
+
 ## Run *(changed — `Grimoire.Runs/RunStateMachine.cs`)*
 
 One attempt to work one submission into the wiki. It gains three things, all of them read by the
@@ -18,8 +25,10 @@ record or by the list:
 | `ToolCalls` | How many tool calls the run has made. Rises once per `tool_use`; never goes backwards | RUNS-010 |
 | `EndedBecause` | Why the run ended, as one of the seven reasons below. Set where the verdict is taken, beside the outcome | RUNS-008 |
 
-`TokensUsed` is unchanged and already exists (GUARD-004). It is now also read by the list, which is
-the change: a number that was only ever compared against a ceiling is now shown.
+`CostSpent` — `TokensUsed` as this feature wrote it — already exists (GUARD-004). It is now also read
+by the list, which is the change: a number that was only ever compared against a ceiling is now
+shown. Since the amendment it is a weighted quantity, and `Tokens` stands beside it: the four raw
+counts it was weighed from, added over every model, kept because the weighting cannot be undone.
 
 `RunQueue` stops holding the model and reads `run.Model` for the dispatch. That is one fewer place
 the model lives, not one more.
@@ -98,9 +107,9 @@ treats a `tools` array it cannot make names of (GUARD-001's precedent).
 ### RunFrameTail
 
 What only the ending knows: `EndedAt`, `Outcome` (done or failed), `EndedBecause` (the seven above),
-`Elapsed` against the elapsed ceiling, `TokensUsed` against the cost ceiling, and `TokensPerModel` —
-every entry of the run's `modelUsage`, so the user can see *which* model spent them (DEC-015,
-`ModelTokens`).
+`Elapsed` against the elapsed ceiling, `CostSpent` against the cost ceiling, `Tokens` — the four raw
+counts behind that figure — and `TokensPerModel`, every entry of the run's `modelUsage`, so the user
+can see *which* model was given and produced what (DEC-015, `ModelTokens`).
 
 ## The record file *(new — `<state>/runs/<runId>.md`)*
 
@@ -118,7 +127,7 @@ and where the fence rule is written down. In outline, one line per element:
 | `## <time> · the agent` | the agent's own text, as prose, unfenced |
 | `## <time> · Grimoire` | what Grimoire told the agent — today only the nudge |
 | `## <time> · ended <done\|failed> — <reason>` | the tail's first line, once |
-| a two-column table | when it ended, elapsed against its ceiling, tokens against theirs, and the tokens of each model the run touched |
+| a two-column table | when it ended, elapsed against its ceiling, what it cost against the cost ceiling, the four raw counts behind that cost, and those same four counts for each model the run touched |
 
 Every fenced block opens with a run of backticks **one longer than the longest run of backticks in
 what it holds**, and at least three, and closes with a run of the same length — CommonMark's own rule,
@@ -132,13 +141,14 @@ and that is the only difference between it and a run from last month.
 
 ## StoredRun *(changed — `Grimoire.Runs/ISubmissionStore.cs`)*
 
-The run as what survives a stop keeps it. Four new fields, and the comment that said the tokens are
+The run as what survives a stop keeps it. New fields, and the comment that said the tokens are
 "deliberately not here" goes with them:
 
 | Field | Column | Why it survives |
 | --- | --- | --- |
 | `Model` | `model` | A record from last month must say which model served it; the owner may change `--model` between runs (RUNS-008, DEC-010) |
-| `TokensUsed` | `tokens_used` | RUNS-010. This withdraws `002-ingest-queue`'s assumption that a cut-off run's tokens need not survive: OUT-02 has the user read a failed run's cost, so the number now has a consumer (Constitution II.1) |
+| `CostSpent` | `cost_spent` | RUNS-010. This withdraws `002-ingest-queue`'s assumption that a cut-off run's tokens need not survive: OUT-02 has the user read a failed run's cost, so the number now has a consumer (Constitution II.1). Written `TokensUsed` / `tokens_used` until the amendment; the column was **renamed and nothing carried over**, because the two hold different quantities and a copy would restate a raw token sum as a cost it never had |
+| `Tokens` | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens` | Added by the amendment. The weighting cannot be undone and the ceiling's placeholder is calibrated from what real runs caused, so the four raw counts survive a stop with the figure they were weighed into — in the same write, or a restart could come back with one from a different moment than the other (GUARD-004, RUNS-010) |
 | `ToolCalls` | `tool_calls` | RUNS-010, for the same reason |
 | `EntriesLost` | `entries_lost` | RUNS-007 — the gap is visible after a restart too, and a record that could not be written must not look like a run that did nothing |
 
@@ -150,12 +160,12 @@ submissions intact and its figures at zero, which is what a Contract test assert
 `ISubmissionStore` gains two members:
 
 ```text
-void RecordFigures(Guid runId, long tokensUsed, int toolCalls, int entriesLost);
+void RecordFigures(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost);
 void Ended(Guid submissionId, SubmissionState terminal, Guid runId,
-           long tokensUsed, int toolCalls, int entriesLost);
+           long costSpent, ModelTokens tokens, int toolCalls, int entriesLost);
 ```
 
-`RecordFigures` is one member for the three, because they are written by the same events and read as one
+`RecordFigures` is one member for all of them, because they are written by the same events and read as one
 row. Called only where a figure has actually risen — `Run.Spent` is already a `Math.Max`, so the store
 sees two to four writes a turn rather than the sixty `stream_event` lines a turn carries (research.md
 R-06).
@@ -176,7 +186,7 @@ one instant, and a reading is only as atomic as the writing behind it.
 ```text
 SubmissionStatus(SubmissionState State, bool AwaitingAcknowledgement, RunFigures? Run)
 
-RunFigures(string Model, long TokensUsed, int ToolCalls, int EntriesLost)
+RunFigures(string Model, long CostSpent, ModelTokens Tokens, int ToolCalls, int EntriesLost)
 ```
 
 `Run` is null for a submission that has no run — one waiting its turn. That is what makes ACCESS-005's
@@ -186,12 +196,12 @@ Read together for the reason `SubmissionStatus` already exists: asked one after 
 ending between two answers would put `running` beside a final figure, a pair that never existed.
 
 Written through the board, under its lock, as every other change to a submission is:
-`board.Spent(submissionId, tokens)` and `board.ToolCalled(submissionId)`, each writing the store only
-where a figure rose.
+`board.RunFiguresAre(...)` and `board.Ended(...)`, each writing the store only where a figure rose.
 
 ## What is unchanged
 
-- **ToolGrant, Ceilings, ProvenanceStamp, OkfFrontmatter, IWikiStore** — untouched. The record writes
+- **ToolGrant, ProvenanceStamp, OkfFrontmatter, IWikiStore** — untouched. (`Ceilings` was untouched by
+  this feature and is where the amendment's weighting lives.) The record writes
   nothing into the wiki and reads nothing in it; RUNS-005 still reads `log.md` for the run's
   identifier and nothing else.
 - **The four states** (RUNS-001) — still four. A record, a figure and a reason a run ended are none of
