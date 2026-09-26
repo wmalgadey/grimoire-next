@@ -234,22 +234,22 @@ arrive, with the rows staying where they are and an opened result staying open. 
 
 ### Tests for User Story 2
 
-- [ ] T039 [US2] `SubmissionStatesTests` in `tests/Grimoire.E2E.Tests/`: while a run is in progress
+- [X] T039 [US2] `SubmissionStatesTests` in `tests/Grimoire.E2E.Tests/`: while a run is in progress
       its figures rise, and the row's box and the position of every other row are unchanged as they do
       — **Req:** ACCESS-005 | **Level:** E2E — **Why not lower:** "a figure changing must not move the rows" is geometry, and only a real browser has a layout
-- [ ] T040 [US2] `RunRecordViewTests` in `tests/Grimoire.E2E.Tests/`: with the run under way and the
+- [X] T040 [US2] `RunRecordViewTests` in `tests/Grimoire.E2E.Tests/`: with the run under way and the
       page left open, a further moment appears **below** what is already there, the scroll position is
       where the user left it, and a result they had opened is still open — **Req:** ACCESS-006 | **Level:** E2E — **Why not lower:** same reason; appending without disturbing is only observable in a browser that has scrolled
 
 ### Implementation for User Story 2
 
-- [ ] T041 [US2] `src/Grimoire.Hub/wwwroot/app.js`: rows **updated in place**, keyed by the
+- [X] T041 [US2] `src/Grimoire.Hub/wwwroot/app.js`: rows **updated in place**, keyed by the
       submission's id, instead of `replaceChildren` rebuilding the list every second. This also stops
       the Acknowledge button being replaced under the user's finger (research.md R-09) — **Req:** ACCESS-005
-- [ ] T042 [P] [US2] `src/Grimoire.Hub/wwwroot/index.html`: each figure in its own element with
+- [X] T042 [P] [US2] `src/Grimoire.Hub/wwwroot/index.html`: each figure in its own element with
       tabular figures and a reserved width, so that `1 000` becoming `10 000` moves nothing
       (`docs/ux.md`: live content grows in place) — **Req:** ACCESS-005
-- [ ] T043 [US2] `src/Grimoire.Hub/wwwroot/run.js`: polls once a second and **appends** only the
+- [X] T043 [US2] `src/Grimoire.Hub/wwwroot/run.js`: polls once a second and **appends** only the
       segments that are not already on the page, never replacing one that is — which is what keeps the
       scroll and the open results where the user put them — **Req:** ACCESS-006
 

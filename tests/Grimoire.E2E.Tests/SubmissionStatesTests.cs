@@ -105,6 +105,81 @@ public sealed class SubmissionStatesTests : PageTest
         await Expect(Row(running).Locator(".model")).ToHaveCountAsync(1);
     }
 
+    [Fact]
+    public async Task Figures_RiseWhileTheRunIsUnderWay_WithoutMovingTheRows()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        // A row above it and a row below it, so that anything moving has somewhere to move to.
+        var above = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(above);
+        hub.Agent.End(above, RunOutcome.Done);
+
+        var watched = await hub.SubmitAsync("Grace Hopper found the first bug in a relay.", token);
+        hub.Agent.ReportIn(watched);
+        hub.Agent.Spend(watched, 1_000);
+        hub.Agent.Called(watched, "read_page", """{"path":"ada.md"}""");
+
+        await Page.GotoAsync(hub.Address);
+        await Expect(Row(watched).Locator(".tokens")).ToHaveTextAsync("1\u2009000");
+
+        var before = await Row(watched).BoundingBoxAsync();
+        var otherBefore = await Row(above).BoundingBoxAsync();
+
+        // Ten times the figure, which is one digit wider — the change that would widen a proportional
+        // column and reflow the row around it (ACCESS-005, research.md R-09).
+        hub.Agent.Spend(watched, 10_000);
+        hub.Agent.Called(watched, "write_page", """{"path":"ada.md"}""");
+
+        await Expect(Row(watched).Locator(".tokens")).ToHaveTextAsync("10\u2009000");
+        await Expect(Row(watched).Locator(".calls")).ToHaveTextAsync("2");
+
+        // The figures followed the run, and nothing moved: not the row they are in, and not the row
+        // above it. This is the half of ACCESS-005 no in-process test reaches — geometry.
+        var after = await Row(watched).BoundingBoxAsync();
+        var otherAfter = await Row(above).BoundingBoxAsync();
+
+        Assert.Equal(before!.X, after!.X);
+        Assert.Equal(before.Y, after.Y);
+        Assert.Equal(before.Width, after.Width);
+        Assert.Equal(before.Height, after.Height);
+        Assert.Equal(otherBefore!.Y, otherAfter!.Y);
+
+        // And the state is still what it was: a figure rising is not a state changing.
+        await Expect(State(watched)).ToHaveTextAsync("running");
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-003")]
+    public async Task Row_IsNotRebuiltUnderTheUser_WhileTheListPolls()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.End(submission, RunOutcome.Failed);
+
+        await Page.GotoAsync(hub.Address);
+
+        var acknowledge = Row(submission).Locator(".acknowledge");
+        await Expect(acknowledge).ToBeVisibleAsync();
+        await acknowledge.FocusAsync();
+
+        // Two polls' worth. The list used to call replaceChildren every second, which took the control
+        // out from under the user's finger and dropped the focus with it (research.md R-09). A row is
+        // written to now, not rebuilt, so what the user is reaching for stays where it is.
+        await Page.WaitForTimeoutAsync(2_200);
+
+        await Expect(acknowledge).ToBeFocusedAsync();
+
+        // And it still does what it is for.
+        await acknowledge.ClickAsync();
+        await Expect(Row(submission).Locator(".acknowledge")).ToHaveCountAsync(0);
+        await Expect(State(submission)).ToHaveTextAsync("failed");
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator State(Guid submission) => Row(submission).Locator(".state");

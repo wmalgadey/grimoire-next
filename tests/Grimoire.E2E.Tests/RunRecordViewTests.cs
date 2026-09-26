@@ -137,6 +137,76 @@ public sealed class RunRecordViewTests : PageTest
         await Expect(agent.Locator(".prose")).ToContainTextAsync("ada.md");
     }
 
+    [Fact]
+    public async Task Moments_ArriveBelowWhatIsThere_WithoutDisturbingIt()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+        hub.Agent.Returned(submission, "read_page", ALongResult);
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
+        await Expect(Segments()).ToHaveCountAsync(2);
+
+        // The user opens the result and reads it. The run is still under way.
+        var result = Segments().Nth(1).Locator("details.result");
+        await result.Locator("summary").ClickAsync();
+        await Expect(result.Locator("pre")).ToBeVisibleAsync();
+
+        // Enough of the run to push the page past one screen, so that there is a scroll position to
+        // keep at all. Without this the document never scrolls and the assertion below would hold
+        // whatever the implementation did.
+        for (var i = 0; i < 12; i++)
+        {
+            hub.Agent.Said(submission, $"Reading page {i}. {new string('x', 400)}");
+        }
+
+        await Expect(Segments()).ToHaveCountAsync(14);
+
+        // The user scrolls to where they were reading and stays there.
+        await Page.Mouse.WheelAsync(0, 600);
+        await Expect(Page.Locator("body")).ToBeVisibleAsync();
+
+        var scrolledTo = await Page.EvaluateAsync<double>("window.scrollY");
+        Assert.True(scrolledTo > 0, "the page did not scroll, so there is no scroll position to keep");
+
+        var openedBefore = await Segments().Nth(1).BoundingBoxAsync();
+
+        // More happens while the page is left open. The page polls; nothing is pushed to it.
+        hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
+        hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
+
+        await Expect(Segments()).ToHaveCountAsync(16);
+
+        // Below what was already there, in the order it happened.
+        await Expect(Heading(14)).ToContainTextAsync("the agent");
+        await Expect(Heading(15)).ToContainTextAsync("called write_page");
+
+        // The scroll is where the user left it. This is the assertion T040 is actually about, and a
+        // bounding box cannot make it: that is a layout coordinate, and it would hold even if the
+        // document had jumped under the reader.
+        Assert.Equal(scrolledTo, await Page.EvaluateAsync<double>("window.scrollY"));
+
+        // And what the user was reading is untouched: still open, and still where it was. An element
+        // already on the page is never replaced, which is what makes both true (ACCESS-006).
+        await Expect(result.Locator("pre")).ToBeVisibleAsync();
+
+        var openedAfter = await Segments().Nth(1).BoundingBoxAsync();
+        Assert.Equal(openedBefore!.Y, openedAfter!.Y);
+        Assert.Equal(openedBefore.Height, openedAfter.Height);
+
+        // The run then ends while the page is still open, and the tail arrives the same way.
+        hub.Agent.End(submission, RunOutcome.Done);
+
+        await Expect(Segments()).ToHaveCountAsync(17);
+        await Expect(Heading(16)).ToContainTextAsync("ended done");
+        await Expect(result.Locator("pre")).ToBeVisibleAsync();
+        Assert.Equal(scrolledTo, await Page.EvaluateAsync<double>("window.scrollY"));
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator Segments() => Page.Locator("#record li");

@@ -16,6 +16,18 @@ const submission = new URLSearchParams(window.location.search).get("submission")
 // order is the page's order and what is already there is never touched.
 let shown = 0;
 
+// Two polls can be in flight at once, and they can answer out of order. The newest request's answer is
+// the current one: an older answer arriving after it would put `shown` back to a smaller number, and
+// the next poll would append segments that are already on the page. `app.js` has guarded exactly this
+// since `001-first-ingest`, and the record only grows, so the risk is real rather than theoretical —
+// a large record's fetch takes longer than the second between polls.
+let newestRequest = 0;
+
+// And its own counter for the list, which is a second poll with a second answer that can arrive out of
+// order. Shared with the record's, a slow record answer would silence a fresh warning — and the warning
+// is the one thing on this page that says the record is incomplete (RUNS-007).
+let newestMissingRequest = 0;
+
 // The five first lines a segment can have, after the time — plus the one a record gets when entries
 // could not be written. A `## ` line that matches none of them is not a boundary: the agent's own
 // text is prose and goes in unfenced, so it may hold one, and treating that as a segment would split
@@ -143,6 +155,8 @@ function element(segment) {
 }
 
 async function refresh() {
+  const request = ++newestRequest;
+
   let response;
   try {
     // no-store, because a polled record answered from the browser's cache is a run that has stopped
@@ -155,7 +169,13 @@ async function refresh() {
   }
 
   if (response.status === 404) {
-    message.textContent = "There is no record for this run.";
+    // A run whose record is not there yet — or was never written at all. Said, and then asked again on
+    // the next poll: the head is written as the run begins, so a page opened in that instant recovers
+    // by itself (RUNS-007).
+    if (request === newestRequest) {
+      message.textContent = "There is no record for this run.";
+    }
+
     return;
   }
 
@@ -163,7 +183,14 @@ async function refresh() {
     return;
   }
 
-  const { frame: head, segments } = split(await response.text());
+  const text = await response.text();
+
+  // An older answer than one already rendered says nothing true about the record now.
+  if (request !== newestRequest) {
+    return;
+  }
+
+  const { frame: head, segments } = split(text);
 
   // The frame is replaced rather than appended to, because it is the one part that grows in place:
   // while the run is under way it is the head alone, and the tail arrives as a segment of its own.
@@ -182,6 +209,8 @@ async function refresh() {
 // How many entries of this run's record could not be written. It comes off the list, which is where
 // the count lives: the figures are state and the record is prose (research.md R-06).
 async function refreshMissing() {
+  const request = ++newestMissingRequest;
+
   let response;
   try {
     response = await fetch("/api/submissions", { cache: "no-store" });
@@ -194,6 +223,13 @@ async function refreshMissing() {
   }
 
   const body = await response.json().catch(() => null);
+
+  // An older answer than one already shown would put back a count that has since risen — hiding a
+  // warning the newest state still calls for.
+  if (request !== newestMissingRequest) {
+    return;
+  }
+
   const mine = body?.submissions?.find((s) => s.id === submission);
 
   // Said only where lines are actually missing. The run went on; a gap that passed for an agent doing
@@ -203,5 +239,16 @@ async function refreshMissing() {
     : "";
 }
 
-refresh();
-refreshMissing();
+// Once a second, the same interval the list uses: there is no push channel, and a run takes minutes,
+// so a second is soon enough to feel live and rare enough to be nothing. Every poll appends only the
+// segments that are not already on the page and never replaces one that is — which is what keeps the
+// scroll where the user put it and a result they have opened open (ACCESS-006, research.md R-08).
+const pollEveryMs = 1000;
+
+function poll() {
+  refresh();
+  refreshMissing();
+}
+
+setInterval(poll, pollEveryMs);
+poll();
