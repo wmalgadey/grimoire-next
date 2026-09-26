@@ -237,34 +237,55 @@ public sealed class RunConductor(
     /// </remarks>
     private async Task AgentStoppedAsync(Guid submissionId, bool endedAbnormally)
     {
-        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        if (Reporting(submissionId) is not { } watched)
         {
             return;
         }
 
+        // Read outside the run's lock. It is the one call on this path that leaves the process, and a
+        // run whose lock was held across it could not be ended while the wiki was slow — the elapsed
+        // ceiling exists for exactly that run (GUARD-004).
         var log = await wiki.ReadAsync(WikiFile.Log, CancellationToken.None).ConfigureAwait(false);
 
-        var decision = run.AgentStopped(new AgentStop(
-            run.IsNamedIn(log),
-            clock.GetUtcNow() - run.StartedAt,
-            run.TokensUsed,
-            endedAbnormally));
+        RunDecision decision;
 
+        lock (watched.Gate)
+        {
+            // The run may have ended while the log was being read — a ceiling reached, or Grimoire
+            // stopped. Deciding anything now would judge a run that is already judged, and nudging
+            // would put an agent back to work on a run Grimoire has ended (RUNS-006).
+            if (HasEnded(submissionId))
+            {
+                return;
+            }
+
+            decision = watched.Run.AgentStopped(new AgentStop(
+                watched.Run.IsNamedIn(log),
+                clock.GetUtcNow() - watched.Run.StartedAt,
+                watched.Run.TokensUsed,
+                endedAbnormally));
+
+            if (decision == RunDecision.Nudge)
+            {
+                // Recorded here, under the lock, so that it lands before the tail rather than after it.
+                // Appended by the hub, which knows it nudged: the CLI does not echo what is written to
+                // its stdin, so the nudge cannot appear twice (RUNS-009, research.md R-03). Written
+                // before it is sent — a send that then fails ends the run, and the tail says so.
+                record.Append(RunMoment.GrimoireSaid(
+                    watched.Run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
+            }
+        }
+
+        // Both of these talk to the agent's process, so neither is done holding the run's lock.
         if (decision == RunDecision.Nudge)
         {
-            await harness.NudgeAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
-
-            // Appended by the hub, which knows it nudged. Never read back off the agent's stream:
-            // measured, the CLI does not echo what is written to its stdin, so the nudge cannot
-            // appear twice (RUNS-009, research.md R-03).
-            record.Append(RunMoment.GrimoireSaid(
-                run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
+            await harness.NudgeAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
             return;
         }
 
         // Done or failed, nothing further is sent. The CLI reads stdin for as long as it is open,
         // so this is also what lets the agent's process end at all — and the run ends there.
-        await harness.NothingFurtherAsync(run.Id, CancellationToken.None).ConfigureAwait(false);
+        await harness.NothingFurtherAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -273,13 +294,28 @@ public sealed class RunConductor(
     /// </summary>
     private void AgentExited(Guid submissionId, int exitCode)
     {
-        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        if (Reporting(submissionId) is not { } watched)
         {
             return;
         }
 
-        var ending = run.Exited(exitCode, clock.GetUtcNow() - run.StartedAt);
+        RunEnding ending;
 
+        lock (watched.Gate)
+        {
+            if (HasEnded(submissionId))
+            {
+                return;
+            }
+
+            // The verdict is taken from fields a cost report also writes, so it is read under the
+            // run's lock like everything else about it.
+            ending = watched.Run.Exited(exitCode, clock.GetUtcNow() - watched.Run.StartedAt);
+        }
+
+        // The lock is given up and taken again. Another ending reaching the run in between — a ceiling
+        // firing at the same moment — simply wins, and this one finds no run to remove: a run ends
+        // once, which is the rule rather than the exception here.
         RunEnded(submissionId, ending.Outcome, ending.Because);
     }
 
