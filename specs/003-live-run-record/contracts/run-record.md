@@ -33,15 +33,27 @@ in-memory adapter at the same port (Constitution III.9).
 | `Append(moment)` | once per moment, in the order it happened | The moment is on disk before the call returns, appended after everything already there |
 | `End(tail)` | once, where the run ends | The tail is appended. A run ends once, so this is called once; a second call appends nothing |
 | `EntriesLost(runId)` | whenever the figures are written | How many of the calls above could not be written for that run |
+| `Read(runId)` | whenever the browser asks for the record | The record as it stands, byte for byte, or nothing where that run has no record. A run still under way answers with the record as far as it goes |
 
 **Every call returns only once the change is on disk.** The same promise `submission-store.md` makes and
 for the same reason: RUNS-004 covers a stop that gives Grimoire no chance to act, so nothing may be
 waiting to be written. A record is only ever appended to, which is the cheapest write there is to make
 survive a stop.
 
-**No read, no delete, no rewrite, no move.** The same shape `IWikiStore` and `ISubmissionStore` have:
-RUNS-007 says a record is never rewritten or removed, so no member exists that could. The browser reads
-the *file*, through the endpoint of [hub-http-api.md](hub-http-api.md), and not through this port.
+**No delete, no rewrite, no move.** The same shape `IWikiStore` and `ISubmissionStore` have: RUNS-007
+says a record is never rewritten or removed, so no member exists that could.
+
+**There is one read, and it is on this port.** This document first said there was none, on the
+reasoning that the browser reads the file. That was wrong, and `003-live-run-record` corrected it while
+building the endpoint: the filesystem is an external system and appears only inside an adapter
+(Constitution V.2), so the endpoint of [hub-http-api.md](hub-http-api.md) cannot open the file itself —
+it asks the port and serves what comes back, unaltered. Reading is not what RUNS-007 forbids; that
+sentence was reasoned from a record never *changing*, which a read does not touch. The member has a
+consumer in the same feature that added it (II.1).
+
+**`Read` is taken under the same lock the writes take.** `File.AppendAllText` is not atomic, so a read
+landing inside one would serve a segment cut in half — or a byte sequence that is not UTF-8 at all — on
+the very poll where the run is most alive. Every answer is a record taken at an append boundary.
 
 **Nothing here throws.** An IO failure — an unwritable directory, a full disk — is caught by the
 adapter, counted, and the run goes on (RUNS-007; the owner's decision in the spec's Clarifications). A
@@ -116,5 +128,11 @@ requirement covers as a list inside it.
   (measured, research.md R-03), so the nudge appears exactly once: appended by the hub, never read back.
 - **The tail where the verdict is taken**, which is the run's process exit or the interrupt — never at a
   `result` (`agent-cli-protocol.md`). A run that is nudged gets no tail at its first `result`.
-- **Nothing is written after the tail.** A run ends once; the conductor removes it, and a later report
-  is a no-op, as it already is for the states.
+- **Nothing is written after the tail.** A run ends once. The conductor removes it, and a later report
+  is a no-op, as it already is for the states — but the guarantee is the *adapter's*: the conductor
+  looks a run up and appends in two steps, so a moment already in flight can arrive after the ending
+  that removed it, and only the adapter knows whether the tail is on disk. Such a moment is dropped and
+  is **not** counted as an entry lost, because no write failed.
+- **A run is ended once its tail is on disk**, not once one was attempted. Marked on the attempt, a tail
+  lost to a full disk could never be written at all, and the record would be missing its tail with
+  nothing able to put one there.

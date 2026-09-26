@@ -307,15 +307,21 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
             // The state first, because it is the one that refuses: a submission already done or failed
             // throws here, and it must throw before anything else about it has been changed.
             submission.Ended(terminal);
+            submission.FiguresAre(tokensUsed, toolCalls, entriesLost);
 
-            var risen = submission.FiguresAre(tokensUsed, toolCalls, entriesLost);
-
-            store.SetState(submissionId, terminal);
-
-            if (risen)
+            // One change on disk, too. Written as a state and then a figure, a stop between the two
+            // would leave a submission reading done or failed beside the figures it had one moment
+            // earlier — and RUNS-010 has the final figures survive exactly that stop.
+            if (submission.RunId is { } run)
             {
-                store.RecordFigures(submission.RunId!.Value, tokensUsed, toolCalls, entriesLost);
+                store.Ended(submissionId, terminal, run, tokensUsed, toolCalls, entriesLost);
+                return;
             }
+
+            // A submission that ends without ever having had a run has no figures to write. Nothing
+            // reaches this today — the board only ends a submission it handed out — and the state still
+            // has to be recorded if anything ever does.
+            store.SetState(submissionId, terminal);
         }
     }
 

@@ -149,6 +149,27 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
         }
     }
 
+    public void Ended(
+        Guid submissionId, SubmissionState terminal, Guid runId, long tokensUsed, int toolCalls, int entriesLost)
+    {
+        lock (gate)
+        {
+            WhileWriting?.Invoke();
+
+            held[submissionId] = held[submissionId] with { State = terminal };
+            runs[runId] = runs[runId] with
+            {
+                TokensUsed = tokensUsed,
+                ToolCalls = toolCalls,
+                EntriesLost = entriesLost,
+            };
+
+            // One entry, because it is one change. Two would say the store had been written twice,
+            // which is exactly what this member exists to stop (RUNS-010).
+            journal?.Record($"{submissionId} ended {terminal} at {tokensUsed}/{toolCalls}/{entriesLost}");
+        }
+    }
+
     public void Acknowledge(Guid submissionId, DateTimeOffset at)
     {
         lock (gate)

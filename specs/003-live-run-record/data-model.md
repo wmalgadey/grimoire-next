@@ -147,15 +147,26 @@ store reads `PRAGMA table_info(runs)` and issues `ALTER TABLE runs ADD COLUMN` f
 not find. No version table and no scripts (research.md R-07). An older file comes back with its
 submissions intact and its figures at zero, which is what a Contract test asserts.
 
-`ISubmissionStore` gains one member:
+`ISubmissionStore` gains two members:
 
 ```text
 void RecordFigures(Guid runId, long tokensUsed, int toolCalls, int entriesLost);
+void Ended(Guid submissionId, SubmissionState terminal, Guid runId,
+           long tokensUsed, int toolCalls, int entriesLost);
 ```
 
-One member for the three, because they are written by the same events and read as one row. Called only
-where a figure has actually risen — `Run.Spent` is already a `Math.Max`, so the store sees two to four
-writes a turn rather than the sixty `stream_event` lines a turn carries (research.md R-06).
+`RecordFigures` is one member for the three, because they are written by the same events and read as one
+row. Called only where a figure has actually risen — `Run.Spent` is already a `Math.Max`, so the store
+sees two to four writes a turn rather than the sixty `stream_event` lines a turn carries (research.md
+R-06).
+
+`Ended` is the ending, and it exists because the ending is **one** change and not two. Written as
+`SetState` and then `RecordFigures`, a stop between them — which RUNS-004 covers, a kill or a power cut
+— would leave a submission reading done or failed beside the figures it had one moment earlier. RUNS-010
+has the figures stand as the run's final ones once it has ended *and* survive a stop, and two changes
+cannot promise both. The board writes it inside the same pass of its own lock in which it sets the
+state, for the same reason one reading up the stack: ACCESS-005 has the state and the figures read as
+one instant, and a reading is only as atomic as the writing behind it.
 
 ## Submission and SubmissionStatus *(changed — `Grimoire.Runs/Submission.cs`)*
 
