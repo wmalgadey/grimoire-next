@@ -74,8 +74,14 @@ public static class RecordText
             _ => throw new ArgumentOutOfRangeException(nameof(moment), moment.Kind, "not one of the four kinds"),
         };
 
+        // The moment's depth as a heading level. A run reads as the agent works: it says what it is
+        // about to do, and the calls it then makes sit inside that, each with its answer inside it.
+        // The nesting is in the file, so an editor, GitHub and the browser show the same shape and
+        // nothing is built at drawing time (RUNS-009, US3).
+        var level = new string('#', 2 + Math.Clamp(moment.Depth, 0, 2));
+
         var text = new StringBuilder();
-        text.Append(CultureInfo.InvariantCulture, $"## {Moment(moment.At)} · {opening}\n\n");
+        text.Append(CultureInfo.InvariantCulture, $"{level} {Moment(moment.At)} · {opening}\n\n");
 
         if (moment.Content is not { } content)
         {
@@ -85,9 +91,15 @@ public static class RecordText
         }
 
         return text
-            .Append(moment.Kind is RunMomentKind.ToolCalled or RunMomentKind.ToolReturned
-                ? Fenced(content)
-                : Prose(content))
+            .Append(moment.Kind switch
+            {
+                // A call's arguments are JSON this hub wrote itself, so the fence says so and a
+                // reader — a person, an editor, or the browser — knows what it is looking at without
+                // guessing. A result is whatever the tool returned and carries no such claim.
+                RunMomentKind.ToolCalled => Fenced(content, "json"),
+                RunMomentKind.ToolReturned => Fenced(content),
+                _ => Prose(content),
+            })
             .Append('\n')
             .ToString();
     }
@@ -104,6 +116,9 @@ public static class RecordText
         var outcome = tail.Outcome == RunOutcome.Done ? "done" : "failed";
 
         text.Append(CultureInfo.InvariantCulture, $"## {Moment(tail.EndedAt)} · ended {outcome} — {Because(tail.EndedBecause)}\n\n");
+
+        // The same two-column table the head is written as, so that the two ends of a record read the
+        // same way wherever they are read.
         text.Append("| | |\n| --- | --- |\n");
         Row(text, "Ended", Moment(tail.EndedAt));
         Row(text, "Elapsed", $"{Duration(tail.Elapsed)} of {Duration(tail.Ceilings.Elapsed)}");
@@ -145,7 +160,7 @@ public static class RecordText
     /// (research.md R-04). Escaping was the alternative, and it changes what the tool returned, which
     /// is the one thing a record must not do.
     /// </remarks>
-    public static string Fenced(string content)
+    public static string Fenced(string content, string? language = null)
     {
         ArgumentNullException.ThrowIfNull(content);
 
@@ -155,7 +170,9 @@ public static class RecordText
         // where it is no fence at all.
         var body = content.EndsWith('\n') ? content : content + "\n";
 
-        return $"{fence}\n{body}{fence}\n";
+        // The name goes on the opening fence only. CommonMark allows no info string on a closing
+        // fence, and the record's reader finds the close by the backticks alone.
+        return $"{fence}{language}\n{body}{fence}\n";
     }
 
     private static int LongestBacktickRun(string content)

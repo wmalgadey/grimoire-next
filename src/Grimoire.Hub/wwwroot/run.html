@@ -19,7 +19,7 @@
 
       /* Monospace, because the content is a log and a file (docs/ux.md). The frame and every result
          keep the record's own line breaks, so what the page shows is what the file holds. */
-      #frame, .prose, .result pre {
+      .prose, .result pre, .frame-table {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 0.875rem;
         margin: 0;
@@ -27,29 +27,76 @@
         word-break: break-word;
       }
       #record { list-style: none; margin: 1.5rem 0 0; padding: 0; }
+      /* Dense and quiet: a call and its result are a few lines, not a card (docs/ux.md, Feel). */
       #record li {
-        border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-        padding: 0.5rem 0;
+        border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+        padding: 0.35rem 0;
       }
+      .when { opacity: 0.45; }
       .heading {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 0.875rem;
         font-weight: 600;
       }
+      /* A section written inside a segment — a result under the call it answers. Indented, because
+         that is what it is in the record itself. */
+      .sub-heading {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.875rem;
+        margin-top: 0.4rem;
+        opacity: 0.75;
+        padding-left: 1rem;
+      }
+      li .sub-heading ~ * { margin-left: 1rem; }
       /* A tool call is one line and its result is folded under it, so the user can follow what the
          run did without reading the results in full and still reach any one of them (ACCESS-006). */
-      .result summary { cursor: pointer; font-size: 0.875rem; opacity: 0.7; }
+      /* The calls of a turn, folded under the sentence that explains them, and each one indented so
+         that the nesting the record writes is the nesting the reader sees (docs/ux.md). */
+      .calls > summary {
+        cursor: pointer;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.875rem;
+        opacity: 0.6;
+      }
+      .call {
+        border-left: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+        margin: 0.3rem 0 0.3rem 0.5rem;
+        padding-left: 0.8rem;
+      }
+
+      /* The fold reads as the terminal's does: a turnstile and a count, indented under its call. */
+      .result summary {
+        cursor: pointer;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.875rem;
+        margin-left: 1.2rem;
+        opacity: 0.6;
+      }
+      .result pre { margin-left: 1.2rem; }
       .result pre {
         background: color-mix(in srgb, currentColor 6%, transparent);
         margin-top: 0.4rem;
         overflow-x: auto;
         padding: 0.5rem;
       }
-      #frame {
+      /* The head and the tail are the same table and are shown the same way, wherever they sit. */
+      .frame {
         background: color-mix(in srgb, currentColor 6%, transparent);
+        margin-top: 0.4rem;
         overflow-x: auto;
         padding: 0.75rem;
       }
+      /* The run's frame, read as the two-column table the record writes it as. Still monospace, and
+         still the file's own content — only the pipes and dashes are gone (docs/ux.md). */
+      .frame-title { font-weight: 600; margin-bottom: 0.6rem; }
+      .frame-table { border-collapse: collapse; }
+      .frame-table th,
+      .frame-table td {
+        padding: 0.1rem 1rem 0.1rem 0;
+        text-align: left;
+        vertical-align: top;
+      }
+      .frame-table th { font-weight: 400; opacity: 0.7; white-space: nowrap; }
     </style>
   </head>
   <body>
@@ -61,7 +108,7 @@
 
     <!-- The frame: everything before the record's first segment. The head while the run is under
          way, and the head plus the tail once it has ended (RUNS-008). -->
-    <pre id="frame"></pre>
+    <div id="frame"></div>
 
     <!-- One element per moment, appended as they arrive and never replaced — which is what keeps the
          scroll where the user put it and a result they have opened open (ACCESS-006). -->

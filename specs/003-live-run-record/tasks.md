@@ -289,30 +289,30 @@ rather than work of its own", and what it adds is the two assertions nothing els
 
 **Branch**: `003-live-run-record-phase-6-closing`
 
-- [ ] T046 Run `/speckit-converge` once for this feature and classify every finding before acting:
+- [X] T046 Run `/speckit-converge` once for this feature and classify every finding before acting:
       code defect → a task here; spec defect → `/speckit-clarify`; else dropped. `tasks.md` has no
       converge task of its own, and Governance 2 requires one run — **Req:** Principle Gov.2
-- [ ] T047 Run the Contract and E2E suites; both pass, Contract within its 90 s budget. The default
+- [X] T047 Run the Contract and E2E suites; both pass, Contract within its 90 s budget. The default
       run is Fast only, so this is the one place they are exercised before the PR — **Req:** Principle III.7
-- [ ] T048 Run `trace-check`; it passes, including `--complete` on the PR to main — every `test`
+- [X] T048 Run `trace-check`; it passes, including `--complete` on the PR to main — every `test`
       requirement of this feature has a test, and no test carries a retired ID — **Req:** Principle IV.3
-- [ ] T049 Reconcile `docs/capabilities/runs.md` and `access.md` with what shipped, as added, changed
+- [X] T049 Reconcile `docs/capabilities/runs.md` and `access.md` with what shipped, as added, changed
       or removed; ACCESS-002 stays under "Retired" with its ID — **Req:** Principle IV.2
-- [ ] T050 Regenerate and commit `docs/trace.md` — **Req:** Principle IV.4
-- [ ] T051 Merge this plan's eight binding decisions into `docs/decisions.md` as DEC-026…DEC-033, each
+- [X] T050 Regenerate and commit `docs/trace.md` — **Req:** Principle IV.4
+- [X] T051 Merge this plan's eight binding decisions into `docs/decisions.md` as DEC-026…DEC-033, each
       with its reason and "Made by: plan `003-live-run-record`". The one that departs from DEC-023's
       "two tables that do not change shape" says so — **Req:** Principle II.6
-- [ ] T052 Walk `docs/review-checklist.md` — **Req:** Principle Gov.2
+- [X] T052 Walk `docs/review-checklist.md` — **Req:** Principle Gov.2
 - [ ] T053 Classify the survivors from the mutation artifact of the PR to main into
       `specs/003-live-run-record/mutation.md`: per survivor, the test that should have killed it and
       does not, or the reason none should. A survivor becomes a test only where it names a requirement
       the suite does not actually verify. Nothing here is a threshold and nothing is run locally —
       **Req:** Principle III.1
-- [ ] T054 Set OUT-02 **and OUT-16** to Done and name the next Now, in **one** edit to
+- [X] T054 Set OUT-02 **and OUT-16** to Done and name the next Now, in **one** edit to
       `docs/product.md`, together with the spec reference — and move OUT-16 into this feature's row.
       One edit, so exactly one outcome is Now at every commit (Constitution IV.4, I.1). Only after
       T055 — **Req:** Principle IV.4
-- [ ] T055 The owner exercises OUT-02 and OUT-16 once with the real external systems in place, per
+- [X] T055 The owner exercises OUT-02 and OUT-16 once with the real external systems in place, per
       `plan.md` §Quickstart and [quickstart.md](quickstart.md) Part 1: a real wiki, a signed-in
       `claude`, a pinned model, no stand-ins. **This is the last task of the feature; without it the
       feature is not done** — **Req:** Principle I.9
@@ -380,3 +380,36 @@ only `003-live-run-record` merges to `main`, when the feature is done (I.9).
 - A review finding becomes a test only if it names a violated requirement ID (Governance 3); otherwise
   it becomes the smallest code change that resolves it, or is dropped. Findings are answered on the
   PR, never silently dropped.
+
+---
+
+## Phase 7: Convergence
+
+Found by `/speckit-converge` (T046) after phases 2–5 had merged. No CRITICAL or HIGH finding:
+every requirement of this feature is implemented and proven, and no constitution MUST is
+violated by the code. What follows is one requirement clause with no cover, two things the
+documents do not say, and one test that pins wording III.8 says is not pinned.
+
+- [X] T056 Add an E2E test that opens a run whose record could not hold everything and finds the
+      view saying lines are missing, per ACCESS-006 (missing). `entriesLost` and `#missing` appear
+      in no E2E test today: the response field is proven in the Fast suite and the count on the run
+      in both Fast and Contract, but nothing drives the browser half — and research.md R-11 puts
+      what the browser must *show* at E2E, as it does for every other half of ACCESS-005 and
+      ACCESS-006. The E2E hub writes real records, so the test needs a record that fails to write;
+      `DrivableHarness` cannot make one today — **Req:** ACCESS-006 | **Level:** E2E — **Why not lower:** the sentence is rendered by `run.js` from the list's `entriesLost`, and no in-process test reaches what a browser renders
+- [X] T057 Give each row's link to a run an accessible name that says which run it opens, per
+      ACCESS-006 and `docs/ux.md` (partial). Every row's link is named "Open", so a list of runs
+      reads as "Open, Open, Open" to anything that announces links out of context. No identifier is
+      rendered, then or now — the opening of the submitted text is what tells one row from another
+      (ACCESS-004) — **Req:** ACCESS-006 | Principle: `docs/ux.md` binds anything with a UI
+- [X] T058 Say in `docs/capabilities/runs.md` and `specs/003-live-run-record/contracts/run-record.md`
+      what the tail holds when the CLI never reported a breakdown, per RUNS-008 (partial). Per-model
+      tokens come only from a `result`'s `modelUsage`; a run stopped at a ceiling before its first
+      `result` has none, so the tail shows the total against the ceiling and no model rows. The head
+      still names the model the run ran on. Nothing is invented to fill the gap — attributing the
+      whole total to the dispatched model would claim the CLI's own background calls were made on it
+      — **Req:** RUNS-008 | Principle IV.2
+- [X] T059 Assert the count without the sentence in `MarkdownRunRecordTests`, per Constitution III.8
+      (contradicts). `Assert.Contains("2 entries", text)` pins the record's wording, and III.8 says
+      the wording of the record's headings is not tested — what is tested is that each part is there,
+      in order, and whole. The count is the substance — **Req:** Principle III.8

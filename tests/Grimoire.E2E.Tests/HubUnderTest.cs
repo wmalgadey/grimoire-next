@@ -126,6 +126,9 @@ internal sealed class HubUnderTest : IAsyncDisposable
     /// </summary>
     private readonly bool ownsTheDirectory;
 
+    /// <summary>Records this fixture made unwritable, so that it can undo it before cleaning up.</summary>
+    private readonly List<string> madeReadOnly = [];
+
     private HubUnderTest(WebApplication app, DrivableHarness agent, string directory, string address, bool ownsTheDirectory)
     {
         this.app = app;
@@ -237,6 +240,25 @@ internal sealed class HubUnderTest : IAsyncDisposable
     }
 
     /// <summary>
+    /// Make this run's record refuse every further write, the way a full disk or a permission does.
+    /// </summary>
+    /// <remarks>
+    /// The E2E hub writes real records through <c>MarkdownRunRecord</c>, so the only way to lose an
+    /// entry here is to make the real filesystem refuse one. The file is left readable, so the page
+    /// still shows the run as far as it got — which is the case ACCESS-006 is about: a record with a
+    /// gap in it, and the view saying so (RUNS-007).
+    /// </remarks>
+    public void StopTheRecordBeingWritten()
+    {
+        var record = Directory.GetFiles(Path.Combine(StateDirectory, "runs"), "*.md").Single();
+
+        // SetAttributes rather than SetUnixFileMode: the latter is not supported on Windows, and a
+        // test helper that only builds on some of them is a suite that only runs on some of them.
+        File.SetAttributes(record, FileAttributes.ReadOnly);
+        madeReadOnly.Add(record);
+    }
+
+    /// <summary>
     /// One run's record as the endpoint answers it, unaltered. Read as bytes and not as text: what
     /// ACCESS-006 promises is the file's bytes, and a string comparison would pass on a response that
     /// had been re-encoded, reordered or had its blank lines dropped.
@@ -256,6 +278,14 @@ internal sealed class HubUnderTest : IAsyncDisposable
     {
         client.Dispose();
         await app.DisposeAsync().ConfigureAwait(false);
+
+        // What was made unwritable is made writable again before the directory goes. A read-only file
+        // is not always one a recursive delete can remove, and a fixture that leaves the suite unable
+        // to clean up after itself has failed after its assertions passed.
+        foreach (var record in madeReadOnly)
+        {
+            File.SetAttributes(record, FileAttributes.Normal);
+        }
 
         if (ownsTheDirectory)
         {
