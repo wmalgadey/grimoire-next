@@ -8,6 +8,12 @@ The record is Grimoire's own bookkeeping and is **never inside the wiki** (Invar
 reasoning). `Program.cs` already refuses a `--state` directory inside the wiki, and the records inherit
 that guard.
 
+> **Amended 2026-09-26**, after this feature closed, by the GUARD-004 cost fix: the cost ceiling
+> counts input-token equivalents rather than raw tokens (`001-first-ingest` research.md R-15,
+> DEC-015). This document is amended rather than left as written, because it is the only description
+> of the record's shape there is; the requirement changes themselves are recorded in `../spec.md`
+> under "Changed after this feature closed". Everything the amendment touches is named there.
+
 ---
 
 ## Where a record lives

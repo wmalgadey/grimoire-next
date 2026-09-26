@@ -10,6 +10,12 @@ The page is static content the hub serves from `wwwroot/` — no build step (DEC
 pages: the list, and a page that shows one run's record. Both call the endpoints below with `fetch` and
 poll.
 
+> **Amended 2026-09-26**, after this feature closed, by the GUARD-004 cost fix: the cost ceiling
+> counts input-token equivalents rather than raw tokens (`001-first-ingest` research.md R-15,
+> DEC-015). This document is amended rather than left as written, because it is the only description
+> of this API's shape there is; the requirement changes themselves are recorded in `../spec.md`
+> under "Changed after this feature closed". Everything the amendment touches is named there.
+
 ## What changed in this feature
 
 | Change | Why |

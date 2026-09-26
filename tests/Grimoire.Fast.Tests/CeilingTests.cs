@@ -85,6 +85,7 @@ public sealed class CeilingTests
         // Five times the ceiling in raw tokens, and half of it in cost. A run that reads a large
         // cache back turn after turn is the cheapest thing the CLI does, and the raw sum used to
         // stop it — which measured turns × context size and not what the run cost (GUARD-004).
+        // The output run below costs twice this and the raw sum let it through.
         var reads = new ModelTokens(0, 0, 10_000_000, 0);
 
         Assert.Equal(1_000_000, Ceilings.CostOf(reads));
@@ -95,7 +96,8 @@ public sealed class CeilingTests
     public void Run_ReachesACeiling_WithFourHundredThousandOutputTokens()
     {
         // A fifth of the ceiling in raw tokens, and the whole of it in cost. Output is the dearest
-        // of the four classes and the raw sum let it run five times as far as the money allows.
+        // of the four classes, so the raw sum let this run five times as far as it should — while
+        // stopping the ten million cache reads above, which cost half as much.
         var written = new ModelTokens(0, 400_000, 0, 0);
 
         Assert.Equal(2_000_000, Ceilings.CostOf(written));
