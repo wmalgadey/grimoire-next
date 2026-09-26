@@ -80,6 +80,10 @@ Markdown. **The wording is the adapter's and is not part of this contract** — 
    and at least three; its closing fence is a run of the same length at column one. This is CommonMark's
    own rule, and it is what makes a result containing a fence — which a run reading wiki pages full of
    code will produce — unambiguous without altering a byte of it (research.md R-04).
+   **The opening fence may name what it holds** — `json` for a call's arguments, which the hub writes
+   itself and therefore knows. A result carries no such name: it is whatever the tool returned, and a
+   name would be a guess. A reader takes the name as a hint and nothing more, and finds the close by the
+   backticks alone, which is where CommonMark allows no name at all.
 4. **A line that starts with `## ` inside a fenced block is not a segment boundary.** A reader finds the
    fence first and skips to its close. This is the one rule a naive split would get wrong, and it is why
    rule 3 is a promise and not a detail.

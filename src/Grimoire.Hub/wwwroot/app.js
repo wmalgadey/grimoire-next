@@ -119,6 +119,17 @@ function ensureRunParts(item, submission) {
   const calls = document.createElement("span");
   calls.className = "figure calls";
 
+  // What each figure is. On one line the column said it; wrapped onto a second, two bare numbers say
+  // nothing (docs/ux.md: never a number on a screen the user cannot make sense of). The labels are
+  // their own elements, so each figure still holds nothing but the number.
+  const tokenUnit = document.createElement("span");
+  tokenUnit.className = "unit";
+  tokenUnit.textContent = "tokens";
+
+  const callUnit = document.createElement("span");
+  callUnit.className = "unit";
+  callUnit.textContent = "tool calls";
+
   // The record is a second job, so it is a page of its own — which gives the back button and a
   // shareable URL for nothing (ACCESS-006, research.md R-08). The link carries the submission's
   // identifier, never the run's.
@@ -133,7 +144,7 @@ function ensureRunParts(item, submission) {
   // link too. Still no identifier — neither the submission's nor the run's.
   open.setAttribute("aria-label", `Open the run for: ${submission.excerpt}`);
 
-  item.append(" ", model, " ", tokens, " ", calls, " ", open);
+  item.append(" ", model, " ", tokens, " ", tokenUnit, " ", calls, " ", callUnit, " ", open);
 }
 
 function textOf(element, words) {

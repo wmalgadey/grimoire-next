@@ -19,7 +19,7 @@
 
       /* Monospace, because the content is a log and a file (docs/ux.md). The frame and every result
          keep the record's own line breaks, so what the page shows is what the file holds. */
-      #frame, .prose, .result pre {
+      #frame, .prose, .result pre, .frame-table {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 0.875rem;
         margin: 0;
@@ -50,6 +50,17 @@
         overflow-x: auto;
         padding: 0.75rem;
       }
+      /* The run's frame, read as the two-column table the record writes it as. Still monospace, and
+         still the file's own content — only the pipes and dashes are gone (docs/ux.md). */
+      .frame-title { font-weight: 600; margin-bottom: 0.6rem; }
+      .frame-table { border-collapse: collapse; }
+      .frame-table th,
+      .frame-table td {
+        padding: 0.1rem 1rem 0.1rem 0;
+        text-align: left;
+        vertical-align: top;
+      }
+      .frame-table th { font-weight: 400; opacity: 0.7; white-space: nowrap; }
     </style>
   </head>
   <body>
@@ -61,7 +72,7 @@
 
     <!-- The frame: everything before the record's first segment. The head while the run is under
          way, and the head plus the tail once it has ended (RUNS-008). -->
-    <pre id="frame"></pre>
+    <div id="frame"></div>
 
     <!-- One element per moment, appended as they arrive and never replaced — which is what keeps the
          scroll where the user put it and a result they have opened open (ACCESS-006). -->

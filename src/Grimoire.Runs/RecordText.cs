@@ -85,9 +85,15 @@ public static class RecordText
         }
 
         return text
-            .Append(moment.Kind is RunMomentKind.ToolCalled or RunMomentKind.ToolReturned
-                ? Fenced(content)
-                : Prose(content))
+            .Append(moment.Kind switch
+            {
+                // A call's arguments are JSON this hub wrote itself, so the fence says so and a
+                // reader — a person, an editor, or the browser — knows what it is looking at without
+                // guessing. A result is whatever the tool returned and carries no such claim.
+                RunMomentKind.ToolCalled => Fenced(content, "json"),
+                RunMomentKind.ToolReturned => Fenced(content),
+                _ => Prose(content),
+            })
             .Append('\n')
             .ToString();
     }
@@ -145,7 +151,7 @@ public static class RecordText
     /// (research.md R-04). Escaping was the alternative, and it changes what the tool returned, which
     /// is the one thing a record must not do.
     /// </remarks>
-    public static string Fenced(string content)
+    public static string Fenced(string content, string? language = null)
     {
         ArgumentNullException.ThrowIfNull(content);
 
@@ -155,7 +161,9 @@ public static class RecordText
         // where it is no fence at all.
         var body = content.EndsWith('\n') ? content : content + "\n";
 
-        return $"{fence}\n{body}{fence}\n";
+        // The name goes on the opening fence only. CommonMark allows no info string on a closing
+        // fence, and the record's reader finds the close by the backticks alone.
+        return $"{fence}{language}\n{body}{fence}\n";
     }
 
     private static int LongestBacktickRun(string content)

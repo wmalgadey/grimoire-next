@@ -37,7 +37,10 @@ public sealed class RunRecordViewTests : PageTest
         hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
         hub.Agent.Returned(submission, "read_page", ALongResult);
         hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
-        hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
+        // A call with no arguments at all, which is what a listing tool makes. Its block is the
+        // shortest a record can hold, and a reader that mistakes its closing fence for an opening one
+        // swallows the segment behind it.
+        hub.Agent.Called(submission, "list_pages", "{}");
         hub.Agent.End(submission, RunOutcome.Done);
 
         await Page.GotoAsync(hub.Address);
@@ -49,16 +52,26 @@ public sealed class RunRecordViewTests : PageTest
         await Expect(Page.Locator("#frame")).ToContainTextAsync("claude-opus-4-5-20251101");
         await Expect(Page.Locator("#frame")).ToContainTextAsync("Granted tools");
 
-        // Then what the run did, in the order it happened, and the tail last.
-        await Expect(Segments()).ToHaveCountAsync(5);
+        // Then what the run did, in the order it happened, and the tail last. A call and what it
+        // returned are one entry — one question and its answer — so four entries carry five moments.
+        await Expect(Segments()).ToHaveCountAsync(4);
         await Expect(Heading(0)).ToContainTextAsync("called read_page");
-        await Expect(Heading(1)).ToContainTextAsync("read_page returned");
-        await Expect(Heading(2)).ToContainTextAsync("the agent");
-        await Expect(Heading(3)).ToContainTextAsync("called write_page");
-        await Expect(Heading(4)).ToContainTextAsync("ended done");
+        await Expect(Heading(1)).ToContainTextAsync("the agent");
+        await Expect(Heading(2)).ToContainTextAsync("called list_pages");
+        await Expect(Heading(3)).ToContainTextAsync("ended done");
+
+
+        // The call carries both halves, each folded and each named.
+        await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(2);
+        await Expect(Segments().Nth(0).Locator("summary").Nth(0)).ToContainTextAsync("arguments");
+        await Expect(Segments().Nth(0).Locator("summary").Nth(1)).ToContainTextAsync("returned");
 
         // The agent's own text is prose and is simply there.
-        await Expect(Segments().Nth(2)).ToContainTextAsync("I will add the date.");
+        await Expect(Segments().Nth(1)).ToContainTextAsync("I will add the date.");
+
+        // And the tail is the record's second two-column table, read as a table rather than as pipes.
+        await Expect(Segments().Nth(3).Locator("table.frame-table")).ToHaveCountAsync(1);
+        await Expect(Segments().Nth(3)).ToContainTextAsync("Elapsed");
     }
 
     [Fact]
@@ -75,7 +88,8 @@ public sealed class RunRecordViewTests : PageTest
 
         await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
 
-        var result = Segments().Nth(1).Locator("details.result");
+        // The result sits in the entry of the call it answers, as its second folded block.
+        var result = Segments().Nth(0).Locator("details.result").Nth(1);
 
         // Folded: the user can follow what the run did without reading the results in full.
         await Expect(result.Locator("pre")).Not.ToBeVisibleAsync();
@@ -104,10 +118,11 @@ public sealed class RunRecordViewTests : PageTest
         await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
 
         // The result holds `## Ada Lovelace` at column one. A reader finds the fence first and skips
-        // to its close, so that line is no boundary and the result stays one segment
-        // (contracts/run-record.md, rule 4). Three segments: the call, its result, the tail.
-        await Expect(Segments()).ToHaveCountAsync(3);
-        await Expect(Heading(1)).ToContainTextAsync("read_page returned");
+        // to its close, so that line is no boundary and the result stays one moment
+        // (contracts/run-record.md, rule 4). Two entries: the call with its answer, and the tail.
+        await Expect(Segments()).ToHaveCountAsync(2);
+        await Expect(Heading(0)).ToContainTextAsync("called read_page");
+        await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(2);
     }
 
     [Fact]
@@ -150,10 +165,11 @@ public sealed class RunRecordViewTests : PageTest
         hub.Agent.Returned(submission, "read_page", ALongResult);
 
         await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
-        await Expect(Segments()).ToHaveCountAsync(2);
+        await Expect(Segments()).ToHaveCountAsync(1);
 
-        // The user opens the result and reads it. The run is still under way.
-        var result = Segments().Nth(1).Locator("details.result");
+        // The user opens the result and reads it — the second block of the call's own entry. The run
+        // is still under way.
+        var result = Segments().Nth(0).Locator("details.result").Nth(1);
         await result.Locator("summary").ClickAsync();
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
 
@@ -165,7 +181,7 @@ public sealed class RunRecordViewTests : PageTest
             hub.Agent.Said(submission, $"Reading page {i}. {new string('x', 2_000)}");
         }
 
-        await Expect(Segments()).ToHaveCountAsync(14);
+        await Expect(Segments()).ToHaveCountAsync(13);
 
         // The user scrolls to where they were reading and stays there. Scrolled through the document
         // rather than with the wheel: a wheel event is delivered and applied asynchronously, and on a
@@ -176,17 +192,17 @@ public sealed class RunRecordViewTests : PageTest
 
         Assert.True(scrolledTo > 0, "the page did not scroll, so there is no scroll position to keep");
 
-        var openedBefore = await Segments().Nth(1).BoundingBoxAsync();
+        var openedBefore = await Segments().Nth(0).BoundingBoxAsync();
 
         // More happens while the page is left open. The page polls; nothing is pushed to it.
         hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
         hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
 
-        await Expect(Segments()).ToHaveCountAsync(16);
+        await Expect(Segments()).ToHaveCountAsync(15);
 
         // Below what was already there, in the order it happened.
-        await Expect(Heading(14)).ToContainTextAsync("the agent");
-        await Expect(Heading(15)).ToContainTextAsync("called write_page");
+        await Expect(Heading(13)).ToContainTextAsync("the agent");
+        await Expect(Heading(14)).ToContainTextAsync("called write_page");
 
         // The scroll is where the user left it. This is the assertion T040 is actually about, and a
         // bounding box cannot make it: that is a layout coordinate, and it would hold even if the
@@ -197,15 +213,15 @@ public sealed class RunRecordViewTests : PageTest
         // already on the page is never replaced, which is what makes both true (ACCESS-006).
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
 
-        var openedAfter = await Segments().Nth(1).BoundingBoxAsync();
+        var openedAfter = await Segments().Nth(0).BoundingBoxAsync();
         Assert.Equal(openedBefore!.Y, openedAfter!.Y);
         Assert.Equal(openedBefore.Height, openedAfter.Height);
 
         // The run then ends while the page is still open, and the tail arrives the same way.
         hub.Agent.End(submission, RunOutcome.Done);
 
-        await Expect(Segments()).ToHaveCountAsync(17);
-        await Expect(Heading(16)).ToContainTextAsync("ended done");
+        await Expect(Segments()).ToHaveCountAsync(16);
+        await Expect(Heading(15)).ToContainTextAsync("ended done");
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
         Assert.Equal(scrolledTo, await Page.EvaluateAsync<double>("window.scrollY"));
     }

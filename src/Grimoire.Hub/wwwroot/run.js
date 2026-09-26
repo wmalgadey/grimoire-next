@@ -41,9 +41,12 @@ const openings = [
   /^\d+ entries of this run could not be written$/,
 ];
 
-// A line that is nothing but backticks, at column one. The record's fences are always a run of their
-// own on a line, which is what makes them findable without parsing Markdown.
-const fenceLine = /^(`{3,})\s*$/;
+// A fence at column one. The opening one may name what it holds — the record says `json` for a call's
+// arguments, which it writes itself — and CommonMark allows no such name on the closing fence, so the
+// close is found by the backticks alone. The record's fences are always a run of their own on a line,
+// which is what makes them findable without parsing Markdown.
+const openingFence = /^(`{3,})([^`]*)$/;
+const closingFence = /^(`{3,})\s*$/;
 
 // What a segment's first line says it is, after the time — or null where the line is no boundary at
 // all. The agent's own text is prose and goes in unfenced, so it may hold a `## ` line of its own;
@@ -81,7 +84,7 @@ function split(text) {
   let openFence = 0;
 
   for (const line of text.split("\n")) {
-    const fence = fenceLine.exec(line);
+    const fence = openFence === 0 ? openingFence.exec(line) : closingFence.exec(line);
 
     if (openFence === 0 && fence) {
       openFence = fence[1].length;
@@ -104,54 +107,205 @@ function split(text) {
 // What the one fenced block of a segment holds, or null where the segment is prose. Byte for byte:
 // the fences come off and nothing between them is touched.
 function fencedIn(body) {
-  const opening = body.findIndex((line) => fenceLine.test(line));
+  const opening = body.findIndex((line) => openingFence.test(line));
   if (opening < 0) {
     return null;
   }
 
-  const length = body[opening].trim().length;
+  const length = openingFence.exec(body[opening])[1].length;
   const closing = body.findIndex(
-    (line, at) => at > opening && fenceLine.test(line) && line.trim().length >= length,
+    (line, at) => at > opening && closingFence.test(line) && line.trim().length >= length,
   );
 
   return body.slice(opening + 1, closing < 0 ? body.length : closing).join("\n");
 }
 
-// One element per moment. A call and a result are one line with the block folded under them, so the
-// user can follow what the run did without reading the results in full and still reach any one of
-// them; the agent's own text and what Grimoire said are prose and are simply shown (ACCESS-006).
+// JSON laid out to be read. The record holds what the tool returned or what the hub sent, byte for
+// byte, and that is a single line with every newline and every non-ASCII character escaped — correct
+// in the file and close to unreadable on a screen. Laid out here and only here: the file is untouched
+// and the endpoint still serves it unaltered.
+//
+// A string holding newlines is written under its key as a block rather than on one escaped line,
+// because that string is usually the whole point — a wiki page a tool returned.
+function asReadableJson(text) {
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    // Not JSON. Whatever it is, it goes on the screen as it stands.
+    return null;
+  }
+
+  // A bare string or number gains nothing from being laid out, and a bare string that happens to
+  // parse — `"42"` — would come back with its quotes stripped, which is not what the record holds.
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+
+  return laidOut(value, "");
+}
+
+function laidOut(value, indent) {
+  const inner = `${indent}  `;
+
+  if (Array.isArray(value)) {
+    return value.length === 0
+      ? "[]"
+      : `[\n${value.map((v) => `${inner}${laidOut(v, inner)}`).join(",\n")}\n${indent}]`;
+  }
+
+  if (value !== null && typeof value === "object") {
+    const keys = Object.keys(value);
+
+    return keys.length === 0
+      ? "{}"
+      : `{\n${keys
+          .map((k) => `${inner}${JSON.stringify(k)}: ${laidOut(value[k], inner)}`)
+          .join(",\n")}\n${indent}}`;
+  }
+
+  if (typeof value === "string" && value.includes("\n")) {
+    // The text itself, one line per line, indented under its key. Its escapes are already gone —
+    // `JSON.parse` undid them — so an umlaut is an umlaut again.
+    return `\n${value
+      .split("\n")
+      .map((line) => `${inner}${line}`)
+      .join("\n")}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+// The head, as something to read rather than as pipes and dashes. The record writes the run's frame as
+// a two-column table, which is right for a file — an editor renders it — and is noise on a screen that
+// shows the file as text.
+//
+// This reads the record's own shape and nothing else: a row is a line that starts and ends with a bar,
+// and the row of dashes under the header is skipped. It is not a Markdown renderer, which DEC-019
+// rules out; it is the same kind of reading `split` already does for the segments, and anything it
+// does not recognise is left as the text it is.
+function framed(text) {
+  const lines = text.split("\n");
+  const rows = lines
+    .filter((line) => line.startsWith("|") && line.endsWith("|"))
+    .map((line) => line.slice(1, -1).split("|").map((cell) => cell.trim()))
+    .filter((cells) => cells.length === 2 && !cells.every((cell) => /^-+$/.test(cell)));
+
+  if (rows.length === 0) {
+    // Nothing that reads as one of the record's tables. Whatever it is, it goes on the screen as the
+    // text it is.
+    const asText = document.createElement("div");
+    asText.className = "prose";
+    asText.textContent = text.trim();
+    return [asText];
+  }
+
+  const shown = [];
+  const before = lines.filter((line) => !line.startsWith("|")).join("\n").trim();
+
+  if (before.length > 0) {
+    const title = document.createElement("div");
+    title.className = "frame-title";
+    title.textContent = before;
+    shown.push(title);
+  }
+
+  const table = document.createElement("table");
+  table.className = "frame-table";
+
+  for (const [name, value] of rows) {
+    const row = document.createElement("tr");
+
+    const key = document.createElement("th");
+    key.scope = "row";
+    key.textContent = name;
+
+    const held = document.createElement("td");
+    held.textContent = value;
+
+    row.append(key, held);
+    table.append(row);
+  }
+
+  shown.push(table);
+  return shown;
+}
+
+// A fenced block, folded. One per call: its arguments, and what it returned.
+function folded(label, content) {
+  const block = document.createElement("details");
+  block.className = "result";
+
+  const summary = document.createElement("summary");
+  const lines = content.split("\n").length;
+  summary.textContent = `${label} — ${lines} ${lines === 1 ? "line" : "lines"}`;
+
+  const text = document.createElement("pre");
+  text.textContent = asReadableJson(content) ?? content;
+
+  block.append(summary, text);
+  return block;
+}
+
+/// Which tool a segment's first line is about, or null where it is about none.
+function toolOf(said) {
+  if (said.startsWith("called ")) {
+    return said.slice("called ".length);
+  }
+
+  return said.endsWith(" returned") ? said.slice(0, -" returned".length) : null;
+}
+
+// One element per tool call — the call and what it returned together, because they are one thing the
+// run did: a question and its answer. The record keeps them as two moments in the order they happened
+// (RUNS-009); pairing them is the page's reading of that, not a change to what is written.
+//
+// The agent's own text and what Grimoire said are prose and are simply shown. The frame's tail holds
+// the same kind of two-column table the head does, and is read the same way.
 function element(segment) {
   const item = document.createElement("li");
 
   const heading = document.createElement("div");
   heading.className = "heading";
+
+  // The record's own first line, unchanged. A call keeps "called X" as its heading and gains the
+  // answer beneath it, so an entry reads as the question it was and then what came back.
   heading.textContent = segment.heading;
   item.append(heading);
+
+  const tool = toolOf(segment.said);
 
   const fenced = isFenced(segment.said) ? fencedIn(segment.body) : null;
 
   if (fenced === null) {
-    const prose = document.createElement("div");
-    prose.className = "prose";
-
-    // textContent, never innerHTML: this is what the agent wrote and what a tool returned.
-    prose.textContent = segment.body.join("\n").trim();
-    item.append(prose);
+    // Prose, or one of the record's tables — the tail is a table just as the head is.
+    item.append(...framed(segment.body.join("\n")));
     return item;
   }
 
-  const folded = document.createElement("details");
-  folded.className = "result";
+  if (segment.said.startsWith("called ")) {
+    // Named as waiting, so the result that follows knows the entry it belongs in.
+    item.dataset.awaiting = tool;
+  }
 
-  const label = document.createElement("summary");
-  label.textContent = `${fenced.split("\n").length} lines`;
-
-  const block = document.createElement("pre");
-  block.textContent = fenced;
-
-  folded.append(label, block);
-  item.append(folded);
+  item.append(folded(segment.said.startsWith("called ") ? "arguments" : "returned", fenced));
   return item;
+}
+
+// Where a result belongs: inside the entry of the call it answers, if that call is the last thing on
+// the page and is still waiting. Appended to it — never replacing what is there, which is what keeps
+// the scroll and an opened block where the user put them (ACCESS-006).
+function resultBelongsTo(segment) {
+  if (!segment.said.endsWith(" returned")) {
+    return null;
+  }
+
+  const last = record.lastElementChild;
+  if (last === null || last.dataset.awaiting !== toolOf(segment.said)) {
+    return null;
+  }
+
+  return last;
 }
 
 async function refresh() {
@@ -194,12 +348,22 @@ async function refresh() {
 
   // The frame is replaced rather than appended to, because it is the one part that grows in place:
   // while the run is under way it is the head alone, and the tail arrives as a segment of its own.
-  frame.textContent = head;
+  frame.replaceChildren(...framed(head));
 
   // Appended, and only what is not already there. An element already on the page is never replaced,
-  // which is what keeps the scroll where the user left it and a result they had opened open.
+  // which is what keeps the scroll where the user left it and a result they had opened open. A result
+  // is appended *into* the entry of the call it answers, which is an addition and not a replacement.
   for (const segment of segments.slice(shown)) {
-    record.append(element(segment));
+    const answers = resultBelongsTo(segment);
+
+    if (answers === null) {
+      record.append(element(segment));
+      continue;
+    }
+
+    const fenced = fencedIn(segment.body);
+    answers.append(fenced === null ? framed(segment.body.join("\n"))[0] : folded("returned", fenced));
+    delete answers.dataset.awaiting;
   }
 
   shown = segments.length;
