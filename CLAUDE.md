@@ -125,4 +125,7 @@ Three bounded contexts plus a composition root (`plan.md`, Structure Decision). 
 One feature branch off `main`; each phase of `tasks.md` is a branch off the feature branch, merged back when its PR is reviewed and green, before the next phase starts. No PR based on another open PR, PRs stay drafts until their phase is complete, and nothing of a feature reaches `main` before the whole feature is done (I.9, I.10). The instruction under `instructions/` is Grimoire's own: changing it is an owner decision and must be named in the PR description.
 
 <!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+at specs/003-live-run-record/plan.md
 <!-- SPECKIT END -->
