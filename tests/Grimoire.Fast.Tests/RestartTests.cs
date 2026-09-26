@@ -76,6 +76,53 @@ public sealed class RestartTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-008")]
+    [Trait("req", "RUNS-004")]
+    public async Task Restart_EndsTheRecordOfTheRunThatWasInProgress()
+    {
+        // A stop Grimoire is given the chance to act on writes the tail as the run ends. A kill or a
+        // power cut does not, and then this restart is the next moment Grimoire has: without a tail
+        // here the row would read failed beside a record that never says the run ended, let alone
+        // why — the one reason of RUNS-008's seven that only a restart can write.
+        var running = await SubmittedAsync("The text being worked when Grimoire was killed.");
+        before.Harness.ReportIn(running.Id);
+        before.Harness.Spend(running.Id, new Dictionary<string, ModelTokens>(StringComparer.Ordinal)
+        {
+            [FastHub.Model] = new(InputTokens: 12_000, OutputTokens: 400, 0, 0),
+        });
+
+        var runId = In(before, running.Id).RunId!.Value;
+        var after = before.Restarted();
+
+        var tail = after.Record.TailOf(runId);
+
+        Assert.NotNull(tail);
+        Assert.Equal(RunOutcome.Failed, tail.Outcome);
+        Assert.Equal(RunEndedBecause.GrimoireStopped, tail.EndedBecause);
+
+        // What the store kept is what the tail can say: the total the run spent survived with the
+        // run, the per-model breakdown did not (RUNS-010, DEC-015).
+        Assert.Equal(12_400, tail.TokensUsed);
+        Assert.Empty(tail.TokensPerModel);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-008")]
+    public async Task Restart_LeavesTheRecordOfARunThatHadAlreadyEnded()
+    {
+        // Its tail was written where the run ended, and a run ends once. A restart that closed every
+        // record it found would append a second ending to this one, contradicting the first.
+        var ended = await SubmittedAsync("The text whose run finished before the stop.");
+        var runId = In(before, ended.Id).RunId!.Value;
+        before.Harness.End(ended.Id, RunOutcome.Done);
+
+        var after = before.Restarted();
+
+        Assert.Single(after.Record.Of(runId).OfType<RunFrameTail>());
+        Assert.Equal(RunOutcome.Done, after.Record.TailOf(runId)!.Outcome);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-004")]
     [Trait("req", "RUNS-002")]
     [Trait("req", "RUNS-003")]
@@ -117,7 +164,7 @@ public sealed class RestartTests
         store.Add(first);
         store.Add(second);
 
-        var after = new FastHub(store, journal);
+        var after = new FastHub(store, journal, new InMemoryRunRecord());
 
         // Started by the hub coming up, with nobody submitting anything — the fourth of the four
         // events that pump the queue (research.md R-03) — and started in the order they were made

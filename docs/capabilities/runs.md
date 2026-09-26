@@ -37,6 +37,14 @@ tokens of every model it touched — is appended when it ends. A run still under
 which is the only difference between its record and one from last month. The seven reasons are values
 inside RUNS-008 and not requirements of their own (Constitution IV.7).
 
+The seventh reason — Grimoire was stopped while the run was in progress — is written at either of two
+moments. A stop Grimoire is given the chance to act on writes the tail as it stops the run. A kill or
+a power cut is not such a chance, and then the tail is written by the next start-up, from what the
+store kept about the run and before that run reads failed: the ending, the run's total against both
+ceilings, and no model rows, because the breakdown was never stored. Its elapsed is the span from the
+run's start to that start-up, the whole time the run stood open, so a long stop can leave a record
+whose elapsed is past the ceiling beside a reason that is not a ceiling (RUNS-004, RUNS-006).
+
 The tokens per model come from what the CLI reports when a turn ends. A run stopped before it ever
 reported one — a cost ceiling reached inside the first turn, a process that died, a tool surface that
 was not the grant — has no breakdown to record, and its tail holds the total against the ceiling and

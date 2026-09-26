@@ -18,19 +18,25 @@ internal sealed class FastHub
 
     /// <summary>One journal, written to by both doubles, so that they share a timeline.</summary>
     private FastHub(HubJournal journal)
-        : this(new InMemorySubmissionStore(journal), journal)
+        : this(new InMemorySubmissionStore(journal), journal, new InMemoryRunRecord())
     {
     }
 
     /// <summary>
-    /// A hub over a store that already holds something — which is what a restart is. It runs the
-    /// same start-up the composition root runs, so the order RUNS-006 asks for is the real one and
-    /// not a copy of it (HubApplication.RestoreAfterAStop).
+    /// A hub over a store and a record that already hold something — which is what a restart is. It
+    /// runs the same start-up the composition root runs, so the order RUNS-006 asks for is the real
+    /// one and not a copy of it (HubApplication.RestoreAfterAStop).
     /// </summary>
-    public FastHub(InMemorySubmissionStore store, HubJournal journal)
+    /// <remarks>
+    /// The record comes across the restart with the store because that is what it does on disk: the
+    /// files in <c>runs/</c> outlive the process that wrote them, and a record the new hub could not
+    /// see would hide whether the interrupted run's ending ever reached it (RUNS-007).
+    /// </remarks>
+    public FastHub(InMemorySubmissionStore store, HubJournal journal, InMemoryRunRecord record)
     {
         Store = store;
         Journal = journal;
+        Record = record;
         Harness = new InMemoryAgentHarness(journal);
         Clock = FastSuite.Clock();
         Board = new SubmissionBoard(Clock, store);
@@ -43,7 +49,7 @@ internal sealed class FastHub
         Queue = queue;
         Intake = new SubmissionIntake(Board, Queue);
 
-        HubApplication.RestoreAfterAStop(store, Board, Harness);
+        HubApplication.RestoreAfterAStop(store, Board, Harness, Record, Clock);
 
         // And then the queue is pumped, which is what the hub does once it is listening: a
         // submission that was waiting when Grimoire stopped starts by itself, with nobody
@@ -63,7 +69,7 @@ internal sealed class FastHub
     /// Grimoire stopped and started again over the same store. The clock starts afresh, as a new
     /// process's does.
     /// </summary>
-    public FastHub Restarted() => new(Store, Journal);
+    public FastHub Restarted() => new(Store, Journal, Record);
 
     public const string Model = "claude-opus-4-5-20251101";
 
@@ -79,7 +85,7 @@ internal sealed class FastHub
     public InMemoryWikiStore Wiki { get; } = new();
 
     /// <summary>Where this hub's runs leave their records (RUNS-007).</summary>
-    public InMemoryRunRecord Record { get; } = new();
+    public InMemoryRunRecord Record { get; }
 
     public SubmissionBoard Board { get; }
 
