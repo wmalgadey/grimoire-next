@@ -109,6 +109,34 @@ public sealed class RunRecordViewTests : PageTest
         await Expect(Heading(1)).ToContainTextAsync("read_page returned");
     }
 
+    [Fact]
+    public async Task AgentText_IsShownWhole_WhenItHoldsAFencedBlock()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        // An agent writes fenced code as a matter of course. Read as a result, the fence would be
+        // folded away and every word around it thrown out of the rendering (ACCESS-006).
+        const string said = "I will add this to the page:\n\n```\nada.md\n```\n\nand then log it.";
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Said(submission, said);
+        hub.Agent.End(submission, RunOutcome.Done);
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
+
+        var agent = Segments().Nth(0);
+
+        await Expect(Heading(0)).ToContainTextAsync("the agent");
+
+        // Prose, not a folded result — and all of it, both sides of the fence included.
+        await Expect(agent.Locator("details.result")).ToHaveCountAsync(0);
+        await Expect(agent.Locator(".prose")).ToContainTextAsync("I will add this to the page:");
+        await Expect(agent.Locator(".prose")).ToContainTextAsync("and then log it.");
+        await Expect(agent.Locator(".prose")).ToContainTextAsync("ada.md");
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator Segments() => Page.Locator("#record li");

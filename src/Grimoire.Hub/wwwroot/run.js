@@ -33,14 +33,30 @@ const openings = [
 // own on a line, which is what makes them findable without parsing Markdown.
 const fenceLine = /^(`{3,})\s*$/;
 
-function isBoundary(line) {
+// What a segment's first line says it is, after the time — or null where the line is no boundary at
+// all. The agent's own text is prose and goes in unfenced, so it may hold a `## ` line of its own;
+// treating that as a boundary would split what the agent said in two (contracts/run-record.md, rule 2).
+function opening(line) {
   if (!line.startsWith("## ")) {
-    return false;
+    return null;
   }
 
   const parts = line.slice(3).split(" · ");
+  if (parts.length < 2) {
+    return null;
+  }
 
-  return parts.length > 1 && openings.some((shape) => shape.test(parts.slice(1).join(" · ")));
+  const said = parts.slice(1).join(" · ");
+
+  return openings.some((shape) => shape.test(said)) ? said : null;
+}
+
+// Only a call's arguments and a call's result are fenced blocks. The agent's own text and what
+// Grimoire said are prose, and prose is shown whole — an agent writes fenced code as a matter of
+// course, and reading such a segment as a result would fold the code and throw away every word around
+// it (ACCESS-006, contracts/run-record.md rule 3).
+function isFenced(said) {
+  return said.startsWith("called ") || said.endsWith(" returned");
 }
 
 // The record, split into the frame and its segments. A reader finds the fence first and skips to its
@@ -61,8 +77,8 @@ function split(text) {
       // CommonMark's own rule: a fence closes only on one at least as long. The record opens with one
       // longer than anything inside, so nothing a tool returned can close it early.
       openFence = 0;
-    } else if (openFence === 0 && isBoundary(line)) {
-      current = { heading: line.slice(3), body: [] };
+    } else if (openFence === 0 && opening(line) !== null) {
+      current = { heading: line.slice(3), said: opening(line), body: [] };
       segments.push(current);
       continue;
     }
@@ -100,7 +116,7 @@ function element(segment) {
   heading.textContent = segment.heading;
   item.append(heading);
 
-  const fenced = fencedIn(segment.body);
+  const fenced = isFenced(segment.said) ? fencedIn(segment.body) : null;
 
   if (fenced === null) {
     const prose = document.createElement("div");
