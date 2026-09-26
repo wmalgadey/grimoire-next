@@ -58,9 +58,9 @@ public enum TranscriptSays
 public sealed record TranscriptEvent(TranscriptSays Says, long Cost = 0, bool EndedAbnormally = false)
 {
     /// <summary>
-    /// The four raw counts behind <see cref="Cost"/>, added over every model. Kept beside the
-    /// weighted figure rather than derived from it, because the weighting cannot be undone and the
-    /// raw four are what the ceiling's calibration is read off (GUARD-004, RUNS-008).
+    /// The four raw counts <see cref="Cost"/> was weighed from, added over every model. Reported
+    /// beside the figure because the weighting cannot be undone, and the raw four are what the
+    /// ceiling's own value is calibrated from (GUARD-004, RUNS-008).
     /// </summary>
     public ModelTokens Tokens { get; init; }
 
