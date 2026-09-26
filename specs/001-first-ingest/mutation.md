@@ -284,3 +284,42 @@ made after the run above. Nothing here is a measurement; it is what the tables n
 
 The line numbers in every table above are the measured ones and predate these three. The Fast
 suite is 167 tests, not the 165 the Validity section counts.
+
+## The cost weighting — a second reading (2026-09-26)
+
+The GUARD-004 fix put new arithmetic where the ceiling rests, so the measurement was run again over
+the two projects it touched, locally and by hand (`dotnet stryker` with `scripts/mutation.sh`'s own
+filters, Fast suite only). **Nothing here is a threshold** and nothing became a test except where a
+survivor named a decision the suite did not verify; that happened once.
+
+| Project | Mutants | Survived or uncovered |
+| --- | ---: | ---: |
+| Grimoire.Agent (`Ceilings.cs`, `IAgentHarness.cs`, `ToolGrant.cs`, `AgentTranscript.cs`) | 163 | 9 |
+| Grimoire.Runs, without `Adapters/` | 319 | 81 |
+
+**`Ceilings.cs`: 24 mutants, one survivor, and it is the null guard.** Every weight, the division by
+ten, `ReachedBy`'s `>=` and each `Math.Max` in `HighestOf` is killed by a test. That is the answer to
+the question this fix raises — whether the four numbers the ceiling now rests on are actually pinned —
+and it is yes.
+
+**`AgentTranscript.cs`: 132 mutants, three survivors**, two of them null guards and the third the
+`catch (JsonException)` block of `Parse`, which predates this change.
+
+**One became a test.** `RecordText.cs:149` — `Row(text, model, Counts(spent))` — came back
+**NoCoverage**: no Fast test rendered a tail with a breakdown in it, so the per-model row, which this
+fix had just changed from a derived cost to the model's four raw counts, was written by nothing the
+suite read. `:147` — `OrderBy` → `OrderByDescending` — survived beside it, and the ordering is a
+decision too: a record ordered by what the dictionary happened to hold would read differently from
+one written a moment later. Checked the way the three of `003-live-run-record` were, by making each
+mutation in the source and running the suite: both passed before, both fail now.
+`RecordTextTests.Tail_HoldsWhatEachModelWasGivenAndProduced` is the test.
+
+**The rest are what `003-live-run-record/mutation.md` already classified**, and its reasoning stands
+unchanged: the record's wording (III.8), `ArgumentNullException.ThrowIfNull` guards, the
+`static readonly` initialiser that 109 Fast tests kill outright, the unreachable `||` behind
+`TakeNext`'s guard, and `RunStateMachine`'s `PerModel.Count > 0`. The four new row labels — `Cost`,
+`Input tokens`, `Cache reads`, `Cache writes` — are wording and join them.
+
+That document's own line numbers have moved and two of its classifications name code this fix
+rewrote. It is left as written: it is the reading of one measurement of one commit, and this section
+is the reading of the next.

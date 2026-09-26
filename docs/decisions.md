@@ -117,13 +117,17 @@
 
 **Made by**: plan `001-first-ingest`.
 
-## DEC-015 — Two ceilings, one stop, and cost means every token the run causes
+## DEC-015 — Two ceilings, one stop, and cost means input-token equivalents
 
-**Decision**: Elapsed time against `TimeProvider`; cost as the four token fields of **every** entry in the `result` message's `modelUsage`, all models and the CLI's own background calls included, counted live off `message_delta` and reconciled at the `result`. At either ceiling the hub sends the same interrupt. Initial values 2 000 000 tokens and 15 minutes, revised by the owner after the acceptance run.
+**Decision**: Elapsed time against `TimeProvider`; cost as the four token classes of **every** entry in the `result` message's `modelUsage` — all models and the CLI's own background calls included — **weighted 1 : 5 : 0.1 : 2** (input : output : cache read : cache write), counted live off `message_delta` and reconciled at the `result` by the same arithmetic. The weights are four named constants in `Ceilings.cs` and are not configurable; no absolute price is in the product code. At either ceiling the hub sends the same interrupt. Values 2 000 000 equivalents and 15 minutes; **the cost value is a placeholder** until the owner calibrates it after the acceptance run, and the four raw counts are kept per run so that it can be calibrated from what real runs actually caused rather than from an estimate.
 
-**Reason**: GUARD-004 counts model tokens, and a background call the CLI makes is the run's doing: a probe's `modelUsage` carried a Haiku entry the run never asked for beside its Opus one. One mechanism for both ceilings because the agent loops model call → tool call → model call inside a turn, so nothing can prevent the next call without ending the one in flight. `--max-budget-usd` is currency from a client-side estimate the documentation says can differ from the bill, and `--max-turns` is the wrong quantity.
+**Reason**: The four classes are billed at those ratios, so **adding them up measures turns × context size and not cost**. Measured both ways round: ten million cache reads are 1 000 000 equivalents and reached the old raw ceiling of 2 000 000 five times over, while four hundred thousand output tokens are 2 000 000 equivalents — twice the money — and sat at a fifth of that same ceiling. The raw sum judged the first run twenty-five times the heavier where it in fact cost half as much: wrong by a factor of fifty, which is the ratio between the dearest class and the cheapest. So it stopped the cheap runs first and let the expensive ones run. It is a decent *thrash indicator*, because a run going round in circles re-reads its context every turn; `--max-turns` is the native form of that measure, and nothing asks for it today.
 
-**Made by**: plan `001-first-ingest`.
+Cost cannot be counted in currency: `costUSD` exists only in the `result`, and a ceiling that can be checked only once the run is over is not a ceiling (`--max-budget-usd` was already rejected for being a client-side estimate). The weights are Anthropic's price *structure*, which every first-party model shares, so a weighted quantity is proportional to the money whatever model ran — which is what lets the tree hold no price. The proportion is held to the CLI by one sign-in contract test: measured on `claude-haiku-4-5-20251001`, 908 input / 121 output / 0 read / 6 753 written weighs to 15 019 equivalents, and 15 019 × the \$1 input list price per million is \$0.015019, which is the `costUSD` the CLI reported to the last digit. The cache write is weighted as a 1-hour write, the dearer of the two and the one the spike observed, so the weighting is uniformly conservative.
+
+One mechanism for both ceilings because the agent loops model call → tool call → model call inside a turn, so nothing can prevent the next call without ending the one in flight. A background call the CLI makes is still the run's doing: a probe's `modelUsage` carried a Haiku entry the run never asked for beside its Opus one.
+
+**Made by**: plan `001-first-ingest`; the weighting added 2026-09-26 (`001-first-ingest` research.md R-15).
 
 ## DEC-016 — A run is stopped by an interrupt; killing the process is the backstop
 
@@ -167,11 +171,11 @@
 
 ## DEC-021 — The agent adapter's Contract suite runs against the real CLI, outside CI
 
-**Decision**: The real `claude` CLI with the owner's real sign-in, at most three tests, marked `[Trait("requires", "signin")]`, run locally before the PR and excluded from CI with `--filter-not-trait "requires=signin"`.
+**Decision**: The real `claude` CLI with the owner's real sign-in, at most four tests, marked `[Trait("requires", "signin")]`, run locally before the PR and excluded from CI with `--filter-not-trait "requires=signin"`.
 
 **Reason**: III.4 puts a Contract suite against the real external thing, and the real external thing here is the CLI. CI has no subscription sign-in, so it cannot run them; a scripted endpoint would be a component we write and maintain that makes none of the CLI's observed behaviour more true (II.1). The cost — that their execution time is not measured in CI — is carried in the plan's Complexity Tracking.
 
-**Made by**: plan `001-first-ingest`.
+**Made by**: plan `001-first-ingest`. Raised from three to four when GUARD-004's cost became weighted: the weights are ratios of Anthropic's prices, `costUSD` is the CLI's own reading of the same ratios, and it exists only on a real run — so nothing below this level can check them. A fourth cheap run is what that check costs.
 
 ## DEC-022 — Three generated project metrics, none of them a gate
 
@@ -241,11 +245,11 @@
 
 ## DEC-030 — The run's figures are columns on the run row, never parsed back out of the record
 
-**Decision**: the tokens spent, the tool calls made and the entries the record could not hold are three columns on the `runs` table, written whenever one of them changes and never derived from the Markdown.
+**Decision**: what the run cost, the four raw token counts behind that figure, the tool calls made and the entries the record could not hold are columns on the `runs` table, written whenever one of them changes and never derived from the Markdown.
 
 **Reason**: the list polls once a second, and parsing prose Grimoire has just written to recover a number it already had is a seam. The figures are state, so they live where the state lives (DEC-023), and both they and the narrative are written from the same event, so they cannot disagree. Deriving them from the record at start-up was rejected: it would make the Markdown a data format, which DEC-027 kept it from being, and a record that could not be written would take the figures with it (research.md R-06).
 
-**Made by**: plan `003-live-run-record` (research.md R-06).
+**Made by**: plan `003-live-run-record` (research.md R-06). The four raw counts joined the cost on 2026-09-26, when the cost became a weighted quantity that cannot be unweighted (DEC-015); they are written in the same statement as it, so a restart cannot come back with one from a different moment than the other.
 
 ## DEC-031 — An existing state file gains columns through `PRAGMA table_info` and `ALTER TABLE`
 

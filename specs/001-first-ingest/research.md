@@ -318,7 +318,9 @@ Per entry in `modelUsage`, the four fields that are counted:
 | `cacheReadInputTokens` | context re-read on each call; on a many-turn run this is the largest of the four by far |
 | `cacheCreationInputTokens` | context written into the cache |
 
-**The run's cost is the sum of those four across every entry in `modelUsage`.** The same quantities
+**The run's cost is the sum of those four across every entry in `modelUsage`.** *(Superseded by
+R-15: the four are still all counted, but weighted rather than added — the raw sum measures turns ×
+context size and not cost.)* The same quantities
 appear on the top-level `usage` object as `input_tokens`, `output_tokens` (with
 `output_tokens_details.thinking_tokens` as its breakdown), `cache_read_input_tokens` and
 `cache_creation_input_tokens` (with `cache_creation.ephemeral_5m_input_tokens` and
@@ -349,6 +351,13 @@ happens these are reasoned estimates.
 | --- | --- | --- |
 | Cost | **2 000 000 tokens** | The floor is measured: a trivial one-turn run cost 6 664 tokens, nearly all of it the one-off cache creation of the system prompt. A real ingest reads a few pages and writes a few more — call it 20 to 40 model calls over a context of a few tens of thousands of tokens — and `cacheReadInputTokens` then dominates at roughly 30 k × 30 ≈ 900 k, with output a rounding error beside it. Two million is about double the expected run, and still stops a loop that has stopped making progress |
 | Elapsed time | **15 minutes** | Those same 20 to 40 calls take single-digit minutes once tool round trips are counted. Nobody waits on a run (INGEST-001), so this ceiling exists to bound a stuck run, not to hurry a working one |
+
+> **The cost row above is superseded by R-15**, reasoning and all. The number 2 000 000 stayed, but
+> it counts input-token equivalents now, and an equivalent is not a token — the estimate in that
+> cell weighed a cache read the same as an output token, which is the mistake R-15 corrects. It is
+> left standing because it is the change record of what was decided here. **The current value is a
+> placeholder**, calibrated after the acceptance run from the four raw counts real runs report.
+> The elapsed row is untouched.
 
 Both are constants in `Grimoire.Agent/Ceilings.cs`. Changing them is an owner decision and a code
 change, which is what "fixed, not configurable" means here.
@@ -624,6 +633,104 @@ built clean, which is the exclusion working. No commit contains the probe.
 
 **No existing method is over the ceiling.** The tree built clean the moment the rule was switched
 on, so nothing had to be refactored and nothing is suppressed.
+
+---
+
+## R-15 — What the cost ceiling counts, corrected *(2026-09-26, after the feature closed)*
+
+**This supersedes R-04's "the run's cost is the sum of those four" and the reasoning behind the
+2 000 000 in "The initial ceiling values".** The four fields are real and are still all counted; what
+was wrong is adding them up as if they were worth the same.
+
+**Decision**: the ceiling counts **input-token equivalents** — the four classes weighted 1 : 5 : 0.1 : 2
+(input : output : cache read : cache write). Live off `message_delta`, reconciled at the `result`, the
+same arithmetic on both.
+
+### Why the raw sum was the wrong quantity
+
+Anthropic bills the four classes at those ratios. A raw sum therefore measures **turns × context
+size**, not cost:
+
+- `cacheReadInputTokens` dominates a many-turn run, as R-04 itself observed — and it is the cheapest
+  of the four, a fiftieth of an output token. Ten million cache reads are **1 000 000 equivalents**,
+  half of what the ceiling now allows, and they blew the old raw ceiling of 2 000 000 five times over.
+- Output is the dearest. Four hundred thousand output tokens are **2 000 000 equivalents** — twice
+  the money of those ten million reads — and sat at a fifth of the old raw ceiling and ran on.
+
+So the raw sum judged the first run twenty-five times the heavier where it in fact cost half as
+much: wrong by a factor of fifty, which is exactly the ratio between the dearest class and the
+cheapest.
+
+So the old ceiling stopped the cheap runs first and let the expensive ones run. It was, as a
+by-product, a decent **thrash indicator**: a run going round in circles re-reads its context every
+turn and the raw sum climbs fast. That is worth keeping in mind, but `--max-turns` is the native form
+of that measure, and nothing asks for it today.
+
+### Why not currency
+
+`costUSD` exists, and only in the `result` — the CLI reports no money while a run is under way, and a
+ceiling that can only be checked after the run is over is not a ceiling. `--max-budget-usd` was
+already rejected in R-11. So the hub counts a quantity that is *proportional* to money and holds the
+proportion to the CLI in a test.
+
+### The spike, and the arithmetic
+
+One real run of `claude` 2.1.283 on `claude-haiku-4-5-20251001`, prompt "Say hi", recorded as NDJSON.
+Its `result`, trimmed to the fields this item rests on:
+
+```json
+{"type":"result","subtype":"success","total_cost_usd":0.015019000000000001,
+ "usage":{"input_tokens":10,"output_tokens":108,"cache_read_input_tokens":0,
+          "cache_creation_input_tokens":6753,
+          "cache_creation":{"ephemeral_1h_input_tokens":6753,"ephemeral_5m_input_tokens":0}},
+ "modelUsage":{"claude-haiku-4-5-20251001":{
+   "inputTokens":908,"outputTokens":121,"cacheReadInputTokens":0,"cacheCreationInputTokens":6753,
+   "costUSD":0.015019000000000001,"costBasis":"list","canonicalModel":"claude-haiku-4-5"}}}
+```
+
+The arithmetic, at Haiku 4.5's list prices (input \$1, output \$5, cache read \$0.10, 1-hour cache
+write \$2, all per million tokens):
+
+| Class | Count | Weight | Equivalents |
+| --- | --- | --- | --- |
+| Input | 908 | 1 | 908 |
+| Output | 121 | 5 | 605 |
+| Cache read | 0 | 0.1 | 0 |
+| Cache write | 6 753 | 2 | 13 506 |
+| | | | **15 019** |
+
+15 019 equivalents × \$1 per million = **\$0.015019**, which is `costUSD` **to the last digit**. The
+weights are the price structure, and the structure is the same for every first-party model — which is
+why the product code holds no price at all. One sign-in contract test does the multiplication above
+against a live run and is the only place in the repository an absolute price appears (DEC-021 raised
+its budget from three tests to four for it).
+
+**The cache write is weighted as a 1-hour write.** The run above asked for one — `cache_creation`
+splits into `ephemeral_1h_input_tokens` and `ephemeral_5m_input_tokens`, and all 6 753 were 1-hour. A
+5-minute write costs 1.25 and is counted as 2, so the weighting is uniformly conservative: the
+ceiling is never reached later than the money says.
+
+### What 2 000 000 now means
+
+**A placeholder, and it is marked as one in the code.** It is the old raw-token figure carried over,
+and an equivalent is not a token, so the number no longer rests on R-04's estimate of what a real
+ingest reads and writes. The four raw counts are kept per run — in the store, in the record's tail —
+so that the owner can calibrate it against real runs after the acceptance run, which is the moment
+R-04 already reserved for revising both ceilings.
+
+### One thing the spike found that is not built
+
+Every run's stream carries a `rate_limit_event` naming how much of the subscription's five-hour and
+seven-day windows is used:
+
+```json
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed",
+ "unifiedWindows":{"five_hour":{"utilization":0.11},"seven_day":{"utilization":0.09}}}}
+```
+
+That is the figure the owner actually feels, and it is *not* a ceiling — the hub must not decide what
+a subscription's window is for. Recorded as a Later outcome in `docs/product.md` (OUT-23) and built by
+nothing here (Constitution II.1).
 
 ---
 

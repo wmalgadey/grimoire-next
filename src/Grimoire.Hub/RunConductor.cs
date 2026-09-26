@@ -200,7 +200,7 @@ public sealed class RunConductor(
     /// The cost ceiling, watched as the run spends. At either ceiling the run is stopped at once,
     /// a model call in flight included, and it ends failed (GUARD-004).
     /// </summary>
-    private void CostSoFar(Guid submissionId, long tokensUsed, IReadOnlyDictionary<string, ModelTokens> tokensPerModel)
+    private void CostSoFar(Guid submissionId, RunSpend spend)
     {
         if (Reporting(submissionId) is not { } watched)
         {
@@ -220,7 +220,7 @@ public sealed class RunConductor(
             // Recorded on the run, not only compared: the stop decision below reads it, and so does
             // the token ceiling when the run is asked how it ended (GUARD-004). The breakdown comes
             // with it, and the record's tail says what each model spent (RUNS-008).
-            run.Spent(tokensUsed, tokensPerModel);
+            run.Spent(spend);
 
             // The figures the list shows. `Spent` is a Math.Max, so this writes the store two to four
             // times a turn rather than once per streamed line (RUNS-010, research.md R-06).
@@ -230,7 +230,7 @@ public sealed class RunConductor(
         }
 
         // Outside the lock: stopping ends the run, and ending it takes this same lock.
-        if (run.Ceilings.ReachedBy(elapsed, run.TokensUsed))
+        if (run.Ceilings.ReachedBy(elapsed, run.CostSpent))
         {
             _ = StopAsync(run, submissionId, run.CeilingReachedBy(elapsed));
         }
@@ -327,7 +327,8 @@ public sealed class RunConductor(
     /// the record knows. Read apart, the row could show a gap that belongs to another moment.
     /// </remarks>
     private void FiguresRose(Run run) =>
-        board.RunFiguresAre(run.SubmissionId, run.TokensUsed, run.ToolCalls, record.EntriesLost(run.Id));
+        board.RunFiguresAre(
+            run.SubmissionId, run.CostSpent, run.Tokens, run.ToolCalls, record.EntriesLost(run.Id));
 
     /// <summary>
     /// The decision RUNS-005 rests on. The wiki's log is read for the run's identifier and nothing
@@ -367,7 +368,7 @@ public sealed class RunConductor(
             decision = watched.Run.AgentStopped(new AgentStop(
                 watched.Run.IsNamedIn(log),
                 clock.GetUtcNow() - watched.Run.StartedAt,
-                watched.Run.TokensUsed,
+                watched.Run.CostSpent,
                 endedAbnormally));
 
             if (decision == RunDecision.Nudge)
@@ -481,7 +482,8 @@ public sealed class RunConductor(
             outcome,
             because,
             clock.GetUtcNow() - run.StartedAt,
-            run.TokensUsed,
+            run.CostSpent,
+            run.Tokens,
             run.Ceilings,
             run.TokensPerModel));
 
@@ -492,7 +494,8 @@ public sealed class RunConductor(
         board.Ended(
             run.SubmissionId,
             outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed,
-            run.TokensUsed,
+            run.CostSpent,
+            run.Tokens,
             run.ToolCalls,
             record.EntriesLost(run.Id));
     }

@@ -16,7 +16,7 @@ Grimoire has no access control of its own: it assumes it runs inside a network t
 | ACCESS-001 | Users MUST be able to enter a text and submit it from a page in the browser. | test |
 | ACCESS-003 | Users MUST be able to acknowledge a failed run in the browser. | test |
 | ACCESS-004 | The browser MUST show, for every submission, the opening of the text that was submitted, cut to the same length for every submission, and when the submission was made, so that the user can tell one submission from another. | test |
-| ACCESS-005 | The browser MUST show, for every submission, exactly one of submitted, running, done or failed, and for a submission that has a run also that run's model, the tokens it has spent and the number of tool calls it has made; while a run is in progress these figures MUST follow it, and a figure changing MUST NOT move the rows of the list. | test |
+| ACCESS-005 | The browser MUST show, for every submission, exactly one of submitted, running, done or failed, and for a submission that has a run also that run's model, what it has spent against the cost ceiling it is held to, and the number of tool calls it has made; while a run is in progress these figures MUST follow it, and a figure changing MUST NOT move the rows of the list. | test |
 | ACCESS-006 | Users MUST be able to open a submission's run from the list and read its record in the browser — its frame, and what the run did in the order it happened — both while the run is in progress, where lines MUST arrive as they are appended, and after it has ended, where the record MUST be shown in the same shape. The user MUST be able to follow what the run did without reading the tool results in full and MUST be able to reach any one result when they want it; and where lines of the record could not be written, the view MUST say that something is missing. | test |
 
 ACCESS-004 is what a user tells one submission from another by, and ACCESS-003 is the one action
@@ -28,6 +28,16 @@ the test that proves it carries no requirement id.
 ACCESS-005 carries ACCESS-002's four states forward unchanged and adds the run's model and its two
 figures. Two halves, two levels: the response carries them (Fast), and the browser renders them
 without the rows moving as a figure rises (E2E) — geometry only a real browser has.
+
+The cost is shown **against its ceiling** and with no unit beside it, as `12 000 / 2 000 000`. It is
+counted in input-token equivalents (GUARD-004), a quantity with no unit of its own and no scale a
+reader carries in their head, so the bare number would be one docs/ux.md rules out — a number on a
+screen the user cannot make sense of. The ceiling is what gives it a sense, and it comes with the
+list rather than being written into the page: the owner revises it in one place. Calling the figure
+tokens would be worse than saying nothing, because it is not a count of tokens.
+
+What a run's four raw token counts were is not on the row. It is in the record, which is where a
+reader goes when the one figure is not enough (ACCESS-006, RUNS-008).
 
 ACCESS-006 is a second page, reached from the row. It is a window onto the record RUNS-007 keeps and
 not a second place the run lives: what it shows is the file, fetched byte for byte from the endpoint,

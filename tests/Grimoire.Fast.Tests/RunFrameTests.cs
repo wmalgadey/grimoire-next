@@ -73,7 +73,13 @@ public sealed class RunFrameTests
         Assert.Equal(hub.Clock.GetUtcNow(), tail.EndedAt);
         Assert.Equal(RunOutcome.Done, tail.Outcome);
         Assert.Equal(TimeSpan.FromMinutes(3), tail.Elapsed);
-        Assert.Equal(Ceilings.CostOf(spent.Values), tail.TokensUsed);
+        Assert.Equal(Ceilings.CostOf(spent.Values), tail.CostSpent);
+
+        // And the four raw counts behind that figure, added over both models. They are in the tail
+        // because the weighting cannot be undone: a reader cannot tell a run that thought hard from
+        // one that re-read a large cache by the weighted figure alone, and the ceiling's own value
+        // is calibrated from these (RUNS-008, GUARD-004).
+        Assert.Equal(new ModelTokens(40_112 + 897, 3_190 + 12, 22_016, 7_228), tail.Tokens);
 
         // Both ceilings travel with the figures, because a figure without the ceiling beside it says
         // nothing about how close the run came to it.
@@ -135,7 +141,7 @@ public sealed class RunFrameTests
         var run = hub.Conductor.Of(submission.Id)!;
 
         hub.Harness.ReportIn(submission.Id);
-        hub.Harness.Spend(submission.Id, Ceilings.Fixed.Tokens);
+        hub.Harness.Spend(submission.Id, Ceilings.Fixed.Cost);
 
         Assert.Equal(RunEndedBecause.CostCeiling, hub.Record.TailOf(run.Id)!.EndedBecause);
     }

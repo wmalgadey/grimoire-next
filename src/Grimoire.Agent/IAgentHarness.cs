@@ -105,6 +105,32 @@ public sealed record TranscriptMoment(RunMomentKind Kind, string? Tool, string? 
 public sealed record AgentDispatch(Guid RunId, Guid SubmissionId, string Prompt, ToolGrant Grant, string Model);
 
 /// <summary>
+/// What a run has spent, as the port reports it: the one figure the cost ceiling is read against,
+/// the four raw counts behind it, and the breakdown per model where the line carried one.
+/// </summary>
+/// <remarks>
+/// The three travel together because they are one reading of one line. Reported apart, a tail could
+/// name models adding up to a figure beside them that they do not add up to, and the raw counters
+/// written down for a run could be the ones behind a different figure (GUARD-004, RUNS-008).
+/// </remarks>
+/// <param name="Cost">
+/// What the run has cost, in input-token equivalents — the four classes weighted by
+/// <see cref="Ceilings.CostOf(ModelTokens)"/>, over every model the run touched, the CLI's own
+/// background calls included. Never currency, and never a raw token count.
+/// </param>
+/// <param name="Tokens">The four raw counts behind <see cref="Cost"/>, added over every model.</param>
+/// <param name="PerModel">
+/// What each model was given and produced, as a <c>result</c>'s <c>modelUsage</c> reports it. Empty
+/// for a streamed line, which carries no breakdown.
+/// </param>
+public sealed record RunSpend(long Cost, ModelTokens Tokens, IReadOnlyDictionary<string, ModelTokens> PerModel)
+{
+    /// <summary>A run that has spent nothing, and the figure a fake harness starts from.</summary>
+    public static RunSpend Nothing { get; } =
+        new(0, default, new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
+}
+
+/// <summary>
 /// How a run reports back while it is under way, keyed by the submission it belongs to.
 /// </summary>
 /// <remarks>
@@ -117,12 +143,9 @@ public sealed record AgentDispatch(Guid RunId, Guid SubmissionId, string Prompt,
 /// submission reads <c>submitted</c> until this and <c>running</c> from then on.
 /// </param>
 /// <param name="CostSoFar">
-/// Every token the run has caused so far, and the breakdown per model where the line carried one.
-/// The hub watches the total against the cost ceiling and stops the run itself where it is reached
-/// (GUARD-004); the breakdown is what the record's tail says the run spent per model (RUNS-008).
-/// The two travel together because the total is the sum of the breakdown: reported apart, a tail
-/// could name models adding up to a figure beside them that they do not add up to. Empty for a
-/// streamed line, which carries no breakdown.
+/// What the run has spent so far. The hub watches the cost against the cost ceiling and stops the
+/// run itself where it is reached (GUARD-004); the raw counts and the breakdown are what the
+/// record's tail holds (RUNS-008).
 /// </param>
 /// <param name="MomentHappened">
 /// One thing the run did — a tool call, what it returned, or the agent's own text (RUNS-009). The
@@ -151,7 +174,7 @@ public sealed record AgentDispatch(Guid RunId, Guid SubmissionId, string Prompt,
 /// </param>
 public sealed record RunReport(
     Action<Guid> AgentReportedIn,
-    Action<Guid, long, IReadOnlyDictionary<string, ModelTokens>> CostSoFar,
+    Action<Guid, RunSpend> CostSoFar,
     Func<Guid, bool, Task> AgentStopped,
     Action<Guid, int> AgentExited,
     Action<Guid, RunOutcome, RunEndedBecause> RunEnded,

@@ -95,9 +95,9 @@ public static class HubApplication
     /// <para>
     /// The ending is read off what the store kept, because it is all there is: the process that
     /// knew the rest is gone. <c>TokensPerModel</c> is therefore empty — the per-model breakdown of
-    /// DEC-015 is streamed and never stored, and the run's own total is kept and written. An empty
-    /// breakdown beside a total says which of the two survived; inventing one entry for the run's
-    /// model would claim a figure nobody measured.
+    /// DEC-015 is streamed and never stored, while the run's cost and the four raw counts behind it
+    /// are kept and written. An empty breakdown beside them says which of the two survived;
+    /// inventing one entry for the run's model would claim a figure nobody measured.
     /// </para>
     /// <para>
     /// <c>EndedAt</c> is now, because now is when the run was ended, and <c>Elapsed</c> is
@@ -114,7 +114,8 @@ public static class HubApplication
             RunOutcome.Failed,
             RunEndedBecause.GrimoireStopped,
             Elapsed: null,
-            run.TokensUsed,
+            run.CostSpent,
+            run.Tokens,
             Ceilings.Fixed,
             new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
 

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Grimoire.Agent;
 using Grimoire.Runs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -29,10 +30,10 @@ namespace Grimoire.Hub.Api;
 /// The pinned model id that run runs on. Recorded with the run, so an older run keeps the model it
 /// actually used even after <c>--model</c> changes (DEC-010, RUNS-008).
 /// </param>
-/// <param name="TokensUsed">
-/// Every token the run has caused so far — <b>the same quantity the cost ceiling counts</b>, over
-/// every model the run touched. Never a second definition of cost, and never currency (GUARD-004,
-/// DEC-015).
+/// <param name="CostSpent">
+/// What the run has cost so far, in input-token equivalents — <b>the same quantity the cost ceiling
+/// counts</b>, over every model the run touched. Never a second definition of cost, and never
+/// currency (GUARD-004, DEC-015).
 /// </param>
 /// <param name="EntriesLost">
 /// That lines are missing from that run's record, and then a number above zero. Absent where nothing
@@ -49,9 +50,9 @@ public sealed record SubmissionView(
     [property: JsonPropertyName("model")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? Model = null,
-    [property: JsonPropertyName("tokensUsed")]
+    [property: JsonPropertyName("costSpent")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    long? TokensUsed = null,
+    long? CostSpent = null,
     [property: JsonPropertyName("toolCalls")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     int? ToolCalls = null,
@@ -83,7 +84,7 @@ public sealed record SubmissionView(
             // no run (RUNS-002), so there is nothing true to say about one, and zeros would claim a
             // run that spent nothing rather than no run at all.
             status.Run?.Model,
-            status.Run?.TokensUsed,
+            status.Run?.CostSpent,
             status.Run?.ToolCalls,
 
             // And absent where nothing was lost, so that a row says lines are missing only when they
@@ -105,8 +106,19 @@ public sealed record SubmissionView(
 /// <summary>
 /// Every submission the user made, with its current state, newest first (ACCESS-004, ACCESS-005).
 /// </summary>
+/// <param name="CostCeiling">
+/// The cost ceiling every run in this list is held to, in the same quantity
+/// <see cref="SubmissionView.CostSpent"/> is in (GUARD-004).
+/// </param>
+/// <remarks>
+/// The ceiling is on the list and not on each row, because it is the hub's value and the same for
+/// every run in it. It is here at all because the figure beside it means nothing alone: input-token
+/// equivalents have no unit and no scale a reader carries in their head, and 12 000 says something
+/// only against the 2 000 000 it is written against (ACCESS-005, docs/ux.md).
+/// </remarks>
 public sealed record SubmissionListView(
-    [property: JsonPropertyName("submissions")] IReadOnlyList<SubmissionView> Submissions);
+    [property: JsonPropertyName("submissions")] IReadOnlyList<SubmissionView> Submissions,
+    [property: JsonPropertyName("costCeiling")] long CostCeiling);
 
 /// <summary>The text the browser posts.</summary>
 public sealed record SubmissionRequest([property: JsonPropertyName("text")] string? Text);
@@ -156,7 +168,7 @@ public static class SubmissionsEndpoints
         // (Constitution II.1). What a run *did* is the record, served as the file it is by
         // RunRecordEndpoint, and not a second machine-shaped view of a run (ACCESS-006).
         endpoints.MapGet("/api/submissions", () =>
-            new SubmissionListView([.. board.All.Select(SubmissionView.Of)]));
+            new SubmissionListView([.. board.All.Select(SubmissionView.Of)], Ceilings.Fixed.Cost));
 
         // The acknowledgement addresses a submission, which has exactly one run (INGEST-002), so
         // naming it names its failed run — and no run identifier has to reach the browser for the

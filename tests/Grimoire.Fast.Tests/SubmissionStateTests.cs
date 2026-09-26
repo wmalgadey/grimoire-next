@@ -79,7 +79,8 @@ public sealed class SubmissionStateTests
         // acknowledged run still reads failed (RUNS-003).
         Assert.Throws<InvalidOperationException>(() => hub.Board.ReportedIn(submission.Id));
         Assert.Throws<InvalidOperationException>(
-            () => hub.Board.Ended(submission.Id, SubmissionState.Done, tokensUsed: 0, toolCalls: 0, entriesLost: 0));
+            () => hub.Board.Ended(
+                submission.Id, SubmissionState.Done, costSpent: 0, tokens: default, toolCalls: 0, entriesLost: 0));
         Assert.Equal(terminal, submission.State);
     }
 
@@ -181,7 +182,7 @@ public sealed class SubmissionStateTests
 
         Assert.Equal("running", reported.GetProperty("state").GetString());
         Assert.Equal(FastHub.Model, reported.GetProperty("model").GetString());
-        Assert.Equal(148_233, reported.GetProperty("tokensUsed").GetInt64());
+        Assert.Equal(148_233, reported.GetProperty("costSpent").GetInt64());
         Assert.Equal(1, reported.GetProperty("toolCalls").GetInt32());
     }
 

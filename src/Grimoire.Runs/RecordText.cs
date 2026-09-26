@@ -43,7 +43,7 @@ public static class RecordText
         Row(text, "Granted tools", string.Join(", ", head.GrantedTools));
         Row(text, "Grant recorded", Moment(head.GrantRecordedAt));
         Row(text, "Time ceiling", Duration(head.Ceilings.Elapsed));
-        Row(text, "Cost ceiling", Tokens(head.Ceilings.Tokens));
+        Row(text, "Cost ceiling", Figure(head.Ceilings.Cost));
         Row(text, "Started", Moment(head.StartedAt));
 
         return text.Append('\n').ToString();
@@ -105,8 +105,9 @@ public static class RecordText
     }
 
     /// <summary>
-    /// The tail: when the run ended, done or failed, why, where it stood against both ceilings, and
-    /// the tokens of every model it touched (RUNS-008, DEC-015).
+    /// The tail: when the run ended, done or failed, why, where it stood against both ceilings, the
+    /// four raw token counts behind its cost, and what every model it touched cost (RUNS-008,
+    /// DEC-015).
     /// </summary>
     public static string Tail(RunFrameTail tail)
     {
@@ -127,13 +128,25 @@ public static class RecordText
         Row(text, "Elapsed", tail.Elapsed is { } elapsed
             ? $"{Duration(elapsed)} of {Duration(tail.Ceilings.Elapsed)}"
             : "not measured");
-        Row(text, "Tokens", $"{Tokens(tail.TokensUsed)} of {Tokens(tail.Ceilings.Tokens)}");
+        Row(text, "Cost", $"{Figure(tail.CostSpent)} of {Figure(tail.Ceilings.Cost)}");
 
-        // Which model spent them, so that a figure on the row can be read against the models behind
-        // it. Ordered by name, so that two records of the same run read the same way.
+        // The four counts behind that figure, raw. The weighting cannot be undone, so a tail that
+        // held only the weighted figure would be a record the ceiling's own calibration could not be
+        // read off — and a reader could not tell a run that thought hard from one that re-read a
+        // large cache, which cost the same and are not the same run (RUNS-008, GUARD-004).
+        Row(text, "Input tokens", Figure(tail.Tokens.InputTokens));
+        Row(text, "Output tokens", Figure(tail.Tokens.OutputTokens));
+        Row(text, "Cache reads", Figure(tail.Tokens.CacheReadInputTokens));
+        Row(text, "Cache writes", Figure(tail.Tokens.CacheCreationInputTokens));
+
+        // And which model was given and produced what, in the same four counts, so that the rows
+        // above are read as the sum of the rows below them. Not each model's cost: the weighting
+        // divides once for the whole run, and weighing each model on its own would drop a tenth per
+        // model — two models with five cache reads each would show nothing twice where the run was
+        // charged one. Ordered by name, so that two records of the same run read the same way.
         foreach (var (model, spent) in tail.TokensPerModel.OrderBy(m => m.Key, StringComparer.Ordinal))
         {
-            Row(text, model, Tokens(spent.Total));
+            Row(text, model, Counts(spent));
         }
 
         return text.Append('\n').ToString();
@@ -212,8 +225,17 @@ public static class RecordText
             ? string.Create(CultureInfo.InvariantCulture, $"{(int)elapsed.TotalMinutes} min {elapsed.Seconds} s")
             : string.Create(CultureInfo.InvariantCulture, $"{elapsed.Seconds} s");
 
-    /// <summary>Tokens, grouped, because the ceiling is seven digits long (DEC-015).</summary>
-    private static string Tokens(long tokens) => tokens.ToString("N0", CultureInfo.InvariantCulture);
+    /// <summary>
+    /// One model's four counts on one line, in the order the rows above state them: what it was
+    /// given, what it produced, what it read back and what it wrote away (RUNS-008).
+    /// </summary>
+    private static string Counts(ModelTokens spent) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{Figure(spent.InputTokens)} in · {Figure(spent.OutputTokens)} out · "
+            + $"{Figure(spent.CacheReadInputTokens)} cache read · {Figure(spent.CacheCreationInputTokens)} cache write");
+
+    /// <summary>A figure, grouped, because the cost ceiling is seven digits long (DEC-015).</summary>
+    private static string Figure(long figure) => figure.ToString("N0", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Why the run ended, as a sentence. Seven values of one requirement, and each is a state the

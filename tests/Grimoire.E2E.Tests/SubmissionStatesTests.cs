@@ -7,7 +7,8 @@ namespace Grimoire.E2E.Tests;
 
 /// <summary>
 /// What the browser puts on the screen for every submission: exactly one of the four states, and —
-/// where it has a run — that run's model, the tokens it has spent and the tool calls it has made
+/// where it has a run — that run's model, what it has spent against the cost ceiling and the tool
+/// calls it has made
 /// (ACCESS-005).
 /// </summary>
 /// <remarks>
@@ -75,11 +76,13 @@ public sealed class SubmissionStatesTests : PageTest
 
         await Page.GotoAsync(hub.Address);
 
-        // Beside the state: the model the run ran on and the two figures it ended with. This is the
-        // half of ACCESS-005 no in-process test reaches — what the browser actually renders.
+        // Beside the state: the model the run ran on and the two figures it ended with. The cost is
+        // written against the ceiling it was held to and carries no unit — the quantity has none
+        // (GUARD-004). This is the half of ACCESS-005 no in-process test reaches: what the browser
+        // actually renders.
         await Expect(State(submission)).ToHaveTextAsync("done");
         await Expect(Row(submission).Locator(".model")).ToHaveTextAsync("claude-opus-4-5-20251101");
-        await Expect(Row(submission).Locator(".tokens")).ToHaveTextAsync("148\u2009233");
+        await Expect(Row(submission).Locator(".cost")).ToHaveTextAsync("148\u2009233 / 2\u2009000\u2009000");
         await Expect(Row(submission).Locator(".calls")).ToHaveTextAsync("2");
 
         // And no identifier is rendered — neither the submission's nor the run's.
@@ -141,17 +144,18 @@ public sealed class SubmissionStatesTests : PageTest
         hub.Agent.Called(watched, "read_page", """{"path":"ada.md"}""");
 
         await Page.GotoAsync(hub.Address);
-        await Expect(Row(watched).Locator(".tokens")).ToHaveTextAsync("1\u2009000");
+        await Expect(Row(watched).Locator(".cost")).ToHaveTextAsync("1\u2009000 / 2\u2009000\u2009000");
 
         var before = await Row(watched).BoundingBoxAsync();
         var otherBefore = await Row(above).BoundingBoxAsync();
 
         // Ten times the figure, which is one digit wider — the change that would widen a proportional
-        // column and reflow the row around it (ACCESS-005, research.md R-09).
+        // column and reflow the row around it. The ceiling beside it does not move, which is what
+        // makes the growing half the only thing that could (ACCESS-005, research.md R-09).
         hub.Agent.Spend(watched, 10_000);
         hub.Agent.Called(watched, "write_page", """{"path":"ada.md"}""");
 
-        await Expect(Row(watched).Locator(".tokens")).ToHaveTextAsync("10\u2009000");
+        await Expect(Row(watched).Locator(".cost")).ToHaveTextAsync("10\u2009000 / 2\u2009000\u2009000");
         await Expect(Row(watched).Locator(".calls")).ToHaveTextAsync("2");
 
         // The figures followed the run, and nothing moved: not the row they are in, and not the row

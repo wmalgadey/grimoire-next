@@ -101,27 +101,29 @@ public sealed class AgentTranscriptTests
 
     [Fact]
     [Trait("req", "GUARD-004")]
-    public void StreamedUsage_CountsTheHighestTurnTotal_WhenTheUsageGrows()
+    public void StreamedUsage_CostsTheHighestTurnTotal_WhenTheUsageGrows()
     {
         var transcript = Transcript();
 
-        var counted = RecordedTranscript.StreamedUsage.Select(line => transcript.Read(line).TokensUsed).ToList();
+        var counted = RecordedTranscript.StreamedUsage.Select(line => transcript.Read(line).Cost).ToList();
 
         // Cumulative within the response: the figure grows to the last line's total and stops
         // there. Summing the three would count the first line's tokens three times over.
-        Assert.Equal(RecordedTranscript.StreamedUsageTotals, counted);
+        Assert.Equal(RecordedTranscript.StreamedUsageCosts, counted);
     }
 
     [Fact]
     [Trait("req", "GUARD-004")]
-    public void StreamedUsage_CountsTheFourTokenFields()
+    public void StreamedUsage_WeighsTheFourTokenFields()
     {
         const string line =
             """
             {"type":"stream_event","event":{"type":"message_delta","usage":{"input_tokens":1,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":4000}}}
             """;
 
-        Assert.Equal(4321, Transcript().Read(line).TokensUsed);
+        // The same four weights the result is read with, on the snake-cased names the streamed
+        // usage uses. Summed raw this line is 4 321, which is what the ceiling used to see.
+        Assert.Equal(((10 * 1) + (50 * 20) + (1 * 300) + (20 * 4000)) / 10, Transcript().Read(line).Cost);
     }
 
     [Fact]
@@ -129,23 +131,24 @@ public sealed class AgentTranscriptTests
     public void StreamedUsage_CountsNothing_WithoutAUsageOnTheEvent() =>
         Assert.Equal(
             0,
-            Transcript().Read("""{"type":"stream_event","event":{"type":"message_start"}}""").TokensUsed);
+            Transcript().Read("""{"type":"stream_event","event":{"type":"message_start"}}""").Cost);
 
     [Fact]
     [Trait("req", "GUARD-004")]
-    public void Result_CountsEveryModelTheRunTouched() =>
+    public void Result_CountsEveryModelTheRunTouched()
+    {
         // The second entry is a call of the CLI's own. A hub counting only the pinned model would
         // have missed 909 tokens the run caused.
-        Assert.Equal(
-            RecordedTranscript.PinnedModelTotal + RecordedTranscript.BackgroundCallTotal,
-            Transcript().Read(RecordedTranscript.Result).TokensUsed);
+        Assert.Equal(RecordedTranscript.ResultCost, Transcript().Read(RecordedTranscript.Result).Cost);
+        Assert.NotEqual(RecordedTranscript.PinnedModelCost, RecordedTranscript.ResultCost);
+    }
 
     [Fact]
     [Trait("req", "GUARD-004")]
-    public void Result_CountsThinkingTokensWithinTheOutputTokens() =>
+    public void Result_WeighsThinkingTokensWithinTheOutputTokens() =>
         Assert.Equal(
-            RecordedTranscript.OneTurnProbeTotal,
-            Transcript().Read(RecordedTranscript.ResultOfTheOneTurnProbe).TokensUsed);
+            RecordedTranscript.OneTurnProbeCost,
+            Transcript().Read(RecordedTranscript.ResultOfTheOneTurnProbe).Cost);
 
     [Fact]
     [Trait("req", "GUARD-004")]
@@ -161,8 +164,8 @@ public sealed class AgentTranscriptTests
         // The streamed figure was a floor for the main model's response alone; the result's
         // modelUsage is the authority and replaces it, background call included.
         Assert.Equal(
-            RecordedTranscript.PinnedModelTotal + RecordedTranscript.BackgroundCallTotal,
-            transcript.Read(RecordedTranscript.Result).TokensUsed);
+            RecordedTranscript.ResultCost,
+            transcript.Read(RecordedTranscript.Result).Cost);
     }
 
     [Fact]
@@ -179,8 +182,8 @@ public sealed class AgentTranscriptTests
         // The next response starts its own counter from the bottom. What the run has cost does
         // not go back down with it.
         Assert.Equal(
-            RecordedTranscript.StreamedUsageTotals[^1],
-            transcript.Read(RecordedTranscript.StreamedUsage[0]).TokensUsed);
+            RecordedTranscript.StreamedUsageCosts[^1],
+            transcript.Read(RecordedTranscript.StreamedUsage[0]).Cost);
     }
 
     [Fact]
@@ -194,8 +197,8 @@ public sealed class AgentTranscriptTests
         // the first turn included. Summing the two results would count the first turn twice —
         // 160 083 for a run that caused 108 989.
         Assert.Equal(
-            RecordedTranscript.NudgedSessionTotal,
-            transcript.Read(RecordedTranscript.ResultOfTheSecondNudgedTurn).TokensUsed);
+            RecordedTranscript.NudgedSessionCost,
+            transcript.Read(RecordedTranscript.ResultOfTheSecondNudgedTurn).Cost);
     }
 
     [Fact]
@@ -209,8 +212,61 @@ public sealed class AgentTranscriptTests
         // says 57 895 for a run that has by then caused 108 989. Read as a bare maximum the
         // ceiling would have been blind to a whole turn's worth of tokens until the next result.
         Assert.Equal(
-            RecordedTranscript.NudgedSessionTotal,
-            transcript.Read(RecordedTranscript.StreamedUsageOfTheSecondNudgedTurn).TokensUsed);
+            RecordedTranscript.NudgedSessionCost,
+            transcript.Read(RecordedTranscript.StreamedUsageOfTheSecondNudgedTurn).Cost);
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-004")]
+    public void Result_ReconcilesToWhatTheStreamAlreadyReached_WithTheSameCounters()
+    {
+        // The second turn's streamed usage and the second result carry the same four counts once
+        // the first turn is added back: 20 in, 264 out, 108 705 written. The live figure and the
+        // reconciled one are then the same number, which is what makes one a floor for the other
+        // rather than a second reading of the same run (GUARD-004).
+        var streaming = Transcript();
+        streaming.Read(RecordedTranscript.ResultOfTheFirstNudgedTurn);
+        var live = streaming.Read(RecordedTranscript.StreamedUsageOfTheSecondNudgedTurn);
+
+        var reconciling = Transcript();
+        reconciling.Read(RecordedTranscript.ResultOfTheFirstNudgedTurn);
+        var reconciled = reconciling.Read(RecordedTranscript.ResultOfTheSecondNudgedTurn);
+
+        Assert.Equal(reconciled.Cost, live.Cost);
+        Assert.Equal(reconciled.Tokens, live.Tokens);
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-004")]
+    public void Result_KeepsWhatTheNextTurnStreamsOnTopOf_WhenItAddsLessThanOneEquivalent()
+    {
+        // Ten cache reads are one equivalent, so nine more of them cost nothing yet. The counts
+        // still have to move: read as "the reading that cost most", the second result would be
+        // dropped and the turn after it would stream on top of 100 rather than 109 — and the
+        // tenth read of the next turn, which does cost, would never be counted (GUARD-004).
+        const string hundredReads =
+            """
+            {"type":"result","subtype":"success","modelUsage":{"m":{"cacheReadInputTokens":100}}}
+            """;
+        const string nineMore =
+            """
+            {"type":"result","subtype":"success","modelUsage":{"m":{"cacheReadInputTokens":109}}}
+            """;
+        const string oneMoreStreamed =
+            """
+            {"type":"stream_event","event":{"type":"message_delta","usage":{"cache_read_input_tokens":1}}}
+            """;
+
+        var transcript = Transcript();
+        transcript.Read(hundredReads);
+
+        var unchanged = transcript.Read(nineMore);
+
+        // The figure stands still and the counts behind it do not.
+        Assert.Equal(10, unchanged.Cost);
+        Assert.Equal(new ModelTokens(0, 0, 109, 0), unchanged.Tokens);
+
+        Assert.Equal(11, transcript.Read(oneMoreStreamed).Cost);
     }
 
     [Fact]
@@ -223,8 +279,8 @@ public sealed class AgentTranscriptTests
         // Not a shape the CLI produces in one session — modelUsage only grows — but the counter
         // is what a ceiling rests on, and it does not go back down for any reason.
         Assert.Equal(
-            RecordedTranscript.PinnedModelTotal + RecordedTranscript.BackgroundCallTotal,
-            transcript.Read(RecordedTranscript.ResultOfTheOneTurnProbe).TokensUsed);
+            RecordedTranscript.ResultCost,
+            transcript.Read(RecordedTranscript.ResultOfTheOneTurnProbe).Cost);
     }
 
     [Fact]
