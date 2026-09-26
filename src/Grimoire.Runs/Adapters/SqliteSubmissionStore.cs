@@ -100,7 +100,7 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
         var wanted = new (string Column, string Definition)[]
         {
             ("model", "TEXT NOT NULL DEFAULT ''"),
-            ("tokens_used", "INTEGER NOT NULL DEFAULT 0"),
+            ("cost_spent", "INTEGER NOT NULL DEFAULT 0"),
             ("tool_calls", "INTEGER NOT NULL DEFAULT 0"),
             ("entries_lost", "INTEGER NOT NULL DEFAULT 0"),
         };
@@ -149,7 +149,7 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             SELECT s.id, s.text, s.submitted_at, s.state, s.acknowledged_at,
                    r.id, r.submission_id, r.started_at, r.granted_tools, r.grant_recorded_at,
                    r.agent_process_id, r.agent_process_started_at,
-                   r.model, r.tokens_used, r.tool_calls, r.entries_lost
+                   r.model, r.cost_spent, r.tool_calls, r.entries_lost
             FROM submissions s
             LEFT JOIN runs r ON r.id = s.run_id
             ORDER BY s.rowid
@@ -216,7 +216,7 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             """
             INSERT INTO runs (id, submission_id, started_at, granted_tools, grant_recorded_at,
                               agent_process_id, agent_process_started_at,
-                              model, tokens_used, tool_calls, entries_lost)
+                              model, cost_spent, tool_calls, entries_lost)
             VALUES ($run, $submission, $started_at, $tools, $recorded_at, NULL, NULL,
                     $model, $tokens, $calls, $lost);
 
@@ -228,7 +228,7 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             ("$tools", string.Join(ToolSeparator, run.GrantedTools)),
             ("$recorded_at", Text(run.GrantRecordedAt)),
             ("$model", run.Model),
-            ("$tokens", run.TokensUsed),
+            ("$tokens", run.CostSpent),
             ("$calls", run.ToolCalls),
             ("$lost", run.EntriesLost));
     }
@@ -251,13 +251,13 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
     /// All three figures in one statement, because one event writes them and one row reads them
     /// (RUNS-010, RUNS-007).
     /// </summary>
-    public void RecordFigures(Guid runId, long tokensUsed, int toolCalls, int entriesLost) =>
+    public void RecordFigures(Guid runId, long costSpent, int toolCalls, int entriesLost) =>
         Execute(
             """
-            UPDATE runs SET tokens_used = $tokens, tool_calls = $calls, entries_lost = $lost
+            UPDATE runs SET cost_spent = $tokens, tool_calls = $calls, entries_lost = $lost
             WHERE id = $run
             """,
-            ("$tokens", tokensUsed),
+            ("$tokens", costSpent),
             ("$calls", toolCalls),
             ("$lost", entriesLost),
             ("$run", runId.ToString()));
@@ -266,17 +266,17 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
     /// Both statements, one transaction, committed before this returns (RUNS-010).
     /// </summary>
     public void Ended(
-        Guid submissionId, SubmissionState terminal, Guid runId, long tokensUsed, int toolCalls, int entriesLost) =>
+        Guid submissionId, SubmissionState terminal, Guid runId, long costSpent, int toolCalls, int entriesLost) =>
         Execute(
             """
             UPDATE submissions SET state = $state WHERE id = $id;
 
-            UPDATE runs SET tokens_used = $tokens, tool_calls = $calls, entries_lost = $lost
+            UPDATE runs SET cost_spent = $tokens, tool_calls = $calls, entries_lost = $lost
             WHERE id = $run;
             """,
             ("$state", WireNameOf(terminal)),
             ("$id", submissionId.ToString()),
-            ("$tokens", tokensUsed),
+            ("$tokens", costSpent),
             ("$calls", toolCalls),
             ("$lost", entriesLost),
             ("$run", runId.ToString()));

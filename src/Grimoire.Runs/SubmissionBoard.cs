@@ -295,7 +295,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
     /// row still reading <c>running</c>. ACCESS-005 has the state and the figures read as one instant,
     /// and a reading is only as atomic as the writing behind it.
     /// </remarks>
-    public void Ended(Guid submissionId, SubmissionState terminal, long tokensUsed, int toolCalls, int entriesLost)
+    public void Ended(Guid submissionId, SubmissionState terminal, long costSpent, int toolCalls, int entriesLost)
     {
         lock (gate)
         {
@@ -307,14 +307,14 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
             // The state first, because it is the one that refuses: a submission already done or failed
             // throws here, and it must throw before anything else about it has been changed.
             submission.Ended(terminal);
-            submission.FiguresAre(tokensUsed, toolCalls, entriesLost);
+            submission.FiguresAre(costSpent, toolCalls, entriesLost);
 
             // One change on disk, too. Written as a state and then a figure, a stop between the two
             // would leave a submission reading done or failed beside the figures it had one moment
             // earlier — and RUNS-010 has the final figures survive exactly that stop.
             if (submission.RunId is { } run)
             {
-                store.Ended(submissionId, terminal, run, tokensUsed, toolCalls, entriesLost);
+                store.Ended(submissionId, terminal, run, costSpent, toolCalls, entriesLost);
                 return;
             }
 
@@ -334,7 +334,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
     /// nothing, and a store written sixty times a turn to record the same three numbers would be sixty
     /// writes with no reader (research.md R-06).
     /// </remarks>
-    public void RunFiguresAre(Guid submissionId, long tokensUsed, int toolCalls, int entriesLost)
+    public void RunFiguresAre(Guid submissionId, long costSpent, int toolCalls, int entriesLost)
     {
         lock (gate)
         {
@@ -349,9 +349,9 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
                 return;
             }
 
-            if (submission.FiguresAre(tokensUsed, toolCalls, entriesLost))
+            if (submission.FiguresAre(costSpent, toolCalls, entriesLost))
             {
-                store.RecordFigures(run, tokensUsed, toolCalls, entriesLost);
+                store.RecordFigures(run, costSpent, toolCalls, entriesLost);
             }
         }
     }

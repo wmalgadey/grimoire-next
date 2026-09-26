@@ -114,7 +114,7 @@ public static class HubApplication
             RunOutcome.Failed,
             RunEndedBecause.GrimoireStopped,
             Elapsed: null,
-            run.TokensUsed,
+            run.CostSpent,
             Ceilings.Fixed,
             new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
 

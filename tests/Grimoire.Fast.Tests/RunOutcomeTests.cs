@@ -20,7 +20,7 @@ public sealed class RunOutcomeTests
         Ceilings.Fixed,
         FastHub.Model);
 
-    private static AgentStop Stopped(bool logEntry) => new(logEntry, TimeSpan.FromMinutes(1), TokensUsed: 10);
+    private static AgentStop Stopped(bool logEntry) => new(logEntry, TimeSpan.FromMinutes(1), CostSpent: 10);
 
     [Fact]
     public void AgentStops_EndsTheRunDone_WithTheLogEntryPresent() =>
@@ -56,7 +56,7 @@ public sealed class RunOutcomeTests
     public void AgentStops_EndsTheRunFailed_WhenTheElapsedCeilingIsReached(bool logEntry) =>
         Assert.Equal(
             RunDecision.Failed,
-            run.AgentStopped(new AgentStop(logEntry, Ceilings.Fixed.Elapsed, TokensUsed: 0)));
+            run.AgentStopped(new AgentStop(logEntry, Ceilings.Fixed.Elapsed, CostSpent: 0)));
 
     [Theory]
     [InlineData(true)]
@@ -65,20 +65,20 @@ public sealed class RunOutcomeTests
     public void AgentStops_EndsTheRunFailed_WhenTheTokenCeilingIsReached(bool logEntry) =>
         Assert.Equal(
             RunDecision.Failed,
-            run.AgentStopped(new AgentStop(logEntry, TimeSpan.Zero, Ceilings.Fixed.Tokens)));
+            run.AgentStopped(new AgentStop(logEntry, TimeSpan.Zero, Ceilings.Fixed.Cost)));
 
     [Fact]
     public void AgentStops_EndsTheRunFailed_WhenItDidNotStopOfItsOwnAccord() =>
         Assert.Equal(
             RunDecision.Failed,
-            run.AgentStopped(new AgentStop(LogEntryPresent: true, TimeSpan.Zero, TokensUsed: 0, EndedAbnormally: true)));
+            run.AgentStopped(new AgentStop(LogEntryPresent: true, TimeSpan.Zero, CostSpent: 0, EndedAbnormally: true)));
 
     [Fact]
     public void AgentStops_RecordsWhatTheRunSpent()
     {
-        run.AgentStopped(new AgentStop(LogEntryPresent: true, TimeSpan.Zero, TokensUsed: 4_211));
+        run.AgentStopped(new AgentStop(LogEntryPresent: true, TimeSpan.Zero, CostSpent: 4_211));
 
-        Assert.Equal(4_211, run.TokensUsed);
+        Assert.Equal(4_211, run.CostSpent);
     }
 
     [Fact]

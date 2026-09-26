@@ -4,7 +4,7 @@ using Grimoire.Runs;
 namespace Grimoire.Fast.Tests;
 
 /// <summary>
-/// The two figures a run carries — the tokens it has spent and the tool calls it has made — kept
+/// The two figures a run carries — what it has cost and the tool calls it has made — kept
 /// current while it runs, final once it has ended, and surviving a stop (RUNS-010).
 /// </summary>
 [Trait("level", "fast")]
@@ -22,7 +22,7 @@ public sealed class RunFiguresTests
         // there is nothing true to say about a run that does not exist (ACCESS-005).
         var figures = submission.Status.Run!;
         Assert.Equal(FastHub.Model, figures.Model);
-        Assert.Equal(0, figures.TokensUsed);
+        Assert.Equal(0, figures.CostSpent);
         Assert.Equal(0, figures.ToolCalls);
         Assert.Equal(0, figures.EntriesLost);
     }
@@ -36,20 +36,20 @@ public sealed class RunFiguresTests
         hub.Harness.Spend(submission.Id, 51_094);
         hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
 
-        Assert.Equal(51_094, submission.Status.Run!.TokensUsed);
+        Assert.Equal(51_094, submission.Status.Run!.CostSpent);
         Assert.Equal(1, submission.Status.Run!.ToolCalls);
 
         hub.Harness.Spend(submission.Id, 108_989);
         hub.Harness.Called(submission.Id, "write_page", """{"path":"ada.md"}""");
 
-        Assert.Equal(108_989, submission.Status.Run!.TokensUsed);
+        Assert.Equal(108_989, submission.Status.Run!.CostSpent);
         Assert.Equal(2, submission.Status.Run!.ToolCalls);
 
         // A streamed figure lower than one already seen is the next response counting from nothing,
         // not the run spending less (research.md R-04).
         hub.Harness.Spend(submission.Id, 12);
 
-        Assert.Equal(108_989, submission.Status.Run!.TokensUsed);
+        Assert.Equal(108_989, submission.Status.Run!.CostSpent);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public sealed class RunFiguresTests
         await hub.Harness.StoppedAsync(submission.Id);
 
         Assert.Equal(SubmissionState.Done, submission.State);
-        Assert.Equal(148_233, submission.Status.Run!.TokensUsed);
+        Assert.Equal(148_233, submission.Status.Run!.CostSpent);
         Assert.Equal(1, submission.Status.Run!.ToolCalls);
     }
 
@@ -85,7 +85,7 @@ public sealed class RunFiguresTests
 
         Assert.Equal(SubmissionState.Failed, status.State);
         Assert.True(status.AwaitingAcknowledgement);
-        Assert.Equal(2_004_118, status.Run!.TokensUsed);
+        Assert.Equal(2_004_118, status.Run!.CostSpent);
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public sealed class RunFiguresTests
         // it afterwards. The record already dropped the moment for arriving after the tail, so counting
         // it here would put a figure on the row that is in no record at all — and RUNS-010 has the
         // figures stand as the run's final ones once it has ended.
-        hub.Board.RunFiguresAre(submission.Id, tokensUsed: 999_999, toolCalls: 99, entriesLost: 7);
+        hub.Board.RunFiguresAre(submission.Id, costSpent: 999_999, toolCalls: 99, entriesLost: 7);
 
         Assert.Equal(final, submission.Status.Run);
         Assert.Equal(writes, hub.Journal.Entries.Count);
@@ -237,7 +237,7 @@ public sealed class RunFiguresTests
         // assumed those numbers need not survive; OUT-02 gives them a reader, so they do (RUNS-010).
         Assert.Equal(SubmissionState.Failed, restored.State);
         Assert.Equal(FastHub.Model, restored.Status.Run!.Model);
-        Assert.Equal(148_233, restored.Status.Run!.TokensUsed);
+        Assert.Equal(148_233, restored.Status.Run!.CostSpent);
         Assert.Equal(1, restored.Status.Run!.ToolCalls);
     }
 }

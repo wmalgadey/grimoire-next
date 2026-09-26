@@ -29,10 +29,10 @@ namespace Grimoire.Hub.Api;
 /// The pinned model id that run runs on. Recorded with the run, so an older run keeps the model it
 /// actually used even after <c>--model</c> changes (DEC-010, RUNS-008).
 /// </param>
-/// <param name="TokensUsed">
-/// Every token the run has caused so far — <b>the same quantity the cost ceiling counts</b>, over
-/// every model the run touched. Never a second definition of cost, and never currency (GUARD-004,
-/// DEC-015).
+/// <param name="CostSpent">
+/// What the run has cost so far, in input-token equivalents — <b>the same quantity the cost ceiling
+/// counts</b>, over every model the run touched. Never a second definition of cost, and never
+/// currency (GUARD-004, DEC-015).
 /// </param>
 /// <param name="EntriesLost">
 /// That lines are missing from that run's record, and then a number above zero. Absent where nothing
@@ -49,9 +49,9 @@ public sealed record SubmissionView(
     [property: JsonPropertyName("model")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? Model = null,
-    [property: JsonPropertyName("tokensUsed")]
+    [property: JsonPropertyName("costSpent")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    long? TokensUsed = null,
+    long? CostSpent = null,
     [property: JsonPropertyName("toolCalls")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     int? ToolCalls = null,
@@ -83,7 +83,7 @@ public sealed record SubmissionView(
             // no run (RUNS-002), so there is nothing true to say about one, and zeros would claim a
             // run that spent nothing rather than no run at all.
             status.Run?.Model,
-            status.Run?.TokensUsed,
+            status.Run?.CostSpent,
             status.Run?.ToolCalls,
 
             // And absent where nothing was lost, so that a row says lines are missing only when they

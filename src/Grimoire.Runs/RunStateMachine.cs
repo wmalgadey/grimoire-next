@@ -5,12 +5,12 @@ namespace Grimoire.Runs;
 /// <summary>What the hub knows at the moment the agent stopped.</summary>
 /// <param name="LogEntryPresent">Whether the wiki's log holds an entry for this run.</param>
 /// <param name="Elapsed">How long the run has been going, measured against <c>TimeProvider</c>.</param>
-/// <param name="TokensUsed">Every token the run has caused (GUARD-004).</param>
+/// <param name="CostSpent">What the run has cost, in input-token equivalents (GUARD-004).</param>
 /// <param name="EndedAbnormally">
 /// The agent did not stop of its own accord — an aborted stream, or a process that exited
 /// non-zero. RUNS-005 ends a run done only where the agent "stopped on its own".
 /// </param>
-public sealed record AgentStop(bool LogEntryPresent, TimeSpan Elapsed, long TokensUsed, bool EndedAbnormally = false);
+public sealed record AgentStop(bool LogEntryPresent, TimeSpan Elapsed, long CostSpent, bool EndedAbnormally = false);
 
 /// <summary>
 /// What the hub does about a run whose agent has stopped. None of these ends the run: a run ends
@@ -85,8 +85,22 @@ public sealed class Run
     /// </summary>
     public string Model { get; }
 
-    /// <summary>Every token the run has caused so far (GUARD-004).</summary>
-    public long TokensUsed { get; private set; }
+    /// <summary>
+    /// What the run has cost so far, in input-token equivalents — the one figure the cost ceiling is
+    /// read against (GUARD-004).
+    /// </summary>
+    public long CostSpent { get; private set; }
+
+    /// <summary>
+    /// The four raw counts behind <see cref="CostSpent"/>, added over every model the run touched.
+    /// </summary>
+    /// <remarks>
+    /// Kept beside the weighted figure and not derived from it: the weighting cannot be undone, and
+    /// these four are what the ceiling's placeholder value is calibrated from after the acceptance
+    /// run. They are written down with the run, and the record's tail states them (RUNS-008,
+    /// RUNS-010).
+    /// </remarks>
+    public ModelTokens Tokens { get; private set; }
 
     /// <summary>
     /// How many tool calls the run has made (RUNS-010). Rises once per reported call; never goes
@@ -122,23 +136,32 @@ public sealed class Run
     /// <summary>Whether the wiki's log named this run when the agent last stopped.</summary>
     public bool LogEntryWasPresent { get; private set; }
 
-    /// <summary>Record what the run has caused so far. Never goes backwards.</summary>
-    public void Spent(long tokensUsed) => TokensUsed = Math.Max(TokensUsed, tokensUsed);
+    /// <summary>Record what the run has cost so far. Never goes backwards.</summary>
+    public void Spent(long costSpent) => CostSpent = Math.Max(CostSpent, costSpent);
 
     /// <summary>
-    /// What the run has caused so far, with the breakdown the line carried. The breakdown is taken
-    /// only where there is one: a streamed line reports a total and no models, and replacing the
-    /// breakdown with nothing would lose what the last <c>result</c> established.
+    /// What the run has spent so far: the cost, the raw counts behind it, and the breakdown the line
+    /// carried.
     /// </summary>
-    public void Spent(long tokensUsed, IReadOnlyDictionary<string, ModelTokens> tokensPerModel)
+    /// <remarks>
+    /// The raw counts move with the cost and only where it rises, so that the four written down for a
+    /// run are the ones the figure beside them was weighed from. The breakdown is taken only where
+    /// there is one: a streamed line reports no models, and replacing the breakdown with nothing
+    /// would lose what the last <c>result</c> established.
+    /// </remarks>
+    public void Spent(RunSpend spend)
     {
-        ArgumentNullException.ThrowIfNull(tokensPerModel);
+        ArgumentNullException.ThrowIfNull(spend);
 
-        Spent(tokensUsed);
-
-        if (tokensPerModel.Count > 0)
+        if (spend.Cost > CostSpent)
         {
-            TokensPerModel = tokensPerModel;
+            CostSpent = spend.Cost;
+            Tokens = spend.Tokens;
+        }
+
+        if (spend.PerModel.Count > 0)
+        {
+            TokensPerModel = spend.PerModel;
         }
     }
 
@@ -166,7 +189,7 @@ public sealed class Run
     {
         ArgumentNullException.ThrowIfNull(stop);
 
-        Spent(stop.TokensUsed);
+        Spent(stop.CostSpent);
 
         // Recorded rather than acted on: the run does not end here, and these are two of the three
         // things the verdict at the exit is taken from.
@@ -175,7 +198,7 @@ public sealed class Run
 
         // A ceiling reached ends the run failed whatever the log says, and so does an ending the
         // agent did not choose (GUARD-004).
-        if (stop.EndedAbnormally || Ceilings.ReachedBy(stop.Elapsed, stop.TokensUsed))
+        if (stop.EndedAbnormally || Ceilings.ReachedBy(stop.Elapsed, stop.CostSpent))
         {
             return RunDecision.Failed;
         }
@@ -217,7 +240,7 @@ public sealed class Run
     {
         // A ceiling reached fails the run whatever the other three say, so it is read first — and
         // which of the two it was, because the record names one of seven reasons and not "a ceiling".
-        if (Ceilings.ReachedBy(elapsed, TokensUsed))
+        if (Ceilings.ReachedBy(elapsed, CostSpent))
         {
             return new RunEnding(RunOutcome.Failed, CeilingReachedBy(elapsed));
         }

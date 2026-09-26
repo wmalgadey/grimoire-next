@@ -196,12 +196,12 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
 
         store.Add(submission);
         store.AssignRun(submission.Id, run);
-        store.RecordFigures(run.Id, tokensUsed: 148_233, toolCalls: 9, entriesLost: 2);
+        store.RecordFigures(run.Id, costSpent: 148_233, toolCalls: 9, entriesLost: 2);
 
         var read = Reopened().Load().Single().Run!;
 
         Assert.Equal(PinnedModel, read.Model);
-        Assert.Equal(148_233, read.TokensUsed);
+        Assert.Equal(148_233, read.CostSpent);
         Assert.Equal(9, read.ToolCalls);
         Assert.Equal(2, read.EntriesLost);
     }
@@ -216,9 +216,9 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
 
         store.Add(submission);
         store.AssignRun(submission.Id, run);
-        store.RecordFigures(run.Id, tokensUsed: 51_094, toolCalls: 4, entriesLost: 0);
+        store.RecordFigures(run.Id, costSpent: 51_094, toolCalls: 4, entriesLost: 0);
 
-        store.Ended(submission.Id, SubmissionState.Failed, run.Id, tokensUsed: 148_233, toolCalls: 9, entriesLost: 2);
+        store.Ended(submission.Id, SubmissionState.Failed, run.Id, costSpent: 148_233, toolCalls: 9, entriesLost: 2);
 
         // One change, so a stop can leave the file before it or after it and never between: a
         // submission reading failed beside the figures it had one moment earlier is what RUNS-010
@@ -226,7 +226,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         var read = Reopened().Load().Single();
 
         Assert.Equal(SubmissionState.Failed, read.State);
-        Assert.Equal(148_233, read.Run!.TokensUsed);
+        Assert.Equal(148_233, read.Run!.CostSpent);
         Assert.Equal(9, read.Run.ToolCalls);
         Assert.Equal(2, read.Run.EntriesLost);
     }
@@ -256,7 +256,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         // can give. The model is left empty rather than guessed at: the current `--model` would claim
         // the run had used one it may never have seen.
         Assert.Equal(string.Empty, read.Run.Model);
-        Assert.Equal(0, read.Run.TokensUsed);
+        Assert.Equal(0, read.Run.CostSpent);
         Assert.Equal(0, read.Run.ToolCalls);
         Assert.Equal(0, read.Run.EntriesLost);
     }

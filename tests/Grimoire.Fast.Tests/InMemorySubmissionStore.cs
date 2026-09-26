@@ -130,7 +130,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
         }
     }
 
-    public void RecordFigures(Guid runId, long tokensUsed, int toolCalls, int entriesLost)
+    public void RecordFigures(Guid runId, long costSpent, int toolCalls, int entriesLost)
     {
         lock (gate)
         {
@@ -138,19 +138,19 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
 
             runs[runId] = runs[runId] with
             {
-                TokensUsed = tokensUsed,
+                CostSpent = costSpent,
                 ToolCalls = toolCalls,
                 EntriesLost = entriesLost,
             };
 
             // Journalled, because "written only where a figure has actually risen" is a claim about
             // how often this is reached and not only about what it leaves behind (research.md R-06).
-            journal?.Record($"figures of {runId} are {tokensUsed}/{toolCalls}/{entriesLost}");
+            journal?.Record($"figures of {runId} are {costSpent}/{toolCalls}/{entriesLost}");
         }
     }
 
     public void Ended(
-        Guid submissionId, SubmissionState terminal, Guid runId, long tokensUsed, int toolCalls, int entriesLost)
+        Guid submissionId, SubmissionState terminal, Guid runId, long costSpent, int toolCalls, int entriesLost)
     {
         lock (gate)
         {
@@ -159,14 +159,14 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
             held[submissionId] = held[submissionId] with { State = terminal };
             runs[runId] = runs[runId] with
             {
-                TokensUsed = tokensUsed,
+                CostSpent = costSpent,
                 ToolCalls = toolCalls,
                 EntriesLost = entriesLost,
             };
 
             // One entry, because it is one change. Two would say the store had been written twice,
             // which is exactly what this member exists to stop (RUNS-010).
-            journal?.Record($"{submissionId} ended {terminal} at {tokensUsed}/{toolCalls}/{entriesLost}");
+            journal?.Record($"{submissionId} ended {terminal} at {costSpent}/{toolCalls}/{entriesLost}");
         }
     }
 

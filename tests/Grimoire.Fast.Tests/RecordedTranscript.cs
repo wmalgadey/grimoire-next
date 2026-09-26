@@ -107,8 +107,16 @@ internal static class RecordedTranscript
         {"type":"stream_event","event":{"type":"message_delta","usage":{"input_tokens":10,"output_tokens":223,"cache_read_input_tokens":0,"cache_creation_input_tokens":57662}}}
         """;
 
-    /// <summary>What the run above had caused by the end of its second turn.</summary>
-    internal const long NudgedSessionTotal = 20 + 264 + 0 + 108_705;
+    /// <summary>
+    /// What the run above had cost by the end of its second turn: its four counts, weighed by
+    /// <c>Ceilings.CostOf</c>'s four weights in tenths of an input token (GUARD-004).
+    /// </summary>
+    /// <remarks>
+    /// Written as the formula applied to the recorded counts rather than as a number, so that the
+    /// expectation is derived from the weights and not copied off what the code currently answers.
+    /// Every cost in this file is written the same way.
+    /// </remarks>
+    internal const long NudgedSessionCost = ((10 * 20) + (50 * 264) + (1 * 0) + (20 * 108_705)) / 10;
 
     /// <summary><see cref="Init"/> from a CLI that does not advertise the interrupt.</summary>
     internal const string InitWithoutTheInterrupt =
@@ -136,7 +144,12 @@ internal static class RecordedTranscript
     ];
 
     /// <summary>What each line of <see cref="StreamedUsage"/> puts the run's cost at.</summary>
-    internal static readonly long[] StreamedUsageTotals = [10 + 41, 10 + 126, 10 + 310];
+    internal static readonly long[] StreamedUsageCosts =
+    [
+        ((10 * 10) + (50 * 41)) / 10,
+        ((10 * 10) + (50 * 126)) / 10,
+        ((10 * 10) + (50 * 310)) / 10,
+    ];
 
     /// <summary>
     /// The turn's <c>result</c>: <c>modelUsage</c> with the pinned model and one background call
@@ -147,24 +160,31 @@ internal static class RecordedTranscript
         {"type":"result","subtype":"success","terminal_reason":"completed","usage":{"input_tokens":40112,"output_tokens":3190,"cache_read_input_tokens":22016,"cache_creation_input_tokens":7228},"modelUsage":{"claude-opus-4-5-20251101":{"inputTokens":40112,"outputTokens":3190,"cacheReadInputTokens":22016,"cacheCreationInputTokens":7228},"claude-haiku-4-5-20251001":{"inputTokens":897,"outputTokens":12,"cacheReadInputTokens":0,"cacheCreationInputTokens":0}},"permission_denials":[]}
         """;
 
-    /// <summary>The pinned model's four fields in <see cref="Result"/>.</summary>
-    internal const long PinnedModelTotal = 40112 + 3190 + 22016 + 7228;
+    /// <summary>What the two entries of <see cref="Result"/> cost together.</summary>
+    /// <remarks>
+    /// The four classes are added across both models and weighed once, which is what
+    /// <c>Ceilings.CostOf</c> does: weighing each model and adding the two could differ by the
+    /// rounding of the cache reads.
+    /// </remarks>
+    internal const long ResultCost =
+        ((10 * (40112 + 897)) + (50 * (3190 + 12)) + (1 * 22016) + (20 * 7228)) / 10;
 
-    /// <summary>The background call's four fields in <see cref="Result"/>.</summary>
-    internal const long BackgroundCallTotal = 897 + 12 + 0 + 0;
+    /// <summary>What the pinned model's entry alone costs, without the CLI's background call.</summary>
+    internal const long PinnedModelCost =
+        ((10 * 40112) + (50 * 3190) + (1 * 22016) + (20 * 7228)) / 10;
 
     /// <summary>
     /// The <c>modelUsage</c> of R-04's one-turn probe, verbatim. <c>thinkingTokens</c> is a
     /// breakdown of <c>outputTokens</c> and not an addition to it, which is why the recorded cost
-    /// of that run is <see cref="OneTurnProbeTotal"/> and not 33 more.
+    /// of that run is <see cref="OneTurnProbeCost"/> and not 33 output tokens more.
     /// </summary>
     internal const string ResultOfTheOneTurnProbe =
         """
         {"type":"result","subtype":"success","terminal_reason":"completed","modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":10,"outputTokens":42,"thinkingTokens":33,"cacheReadInputTokens":0,"cacheCreationInputTokens":6612,"canonicalModel":"claude-haiku-4-5","provider":"firstParty"}}}
         """;
 
-    /// <summary>The 6 664 tokens R-04 records for that probe.</summary>
-    internal const long OneTurnProbeTotal = 10 + 42 + 0 + 6612;
+    /// <summary>What the 6 664 tokens R-04 records for that probe cost.</summary>
+    internal const long OneTurnProbeCost = ((10 * 10) + (50 * 42) + (1 * 0) + (20 * 6612)) / 10;
 
     /// <summary>
     /// What the spike saw 0.9 s after sending the interrupt: the turn ended without the agent

@@ -113,7 +113,7 @@ public sealed class RecordTextTests
             RunOutcome.Failed,
             RunEndedBecause.GrimoireStopped,
             Elapsed: null,
-            TokensUsed: 12_400,
+            CostSpent: 12_400,
             Ceilings.Fixed,
             new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
 

@@ -10,9 +10,10 @@ namespace Grimoire.Runs;
 /// The pinned model id this run ran on. Kept because a record from last month must say which model
 /// served it, and the owner may change <c>--model</c> between runs (RUNS-008, DEC-010).
 /// </param>
-/// <param name="TokensUsed">
-/// Every token the run has caused. Kept because RUNS-010 makes the figures survive a stop: OUT-02 has
-/// the user read a failed run's cost, so the number now has a consumer (Constitution II.1).
+/// <param name="CostSpent">
+/// What the run has cost, in input-token equivalents. Kept because RUNS-010 makes the figures survive
+/// a stop: OUT-02 has the user read a failed run's cost, so the number now has a consumer
+/// (Constitution II.1).
 /// </param>
 /// <param name="ToolCalls">How many tool calls the run made, for the same reason (RUNS-010).</param>
 /// <param name="EntriesLost">
@@ -36,7 +37,7 @@ public sealed record StoredRun(
     DateTimeOffset GrantRecordedAt,
     string Model,
     AgentProcessIdentity? AgentProcess,
-    long TokensUsed = 0,
+    long CostSpent = 0,
     int ToolCalls = 0,
     int EntriesLost = 0)
 {
@@ -155,7 +156,7 @@ public interface ISubmissionStore
     /// figures stand as the run's final ones once it has ended <em>and</em> survive a stop, and two
     /// changes cannot promise both.
     /// </remarks>
-    void Ended(Guid submissionId, SubmissionState terminal, Guid runId, long tokensUsed, int toolCalls, int entriesLost);
+    void Ended(Guid submissionId, SubmissionState terminal, Guid runId, long costSpent, int toolCalls, int entriesLost);
 
     /// <summary>The user has acknowledged this submission's failed run (RUNS-003).</summary>
     void Acknowledge(Guid submissionId, DateTimeOffset at);
@@ -166,10 +167,10 @@ public interface ISubmissionStore
     /// </summary>
     /// <remarks>
     /// One member for the three, because one event writes them and one row reads them: written
-    /// separately, a restart could come back with a token figure from one moment beside a call count
+    /// separately, a restart could come back with a cost figure from one moment beside a call count
     /// from another. Called only where a figure has actually risen — <c>Run.Spent</c> is already a
     /// <c>Math.Max</c>, so the store sees two to four writes a turn rather than the sixty streamed
     /// lines a turn carries (research.md R-06).
     /// </remarks>
-    void RecordFigures(Guid runId, long tokensUsed, int toolCalls, int entriesLost);
+    void RecordFigures(Guid runId, long costSpent, int toolCalls, int entriesLost);
 }
