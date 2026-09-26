@@ -236,6 +236,22 @@ internal sealed class HubUnderTest : IAsyncDisposable
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// One run's record as the endpoint answers it, unaltered. Read as bytes and not as text: what
+    /// ACCESS-006 promises is the file's bytes, and a string comparison would pass on a response that
+    /// had been re-encoded, reordered or had its blank lines dropped.
+    /// </summary>
+    public async Task<byte[]> RecordBytesAsync(Guid submission, CancellationToken cancellationToken)
+    {
+        var response = await client
+            .GetAsync(new Uri($"/api/submissions/{submission}/record", UriKind.Relative), cancellationToken)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async ValueTask DisposeAsync()
     {
         client.Dispose();

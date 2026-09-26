@@ -1,3 +1,4 @@
+using System.Text;
 using Grimoire.Agent;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit.v3;
@@ -221,24 +222,21 @@ public sealed class RunRecordViewTests : PageTest
         hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
         hub.Agent.End(submission, RunOutcome.Done);
 
-        // What the browser is served.
-        await Page.GotoAsync($"{hub.Address}/api/submissions/{submission}/record");
-        var served = await Page.InnerTextAsync("body");
-
         // What is on disk. One file, under the state directory Grimoire owns, named for the run.
         var records = Directory.GetFiles(Path.Combine(hub.StateDirectory, "runs"), "*.md");
-        var onDisk = await File.ReadAllTextAsync(Assert.Single(records), token);
+        var onDisk = await File.ReadAllBytesAsync(Assert.Single(records), token);
 
-        // The browser gets what the owner's editor would get. Nothing is rendered server-side and
-        // nothing is summarised, which is what keeps the page a window onto the record rather than a
-        // second place the run lives (US3, ACCESS-006).
-        Assert.Contains("Ada Lovelace already has a page.", onDisk, StringComparison.Ordinal);
-        Assert.Contains("ended done", onDisk, StringComparison.Ordinal);
+        // Byte for byte, which is what ACCESS-006 promises and what makes the browser a window onto
+        // the record rather than a second place the run lives. Compared as bytes and not as text: a
+        // line-by-line comparison would pass on a response that had been reordered, had a line
+        // repeated, or had its blank lines dropped — and the blank lines are what separate one segment
+        // from the next (US3, contracts/run-record.md).
+        Assert.Equal(onDisk, await hub.RecordBytesAsync(submission, token));
 
-        foreach (var line in onDisk.Split('\n').Where(l => l.Trim().Length > 0))
-        {
-            Assert.Contains(line.Trim(), served, StringComparison.Ordinal);
-        }
+        // The record really does hold the run, rather than both being empty and equal.
+        var text = Encoding.UTF8.GetString(onDisk);
+        Assert.Contains("Ada Lovelace already has a page.", text, StringComparison.Ordinal);
+        Assert.Contains("ended done", text, StringComparison.Ordinal);
 
         // And the wiki holds none of it. Grimoire's bookkeeping in the user's repository would turn up
         // in the version history that is their only undo (Invariants 1 and 3, DEC-023).

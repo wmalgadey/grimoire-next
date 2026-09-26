@@ -176,24 +176,25 @@ public sealed class RunRecordTests
         hub.Harness.Did(submission.Id, new TranscriptMoment(RunMomentKind.AgentSaid, Tool: null, "Adding the date."));
 
         // The log entry is there, so the run ends done and the whole record is written — head, four
-        // moments and the tail.
+        // moments and the tail. The append below is this test putting the entry there; it is the only
+        // thing in this test that is not Grimoire writing a record.
         await hub.Wiki.AppendLogAsync($"Run {run.Id} wrote a page.\n", TestContext.Current.CancellationToken);
-        var askedBeforeTheEnding = hub.Wiki.Asked.Count;
 
         await hub.Harness.StoppedAsync(submission.Id);
 
         Assert.NotNull(hub.Record.HeadOf(run.Id));
         Assert.NotNull(hub.Record.TailOf(run.Id));
 
-        // Writing all of it asked the wiki for exactly one thing: RUNS-005's read of log.md for the
-        // run's identifier. Nothing was written there, nothing else was read, and the wiki was never
-        // listed — the record is Grimoire's own bookkeeping and lives outside it (RUNS-007, US3).
+        // **Everything** the wiki was ever asked, from the run beginning to its tail — not the tail of
+        // that list. Asserted as a suffix, a page read taken while the moments were being recorded
+        // would fall before the mark and pass unseen, which is exactly the thing RUNS-007 is about.
+        //
+        // Two entries: this test's own append, and RUNS-005's read of log.md for the run's identifier.
+        // Nothing written by Grimoire, nothing else read, and the wiki never listed — the record is
+        // Grimoire's own bookkeeping and lives outside it (RUNS-007, US3).
         Assert.Equal(
-            [$"read {InMemoryWikiStore.LogPath}"],
-            hub.Wiki.Asked.Skip(askedBeforeTheEnding));
-
-        Assert.DoesNotContain(hub.Wiki.Asked, a => a.StartsWith("write", StringComparison.Ordinal));
-        Assert.DoesNotContain(hub.Wiki.Asked, a => a == "list");
+            [$"append {InMemoryWikiStore.LogPath}", $"read {InMemoryWikiStore.LogPath}"],
+            hub.Wiki.Asked);
 
         // And nothing of the record is among the wiki's files.
         Assert.DoesNotContain(hub.Wiki.Files.Keys, path => path.Contains(run.Id.ToString(), StringComparison.Ordinal));
