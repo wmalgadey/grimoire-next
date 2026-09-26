@@ -104,6 +104,7 @@ public sealed class RunRecordTests
             RunEndedBecause.StoppedWithItsLogEntry,
             TimeSpan.Zero,
             CostSpent: 0,
+            Tokens: default,
             run.Ceilings,
             new Dictionary<string, ModelTokens>(StringComparer.Ordinal)));
 

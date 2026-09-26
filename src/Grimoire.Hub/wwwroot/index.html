@@ -57,16 +57,17 @@
          docs/ux.md: live content grows in place).
 
          Both widths come from the cost ceiling, which is what bounds either figure: a run is stopped
-         at 2 000 000 tokens (GUARD-004), so the token figure cannot pass "2 000 000" — nine
-         characters with the thin spaces this page groups them by. Every tool call spends tokens on
-         the call and on its result, so the same ceiling bounds the number of calls far below the
+         at 2 000 000 (GUARD-004), so the cost cell cannot pass "2 000 000 / 2 000 000" — twenty-one
+         characters with the thin spaces this page groups them by. Every tool call costs something
+         on the call and on its result, so the same ceiling bounds the number of calls far below the
          "99 999" six characters hold. Neither is an assumption about how a run behaves; both follow
          from the ceiling it is held to. */
-      .tokens { width: 9ch; }
+      .cost { width: 21ch; }
       .calls { width: 6ch; }
       .model { flex: none; opacity: 0.7; }
       /* What the figure beside it counts. Its own element, so the figure holds nothing but the
-         number — the thing the cost ceiling counts and nothing else (DEC-015). */
+         number. The cost has no such label: it is written as "x / y" against its ceiling, and it
+         has no unit to name — it is not a count of tokens (GUARD-004, DEC-015). */
       .unit { flex: none; margin-left: -0.6rem; opacity: 0.7; }
       .open-run { flex: none; margin-left: auto; }
       .missing { flex: none; }
@@ -99,7 +100,8 @@
     <h2>What became of each submission</h2>
 
     <!-- Exactly one of the four states per submission, and — where it has a run — that run's model,
-         the tokens it has spent and the tool calls it has made (ACCESS-005). Beside them: when the
+         what it has spent against the cost ceiling and the tool calls it has made (ACCESS-005).
+         Beside them: when the
          submission was made and the opening of its text, which is what one submission is told from
          another by (ACCESS-004). A row with a run links to that run's record (ACCESS-006). No
          identifier is rendered. -->

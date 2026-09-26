@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Grimoire.Agent;
 
 namespace Grimoire.Runs;
 
@@ -24,7 +25,11 @@ public enum SubmissionState
 /// over every model the run touched — not a second definition of cost, and never currency
 /// (GUARD-004, DEC-015).
 /// </param>
-public sealed record RunFigures(string Model, long CostSpent, int ToolCalls, int EntriesLost);
+/// <param name="Tokens">
+/// The four raw counts behind <see cref="CostSpent"/>. They survive a stop with it, because the
+/// weighting cannot be undone and the ceiling is calibrated from them (GUARD-004, RUNS-010).
+/// </param>
+public sealed record RunFigures(string Model, long CostSpent, ModelTokens Tokens, int ToolCalls, int EntriesLost);
 
 /// <summary>
 /// What a submission reads at one instant: its state, whether its failure is still waiting to be
@@ -229,7 +234,7 @@ public sealed partial class Submission
         // The figures come back with the run, which is what makes a run cut off by a stop read failed
         // and still carry what it spent (RUNS-010, RUNS-004).
         figures = held.Run is { } run
-            ? new RunFigures(run.Model, run.CostSpent, run.ToolCalls, run.EntriesLost)
+            ? new RunFigures(run.Model, run.CostSpent, run.Tokens, run.ToolCalls, run.EntriesLost)
             : null;
     }
 
@@ -249,7 +254,7 @@ public sealed partial class Submission
         // The model is known the moment the run exists, and the three figures start at nothing. From
         // here on the submission has a run, which is what the browser reads the fields off
         // (ACCESS-005).
-        figures = new RunFigures(model, CostSpent: 0, ToolCalls: 0, EntriesLost: 0);
+        figures = new RunFigures(model, CostSpent: 0, Tokens: default, ToolCalls: 0, EntriesLost: 0);
     }
 
     /// <summary>
@@ -257,7 +262,7 @@ public sealed partial class Submission
     /// board writes the store only where one has risen (RUNS-010, research.md R-06). Assumes the
     /// board's lock.
     /// </summary>
-    internal bool FiguresAre(long costSpent, int toolCalls, int entriesLost)
+    internal bool FiguresAre(long costSpent, ModelTokens tokens, int toolCalls, int entriesLost)
     {
         if (figures is not { } held)
         {
@@ -266,7 +271,13 @@ public sealed partial class Submission
             return false;
         }
 
-        var risen = held with { CostSpent = costSpent, ToolCalls = toolCalls, EntriesLost = entriesLost };
+        var risen = held with
+        {
+            CostSpent = costSpent,
+            Tokens = tokens,
+            ToolCalls = toolCalls,
+            EntriesLost = entriesLost,
+        };
 
         if (risen == held)
         {

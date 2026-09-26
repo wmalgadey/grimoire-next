@@ -17,9 +17,9 @@ Traceability: what a run did, why, how it ended, what it cost; approving lint pr
 | RUNS-005 | A run MUST end done when the agent stopped on its own, neither ceiling was reached, and the wiki's log holds an entry for that run; an entry belongs to a run when `log.md` contains that run's identifier. When the agent stops inside both ceilings and the log holds no entry for the run, Grimoire MUST tell the agent once that the entry is missing and let it continue within the ceilings; if the agent then stops and the entry is there, the run MUST end done. In every other case the run MUST end failed. Grimoire MUST read nothing else in the wiki to decide this. | test |
 | RUNS-006 | No agent MUST go on working on a run once Grimoire has ended that run. When Grimoire stops and is given the chance to act, a run that is in progress MUST be stopped with it. The process identifier of a run's agent MUST be recorded with the run; at start-up, for every run Grimoire reads as having been in progress, it MUST terminate that process where it is still alive — before that run reads failed and before any further run starts — and MUST NOT terminate a process that is no longer that run's agent. | test |
 | RUNS-007 | Every run MUST have exactly one record of its own, a Markdown file in a directory Grimoire owns and never inside the wiki, created when the run begins and appended to as the run proceeds, so that it can be read while the run is in progress and after it has ended. Grimoire MUST NOT rewrite or remove a record; what has been appended stays, a run cut off by a stop included. Where a record cannot be written, the run MUST go on; that something is missing MUST be recorded with the run and MUST be appended to the record once it can be written again. | test |
-| RUNS-008 | A run's record MUST hold the frame of that run: the pinned model id it ran on, the tools it was granted, both ceilings with the values the run reached against them, the tokens spent per model the run caused, when the run started, when it ended, and why it ended — one of: the agent stopped inside both ceilings with its log entry present; it stopped without that entry after being told once; the time ceiling; the cost ceiling; the reported tools were not the grant; the agent's process died; Grimoire was stopped while the run was in progress. | test |
+| RUNS-008 | A run's record MUST hold the frame of that run: the pinned model id it ran on, the tools it was granted, both ceilings with the values the run reached against them, the four raw token counts behind the cost it reached — input, output, cache read, cache write — what each model the run caused spent, when the run started, when it ended, and why it ended — one of: the agent stopped inside both ceilings with its log entry present; it stopped without that entry after being told once; the time ceiling; the cost ceiling; the reported tools were not the grant; the agent's process died; Grimoire was stopped while the run was in progress. | test |
 | RUNS-009 | A run's record MUST hold what the run did, in the order it happened: every tool call with its arguments, what that call returned — whole, with nothing cut and nothing dropped however large it is — the agent's own text between the calls, and anything Grimoire said to the agent. | test |
-| RUNS-010 | For every run, the tokens it has spent — the same quantity the cost ceiling counts — and the number of tool calls it has made MUST be kept current while the run is in progress, MUST stand as the run's final figures once it has ended, and MUST survive Grimoire stopping and starting again. | test |
+| RUNS-010 | For every run, what it has spent — the same quantity the cost ceiling counts — the four raw token counts behind that figure, and the number of tool calls it has made MUST be kept current while the run is in progress, MUST stand as the run's final figures once it has ended, and MUST survive Grimoire stopping and starting again. | test |
 
 RUNS-002 is what makes `submitted` cover two situations — a submission waiting its turn, and one
 whose agent has not yet reported in. RUNS-001's four states stay four: what tells the two apart is
@@ -32,28 +32,36 @@ end the run: the adapter counts what it could not write, the count travels with 
 and the record says how many entries were lost once a write succeeds again.
 
 RUNS-008 splits across the record's two ends. What is known when the run begins is written then; what
-only the ending knows — when, done or failed, why, where the run stood against both ceilings, and the
-tokens of every model it touched — is appended when it ends. A run still under way has no reason yet,
-which is the only difference between its record and one from last month. The seven reasons are values
-inside RUNS-008 and not requirements of their own (Constitution IV.7).
+only the ending knows — when, done or failed, why, where the run stood against both ceilings, the
+four raw counts behind its cost, and what every model it touched spent — is appended when it ends. A
+run still under way has no reason yet, which is the only difference between its record and one from
+last month. The seven reasons are values inside RUNS-008 and not requirements of their own
+(Constitution IV.7).
 
 The seventh reason — Grimoire was stopped while the run was in progress — is written at either of two
 moments. A stop Grimoire is given the chance to act on writes the tail as it stops the run. A kill or
 a power cut is not such a chance, and then the tail is written by the next start-up, from what the
 store kept about the run and before that run reads failed. What that start-up can say is less than
 what an ending normally says, and the tail says only that much: the run ended, that Grimoire was
-stopped under it, the tokens it had spent against the cost ceiling, no model rows because the
-breakdown was never stored, and **the time not measured** — the start-up knows when the run began and
-not when it stopped running, and the span between the two is mostly the stop itself. The run's start
+stopped under it, what it had spent against the cost ceiling with the four raw counts behind it, no
+model rows because the breakdown was never stored, and **the time not measured** — the start-up
+knows when the run began and not when it stopped running, and the span between the two is mostly the
+stop itself. The run's start
 is in the head where it always was. Written once: the run reads failed from then on, so a second
 start-up finds nothing in progress and appends nothing (RUNS-004, RUNS-006).
 
-The tokens per model come from what the CLI reports when a turn ends. A run stopped before it ever
+The four raw counts are in the tail beside the weighted figure because the weighting cannot be
+undone (GUARD-004): a run that thought hard and a run that re-read a large cache can cost the same
+and are not the same run, and the ceiling's own value is calibrated from what real runs caused. They
+are the run's own counts, added over every model, and they survive a stop with it — the tail a
+start-up writes holds them too.
+
+The per-model rows come from what the CLI reports when a turn ends. A run stopped before it ever
 reported one — a cost ceiling reached inside the first turn, a process that died, a tool surface that
-was not the grant — has no breakdown to record, and its tail holds the total against the ceiling and
-no model rows. The head still names the model the run was dispatched on. Nothing is invented to fill
-the gap: attributing the whole total to that model would claim the CLI's own background calls, which
-a run causes but never asks for, were made on it.
+was not the grant — has no breakdown to record, and its tail holds the cost against the ceiling, the
+raw counts behind it, and no model rows. The head still names the model the run was dispatched on.
+Nothing is invented to fill the gap: attributing the whole cost to that model would claim the CLI's
+own background calls, which a run causes but never asks for, were made on it.
 
 RUNS-009 is what the run *did*, and nothing about what it was told: no instruction, no purpose
 description, no submitted text. A tool result goes in whole — nothing cut, nothing escaped — inside a
@@ -72,4 +80,6 @@ what RUNS-009 covers and an owner's decision, not a silent addition.
 RUNS-010 exists apart from ACCESS-005 because keeping the figures and showing them are two
 behaviours, and because a stop must not lose them: `002-ingest-queue` assumed the token counts of a
 cut-off run need not survive, and that assumption is withdrawn here — the row of a failed run still
-carries what that run spent.
+carries what that run spent. The browser shows the weighted figure; the four raw counts are kept for
+the record and for the ceiling's calibration, and the two are kept together so that a restart cannot
+come back with one from a different moment than the other.

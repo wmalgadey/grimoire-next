@@ -102,11 +102,38 @@ public sealed class RecordTextTests
 
     [Fact]
     [Trait("req", "RUNS-008")]
+    public void Tail_HoldsTheFourRawCountsBesideWhatTheyCost()
+    {
+        // The weighting cannot be undone, so the weighted figure alone would not say what the run
+        // actually caused — and 2 000 000 is a placeholder the owner calibrates from exactly these
+        // four after the acceptance run (GUARD-004, RUNS-008).
+        var tail = new RunFrameTail(
+            Guid.NewGuid(),
+            FastSuite.Start,
+            RunOutcome.Done,
+            RunEndedBecause.StoppedWithItsLogEntry,
+            TimeSpan.FromMinutes(3),
+            CostSpent: 73_676,
+            new ModelTokens(41_009, 3_202, 22_016, 7_228),
+            Ceilings.Fixed,
+            new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
+
+        var rendered = RecordText.Tail(tail);
+
+        Assert.Contains("73,676 of 2,000,000", rendered, StringComparison.Ordinal);
+        Assert.Contains("41,009", rendered, StringComparison.Ordinal);
+        Assert.Contains("3,202", rendered, StringComparison.Ordinal);
+        Assert.Contains("22,016", rendered, StringComparison.Ordinal);
+        Assert.Contains("7,228", rendered, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-008")]
     public void Tail_SaysTheTimeWasNotMeasured_WithoutOne()
     {
         // The one ending nobody timed: a run ended by the next start-up, which knows when it began
         // and not when it stopped. The row says so rather than standing a guessed span against the
-        // ceiling — the tokens beside it were measured and are still read against theirs.
+        // ceiling — the cost beside it was measured and is still read against its own.
         var tail = new RunFrameTail(
             Guid.NewGuid(),
             FastSuite.Start,
@@ -114,6 +141,7 @@ public sealed class RecordTextTests
             RunEndedBecause.GrimoireStopped,
             Elapsed: null,
             CostSpent: 12_400,
+            new ModelTokens(12_000, 400, 0, 0),
             Ceilings.Fixed,
             new Dictionary<string, ModelTokens>(StringComparer.Ordinal));
 

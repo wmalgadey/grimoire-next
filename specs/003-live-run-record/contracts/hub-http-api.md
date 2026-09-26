@@ -15,7 +15,7 @@ poll.
 | Change | Why |
 | --- | --- |
 | **The scope note of the 001 and 002 documents is withdrawn.** This API now exposes detail about the run | ACCESS-002 is **retired**. Its clause "and no further detail about the run" is what OUT-02 exists to undo, and the sentence in the `001-first-ingest` document that repeated it goes with it |
-| `GET /api/submissions` gains `model`, `tokensUsed`, `toolCalls` and, conditionally, `entriesLost` | ACCESS-005 — the row carries the model and the two figures, and they follow a run while it is under way |
+| `GET /api/submissions` gains `model`, `costSpent`, `toolCalls` and, conditionally, `entriesLost`, and the response carries `costCeiling` | ACCESS-005 — the row carries the model and the two figures, and they follow a run while it is under way |
 | `GET /api/submissions/{id}/record` is new | ACCESS-006 — the record read in the browser, live and afterwards alike |
 
 **What did not change**, and is not narrowed:
@@ -24,9 +24,10 @@ poll.
   that, but nothing needs it: the record endpoint addresses the *submission*, which has exactly one
   run (INGEST-002), exactly as the acknowledgement has since `002-ingest-queue`. It is now a design
   property rather than a requirement.
-- **Cost is tokens.** No figure in this API is in currency, and the token figure is the same quantity
-  the cost ceiling counts — not a second definition of cost (DEC-015, GUARD-004, `docs/ux.md`: never a
-  number on a screen that exists nowhere else).
+- **Cost is never currency.** `costSpent` is the same quantity the cost ceiling counts — input-token
+  equivalents, not a second definition of cost (DEC-015, GUARD-004, `docs/ux.md`: never a number on a
+  screen that exists nowhere else). It is answered beside the `costCeiling` it is read against,
+  because a quantity with no unit says nothing on its own.
 - The four states, the refusals, and the acknowledgement stand exactly as `002-ingest-queue` wrote
   them.
 
@@ -61,14 +62,15 @@ model and figures (ACCESS-004, ACCESS-005).
 { "submissions": [
     { "id": "0c9f…", "state": "running", "submittedAt": "2026-09-26T09:22:41Z",
       "excerpt": "Grace Hopper found the first bug in a relay…",
-      "model": "claude-opus-4-5-20251101", "tokensUsed": 148233, "toolCalls": 9 },
+      "model": "claude-opus-4-5-20251101", "costSpent": 148233, "toolCalls": 9 },
     { "id": "7ab2…", "state": "failed", "submittedAt": "2026-09-26T09:12:40Z",
       "excerpt": "Alan Turing described a universal machine.",
-      "model": "claude-opus-4-5-20251101", "tokensUsed": 2004118, "toolCalls": 31,
+      "model": "claude-opus-4-5-20251101", "costSpent": 2004118, "toolCalls": 31,
       "awaitingAcknowledgement": true },
     { "id": "3e10…", "state": "submitted", "submittedAt": "2026-09-26T09:11:02Z",
       "excerpt": "Ada Lovelace wrote the first program." }
-] }
+  ],
+  "costCeiling": 2000000 }
 ```
 
 | Field | Always? | Meaning |
@@ -78,10 +80,19 @@ model and figures (ACCESS-004, ACCESS-005).
 | `submittedAt` | yes | When it was made (ACCESS-004) |
 | `excerpt` | yes | The opening of the submitted text, cut to the same length for every submission (ACCESS-004). Unchanged |
 | `model` | only where the submission has a run | The pinned model id that run runs on (DEC-010). Recorded with the run, so an older run keeps the model it actually used even after `--model` changes (ACCESS-005, RUNS-008) |
-| `tokensUsed` | only where the submission has a run | Every token the run has caused so far — **the same quantity the cost ceiling counts**, over every model the run touched, the CLI's own background calls included (ACCESS-005, RUNS-010, GUARD-004, DEC-015). Never goes backwards. Final once the run has ended |
+| `costSpent` | only where the submission has a run | What the run has cost so far, in input-token equivalents — **the same quantity the cost ceiling counts**, over every model the run touched, the CLI's own background calls included (ACCESS-005, RUNS-010, GUARD-004, DEC-015). Never goes backwards. Final once the run has ended |
 | `toolCalls` | only where the submission has a run | How many tool calls the run has made (ACCESS-005, RUNS-010). Never goes backwards |
 | `entriesLost` | **only** where the run's record could not hold some of what happened, and then a number above zero | That lines are missing from that run's record. The run went on; the gap is shown rather than hidden (RUNS-007) |
 | `awaitingAcknowledgement` | **only** where `state` is `failed` and the failure has not been acknowledged, and then always `true` | Unchanged (ACCESS-003) |
+
+Beside `submissions`, the response carries one field of its own:
+
+| Field | Always? | Meaning |
+| --- | --- | --- |
+| `costCeiling` | yes | The cost ceiling every run in this list is held to, in the same quantity `costSpent` is in (GUARD-004). On the response and not on each row, because it is the hub's value and the same for every run. The browser writes each row's figure against it — `12 000 / 2 000 000` — because input-token equivalents have no unit and no scale a reader carries in their head |
+
+The four raw token counts behind `costSpent` are **not** in this API. They are in the run's record,
+which is where a reader goes when the one figure is not enough (RUNS-008, ACCESS-006).
 
 **A submission with no run carries no run fields at all** — not `model`, not the figures, not zeros. A
 submission waiting its turn has no run (RUNS-002), so there is nothing true to say about one; zeros

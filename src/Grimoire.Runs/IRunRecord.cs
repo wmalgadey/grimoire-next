@@ -35,6 +35,12 @@ public sealed record RunFrameHead(
 /// nobody timed — so the record says the time was not measured, and the run's own start in the head
 /// is what a reader has (RUNS-008, RUNS-004).
 /// </param>
+/// <param name="Tokens">
+/// The four raw counts behind <see cref="CostSpent"/>, added over every model. They are in the tail
+/// beside the weighted figure because the weighting cannot be undone: a reader — and the owner
+/// calibrating the ceiling after the acceptance run — needs what the run actually caused, not only
+/// what it weighed to (RUNS-008, GUARD-004).
+/// </param>
 /// <param name="TokensPerModel">
 /// Every entry of the run's <c>modelUsage</c>, so that the user can see <em>which</em> model spent
 /// them (DEC-015). Empty for a run that never reached a model call.
@@ -46,6 +52,7 @@ public sealed record RunFrameTail(
     RunEndedBecause EndedBecause,
     TimeSpan? Elapsed,
     long CostSpent,
+    ModelTokens Tokens,
     Ceilings Ceilings,
     IReadOnlyDictionary<string, ModelTokens> TokensPerModel);
 

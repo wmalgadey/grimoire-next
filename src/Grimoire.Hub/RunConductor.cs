@@ -327,7 +327,8 @@ public sealed class RunConductor(
     /// the record knows. Read apart, the row could show a gap that belongs to another moment.
     /// </remarks>
     private void FiguresRose(Run run) =>
-        board.RunFiguresAre(run.SubmissionId, run.CostSpent, run.ToolCalls, record.EntriesLost(run.Id));
+        board.RunFiguresAre(
+            run.SubmissionId, run.CostSpent, run.Tokens, run.ToolCalls, record.EntriesLost(run.Id));
 
     /// <summary>
     /// The decision RUNS-005 rests on. The wiki's log is read for the run's identifier and nothing
@@ -482,6 +483,7 @@ public sealed class RunConductor(
             because,
             clock.GetUtcNow() - run.StartedAt,
             run.CostSpent,
+            run.Tokens,
             run.Ceilings,
             run.TokensPerModel));
 
@@ -493,6 +495,7 @@ public sealed class RunConductor(
             run.SubmissionId,
             outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed,
             run.CostSpent,
+            run.Tokens,
             run.ToolCalls,
             record.EntriesLost(run.Id));
     }

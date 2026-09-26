@@ -94,6 +94,13 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
     /// is known about what it spent, and zero is the only honest answer a column can give. The model is
     /// the one thing that cannot be defaulted honestly, so it is left empty rather than guessed at —
     /// the current <c>--model</c> would claim an older run had used a model it may never have seen.
+    /// <para>
+    /// <c>cost_spent</c> replaced <c>tokens_used</c> when the cost ceiling stopped counting raw tokens,
+    /// and <b>nothing is carried over</b>: the two hold different quantities, so a copy would restate
+    /// an old run's raw token sum as a cost it never had. A file written by an older Grimoire gains
+    /// the new columns at zero and keeps its own; the runs in it are the owner's test runs and the
+    /// file is thrown away (GUARD-004).
+    /// </para>
     /// </remarks>
     private void BringTheRunTableUpToDate()
     {
@@ -101,6 +108,10 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
         {
             ("model", "TEXT NOT NULL DEFAULT ''"),
             ("cost_spent", "INTEGER NOT NULL DEFAULT 0"),
+            ("input_tokens", "INTEGER NOT NULL DEFAULT 0"),
+            ("output_tokens", "INTEGER NOT NULL DEFAULT 0"),
+            ("cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"),
+            ("cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"),
             ("tool_calls", "INTEGER NOT NULL DEFAULT 0"),
             ("entries_lost", "INTEGER NOT NULL DEFAULT 0"),
         };
@@ -149,7 +160,8 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             SELECT s.id, s.text, s.submitted_at, s.state, s.acknowledged_at,
                    r.id, r.submission_id, r.started_at, r.granted_tools, r.grant_recorded_at,
                    r.agent_process_id, r.agent_process_started_at,
-                   r.model, r.cost_spent, r.tool_calls, r.entries_lost
+                   r.model, r.cost_spent, r.tool_calls, r.entries_lost,
+                   r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens
             FROM submissions s
             LEFT JOIN runs r ON r.id = s.run_id
             ORDER BY s.rowid
@@ -186,6 +198,7 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             ? null
             : new AgentProcessIdentity(rows.GetInt32(10), Moment(rows.GetString(11))),
         rows.GetInt64(13),
+        new ModelTokens(rows.GetInt64(16), rows.GetInt64(17), rows.GetInt64(18), rows.GetInt64(19)),
         rows.GetInt32(14),
         rows.GetInt32(15));
 
@@ -216,9 +229,10 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             """
             INSERT INTO runs (id, submission_id, started_at, granted_tools, grant_recorded_at,
                               agent_process_id, agent_process_started_at,
-                              model, cost_spent, tool_calls, entries_lost)
+                              model, cost_spent, tool_calls, entries_lost,
+                              input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
             VALUES ($run, $submission, $started_at, $tools, $recorded_at, NULL, NULL,
-                    $model, $tokens, $calls, $lost);
+                    $model, $cost, $calls, $lost, $in, $out, $read, $written);
 
             UPDATE submissions SET run_id = $run WHERE id = $submission;
             """,
@@ -228,9 +242,13 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             ("$tools", string.Join(ToolSeparator, run.GrantedTools)),
             ("$recorded_at", Text(run.GrantRecordedAt)),
             ("$model", run.Model),
-            ("$tokens", run.CostSpent),
+            ("$cost", run.CostSpent),
             ("$calls", run.ToolCalls),
-            ("$lost", run.EntriesLost));
+            ("$lost", run.EntriesLost),
+            ("$in", run.Tokens.InputTokens),
+            ("$out", run.Tokens.OutputTokens),
+            ("$read", run.Tokens.CacheReadInputTokens),
+            ("$written", run.Tokens.CacheCreationInputTokens));
     }
 
     public void RecordAgentProcess(Guid runId, AgentProcessIdentity identity)
@@ -248,37 +266,55 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
     }
 
     /// <summary>
-    /// All three figures in one statement, because one event writes them and one row reads them
+    /// Every figure in one statement, because one event writes them and one row reads them
     /// (RUNS-010, RUNS-007).
     /// </summary>
-    public void RecordFigures(Guid runId, long costSpent, int toolCalls, int entriesLost) =>
+    public void RecordFigures(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost) =>
         Execute(
             """
-            UPDATE runs SET cost_spent = $tokens, tool_calls = $calls, entries_lost = $lost
+            UPDATE runs SET cost_spent = $cost, tool_calls = $calls, entries_lost = $lost,
+                            input_tokens = $in, output_tokens = $out,
+                            cache_read_tokens = $read, cache_write_tokens = $written
             WHERE id = $run
             """,
-            ("$tokens", costSpent),
+            ("$cost", costSpent),
             ("$calls", toolCalls),
             ("$lost", entriesLost),
+            ("$in", tokens.InputTokens),
+            ("$out", tokens.OutputTokens),
+            ("$read", tokens.CacheReadInputTokens),
+            ("$written", tokens.CacheCreationInputTokens),
             ("$run", runId.ToString()));
 
     /// <summary>
     /// Both statements, one transaction, committed before this returns (RUNS-010).
     /// </summary>
     public void Ended(
-        Guid submissionId, SubmissionState terminal, Guid runId, long costSpent, int toolCalls, int entriesLost) =>
+        Guid submissionId,
+        SubmissionState terminal,
+        Guid runId,
+        long costSpent,
+        ModelTokens tokens,
+        int toolCalls,
+        int entriesLost) =>
         Execute(
             """
             UPDATE submissions SET state = $state WHERE id = $id;
 
-            UPDATE runs SET cost_spent = $tokens, tool_calls = $calls, entries_lost = $lost
+            UPDATE runs SET cost_spent = $cost, tool_calls = $calls, entries_lost = $lost,
+                            input_tokens = $in, output_tokens = $out,
+                            cache_read_tokens = $read, cache_write_tokens = $written
             WHERE id = $run;
             """,
             ("$state", WireNameOf(terminal)),
             ("$id", submissionId.ToString()),
-            ("$tokens", costSpent),
+            ("$cost", costSpent),
             ("$calls", toolCalls),
             ("$lost", entriesLost),
+            ("$in", tokens.InputTokens),
+            ("$out", tokens.OutputTokens),
+            ("$read", tokens.CacheReadInputTokens),
+            ("$written", tokens.CacheCreationInputTokens),
             ("$run", runId.ToString()));
 
     public void SetState(Guid submissionId, SubmissionState state) =>
