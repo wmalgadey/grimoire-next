@@ -39,11 +39,76 @@ public sealed class RunConductor(
     /// about what the run did. Under this lock a report falls <b>entirely</b> before the ending or
     /// entirely after it, and one that falls after finds no run and does nothing.
     /// <para>
-    /// Always the outermost lock taken here. The record's and the board's are taken inside it and
+    /// A <see cref="SemaphoreSlim"/> and not a <c>lock</c>, for one reason: RUNS-005's nudge is sent
+    /// with an await, and RUNS-006 forbids an agent going on working on a run Grimoire has ended. A
+    /// <c>lock</c> cannot be held across an await, so the send had to happen outside it and a ceiling
+    /// could end the run in that window while the nudge still reached its agent. This one is held
+    /// across the send, which closes it; every other caller takes it synchronously.
+    /// </para>
+    /// <para>
+    /// Always the outermost one taken here. The record's lock and the board's are taken inside it and
     /// never the other way about, which is what keeps the three from making a cycle.
     /// </para>
     /// </param>
-    private sealed record Watched(Run Run, ITimer Deadline, Lock Gate);
+    private sealed record Watched(Run Run, ITimer Deadline, SemaphoreSlim Gate)
+    {
+        /// <summary>Hold this run's gate until the returned value is disposed.</summary>
+        public IDisposable Held()
+        {
+            Gate.Wait();
+
+            return new Holding(Gate);
+        }
+
+        /// <summary>The same, for the one caller that has to hold it across an await.</summary>
+        public async Task<IDisposable> HeldAsync()
+        {
+            await Gate.WaitAsync().ConfigureAwait(false);
+
+            return new Holding(Gate);
+        }
+
+        private sealed class Holding(SemaphoreSlim gate) : IDisposable
+        {
+            public void Dispose() => gate.Release();
+        }
+
+        /// <summary>
+        /// The tool of the moment written last for this run, where that moment was a call.
+        /// </summary>
+        public string? CallWrittenLast { get; set; }
+
+        /// <summary>
+        /// Whether the agent has said something that the calls after it belong to.
+        /// </summary>
+        /// <remarks>
+        /// A run reads as the agent works: it says what it is about to do, makes the calls that do it,
+        /// and says what it found. That first sentence opens a turn, and the calls of that turn sit
+        /// inside it — which is what lets a reader fold away eight reads and keep the sentence that
+        /// explains them. Calls made before the agent has said anything sit at the top level, because
+        /// there is nothing yet for them to sit inside.
+        /// </remarks>
+        public bool TurnIsOpen { get; set; }
+
+        /// <summary>
+        /// How many calls this run has made that have not yet been answered.
+        /// </summary>
+        /// <remarks>
+        /// Both of these decide one thing: whether a result is written <em>under</em> the call above
+        /// it or beside it. The record is appended to and never rewritten, so a result can only join
+        /// the call immediately above — and it belongs there only when that call is unmistakably the
+        /// one it answers, which means exactly one call was outstanding.
+        /// <para>
+        /// A turn that makes several calls at once breaks that. Their results arrive oldest first, so
+        /// the first result answers the <em>first</em> call while the call above it is the last one —
+        /// nesting it there would say a call returned something it never returned. Counting is what
+        /// tells the two cases apart: with more than one outstanding, every result of that turn opens
+        /// a section of its own and names its tool, which is truthful about the order rather than
+        /// tidy about it (RUNS-007, RUNS-009).
+        /// </para>
+        /// </remarks>
+        public int CallsAwaitingTheirResult { get; set; }
+    }
 
     /// <summary>
     /// A run for this submission, with its grant and both ceilings recorded on it. Called by the
@@ -82,7 +147,7 @@ public sealed class RunConductor(
             dueTime: run.Ceilings.Elapsed,
             period: Timeout.InfiniteTimeSpan);
 
-        runs[submissionId] = new Watched(run, deadline, new Lock());
+        runs[submissionId] = new Watched(run, deadline, new SemaphoreSlim(1, 1));
         return run;
     }
 
@@ -145,7 +210,7 @@ public sealed class RunConductor(
         var run = watched.Run;
         TimeSpan elapsed;
 
-        lock (watched.Gate)
+        using (watched.Held())
         {
             if (HasEnded(submissionId))
             {
@@ -187,7 +252,7 @@ public sealed class RunConductor(
             return;
         }
 
-        lock (watched.Gate)
+        using (watched.Held())
         {
             // Read again inside the lock. The run may have ended while this callback waited for it,
             // and a moment that arrives after the ending belongs to neither the record nor the count:
@@ -198,13 +263,51 @@ public sealed class RunConductor(
                 return;
             }
 
-            record.Append(RunMoment.Of(watched.Run.Id, clock.GetUtcNow(), moment));
+            // A call sits inside the turn the agent opened, and a result inside the call it answers —
+            // but only where that call is unmistakably the one it answers: written immediately before,
+            // same tool, and the only call still waiting. A turn that makes several calls at once
+            // breaks that adjacency, so each of its results sits beside the calls instead, and the
+            // order is what attributes them.
+            var callDepth = watched.TurnIsOpen ? 1 : 0;
+
+            var depth = moment.Kind switch
+            {
+                RunMomentKind.ToolCalled => callDepth,
+                RunMomentKind.ToolReturned when
+                    moment.Tool is not null
+                    && watched.CallWrittenLast == moment.Tool
+                    && watched.CallsAwaitingTheirResult == 1 => callDepth + 1,
+                RunMomentKind.ToolReturned => callDepth,
+                _ => 0,
+            };
+
+            record.Append(RunMoment.Of(watched.Run.Id, clock.GetUtcNow(), moment, depth));
 
             if (moment.Kind == RunMomentKind.ToolCalled)
             {
                 watched.Run.ToolCalled();
-                FiguresRose(watched.Run);
+                watched.CallsAwaitingTheirResult++;
             }
+            else if (moment.Kind == RunMomentKind.ToolReturned)
+            {
+                watched.CallsAwaitingTheirResult = Math.Max(0, watched.CallsAwaitingTheirResult - 1);
+            }
+            else
+            {
+                // The agent said something, or Grimoire did: a new turn, and the calls that follow
+                // belong to it.
+                watched.TurnIsOpen = true;
+                watched.CallsAwaitingTheirResult = 0;
+            }
+
+            watched.CallWrittenLast = moment.Kind == RunMomentKind.ToolCalled ? moment.Tool : null;
+
+            // After every moment, not only after a tool call. The append above may have failed, and
+            // then the count of what the record could not hold has risen — a run whose lost moments
+            // happened to be results and agent text would otherwise have kept that to itself until it
+            // ended, and RUNS-007 has it recorded with the run. The board writes only where something
+            // actually changed, so a moment that lost nothing and called nothing costs nothing.
+            FiguresRose(watched.Run);
         }
     }
 
@@ -249,11 +352,13 @@ public sealed class RunConductor(
 
         RunDecision decision;
 
-        lock (watched.Gate)
+        // Held across the send, which is the whole reason this gate is a semaphore and not a `lock`.
+        // A ceiling reaching the run cannot get between the decision and the nudge, so no agent is
+        // ever told to carry on with a run Grimoire has already ended (RUNS-006).
+        using (await watched.HeldAsync().ConfigureAwait(false))
         {
             // The run may have ended while the log was being read — a ceiling reached, or Grimoire
-            // stopped. Deciding anything now would judge a run that is already judged, and nudging
-            // would put an agent back to work on a run Grimoire has ended (RUNS-006).
+            // stopped. Deciding anything now would judge a run that is already judged.
             if (HasEnded(submissionId))
             {
                 return;
@@ -267,20 +372,24 @@ public sealed class RunConductor(
 
             if (decision == RunDecision.Nudge)
             {
-                // Recorded here, under the lock, so that it lands before the tail rather than after it.
+                // Recorded before it is sent, so that it lands before the tail rather than after it.
                 // Appended by the hub, which knows it nudged: the CLI does not echo what is written to
-                // its stdin, so the nudge cannot appear twice (RUNS-009, research.md R-03). Written
-                // before it is sent — a send that then fails ends the run, and the tail says so.
+                // its stdin, so the nudge cannot appear twice (RUNS-009, research.md R-03). A send that
+                // then fails ends the run, and the tail says so.
                 record.Append(RunMoment.GrimoireSaid(
                     watched.Run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
-            }
-        }
 
-        // Both of these talk to the agent's process, so neither is done holding the run's lock.
-        if (decision == RunDecision.Nudge)
-        {
-            await harness.NudgeAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
-            return;
+                // The nudge closes the turn rather than opening one. What the agent does next is the
+                // agent's, and writing it inside a section headed "Grimoire" would read as though
+                // Grimoire had made those calls. It stays at the top until the agent speaks again and
+                // opens a turn of its own.
+                watched.CallWrittenLast = null;
+                watched.TurnIsOpen = false;
+                watched.CallsAwaitingTheirResult = 0;
+
+                await harness.NudgeAsync(watched.Run.Id, CancellationToken.None).ConfigureAwait(false);
+                return;
+            }
         }
 
         // Done or failed, nothing further is sent. The CLI reads stdin for as long as it is open,
@@ -299,24 +408,11 @@ public sealed class RunConductor(
             return;
         }
 
-        RunEnding ending;
-
-        lock (watched.Gate)
-        {
-            if (HasEnded(submissionId))
-            {
-                return;
-            }
-
-            // The verdict is taken from fields a cost report also writes, so it is read under the
-            // run's lock like everything else about it.
-            ending = watched.Run.Exited(exitCode, clock.GetUtcNow() - watched.Run.StartedAt);
-        }
-
-        // The lock is given up and taken again. Another ending reaching the run in between — a ceiling
-        // firing at the same moment — simply wins, and this one finds no run to remove: a run ends
-        // once, which is the rule rather than the exception here.
-        RunEnded(submissionId, ending.Outcome, ending.Because);
+        // The verdict is computed inside the same pass of the lock that removes the run and writes the
+        // tail. Computed in one pass and used in another, a cost report landing in between could push
+        // the run past a ceiling after a clean exit had already been judged done — and that stale
+        // verdict would be the one written down.
+        Ended(submissionId, run => run.Exited(exitCode, clock.GetUtcNow() - run.StartedAt));
     }
 
     /// <summary>
@@ -328,24 +424,37 @@ public sealed class RunConductor(
     /// Whatever the run had already written stays in the wiki, in every failed case: nothing here
     /// reaches back into it (WIKI-003).
     /// </remarks>
-    private void RunEnded(Guid submissionId, RunOutcome outcome, RunEndedBecause because)
+    private void RunEnded(Guid submissionId, RunOutcome outcome, RunEndedBecause because) =>
+        Ended(submissionId, _ => new RunEnding(outcome, because));
+
+    /// <summary>
+    /// The run ends: the verdict taken, the run removed, and the tail and the final figures written —
+    /// all in one pass of that run's lock.
+    /// </summary>
+    /// <remarks>
+    /// The verdict is a function rather than a value because one caller has to compute it from the run
+    /// itself, and computing it outside this lock would let a report land between the computing and
+    /// the writing. A report already under way finishes first and every report after this finds no
+    /// run; removing inside the lock is also what makes two endings racing — a ceiling and an exit —
+    /// end the run once.
+    /// </remarks>
+    private void Ended(Guid submissionId, Func<Run, RunEnding> verdict)
     {
         if (Reporting(submissionId) is not { } watched)
         {
             return;
         }
 
-        lock (watched.Gate)
+        using (watched.Held())
         {
-            // Taken under the run's own lock, so a report already under way finishes first and every
-            // report after this finds no run. Removing inside the lock is also what makes two endings
-            // racing — a ceiling and an exit — end the run once.
             if (!runs.TryRemove(submissionId, out _))
             {
                 return;
             }
 
-            Finish(watched, outcome, because);
+            var ending = verdict(watched.Run);
+
+            Finish(watched, ending.Outcome, ending.Because);
         }
 
         // The queue moves, outside the run's lock: what starts behind this one must not be started

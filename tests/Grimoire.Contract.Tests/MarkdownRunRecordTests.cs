@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using Grimoire.Agent;
 using Grimoire.Runs;
 using Grimoire.Runs.Adapters;
@@ -127,10 +128,20 @@ public sealed class MarkdownRunRecordTests : IDisposable
 
         // The gap is where it happened: in front of the entry that finally got through, so a reader
         // sees it between the moment before it and the moment after.
-        Assert.Contains("2 entries", text, StringComparison.Ordinal);
-        Assert.True(
-            text.IndexOf("2 entries", StringComparison.Ordinal)
-            < text.IndexOf("read_page returned", StringComparison.Ordinal));
+        //
+        // The count is read out of the record with a pattern of this test's own, not by asking
+        // RecordText what it would have written: expected and actual coming from the same method
+        // would agree however the wording changed, and would assert nothing at all.
+        //
+        // What it matches is the segment opening contracts/run-record.md promises for a gap — a count
+        // followed by "entries" — which run.js depends on to find the segment, so it is contract
+        // rather than the adapter's own wording. The rest of the sentence is not matched and is not
+        // tested (Constitution III.8).
+        var notice = Assert.Single(
+            Regex.Matches(text, @"^## .*?(\d+) entries\b.*$", RegexOptions.Multiline));
+
+        Assert.Equal("2", notice.Groups[1].Value);
+        Assert.True(notice.Index < text.IndexOf("read_page returned", StringComparison.Ordinal));
         Assert.Equal(2, record.EntriesLost(head.RunId));
     }
 

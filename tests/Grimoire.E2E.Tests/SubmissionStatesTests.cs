@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Grimoire.Agent;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit.v3;
@@ -83,6 +84,24 @@ public sealed class SubmissionStatesTests : PageTest
 
         // And no identifier is rendered — neither the submission's nor the run's.
         await Expect(Row(submission)).Not.ToContainTextAsync(submission.ToString());
+
+
+        // The opening of the text is readable, not squeezed to a character. Asserted as a rendered
+        // width, because the DOM text is there either way: a row that carries the model and two
+        // figures beside the time has more than one line's worth, and the opening was the only item
+        // able to give way. Showing it is what ACCESS-004 asks for, and a row showing "F…" tells one
+        // submission from another not at all.
+        var excerpt = await Row(submission).Locator(".excerpt").BoundingBoxAsync();
+        Assert.True(
+            excerpt!.Width >= 140,
+            $"the opening of the text was rendered {excerpt.Width}px wide, too narrow to read");
+
+        // The link to the run says which run it opens. "Open" is enough beside the row it sits in and
+        // nothing on its own, and a list of runs would otherwise read as "Open, Open, Open" to
+        // anything that announces links out of context. Named by the opening of the submitted text,
+        // which is what tells one submission from another (ACCESS-004, docs/ux.md).
+        await Expect(Row(submission).Locator(".open-run"))
+            .ToHaveAttributeAsync("aria-label", new Regex("Ada Lovelace wrote the first program"));
     }
 
     [Fact]

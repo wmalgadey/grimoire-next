@@ -12,9 +12,14 @@ const message = document.getElementById("message");
 // has exactly one run (INGEST-002), so naming it names the run (contracts/hub-http-api.md).
 const submission = new URLSearchParams(window.location.search).get("submission");
 
-// How many segments are already on the page. Segments are only ever appended, so the record's own
-// order is the page's order and what is already there is never touched.
-let shown = 0;
+// What is already on the page: one entry per segment, with the element drawn for it and how many
+// sections had been written inside it at the time.
+//
+// The count alone is not enough. A record grows in two ways: a new segment at the end, and a new
+// section inside a segment already shown — which is how an answer arrives, written inside the call it
+// answers. Counting only the top-level segments, an answer changes nothing the count can see, and the
+// page would show it only after a reload (ACCESS-006: lines must arrive as they are appended).
+const shown = [];
 
 // Two polls can be in flight at once, and they can answer out of order. The newest request's answer is
 // the current one: an older answer arriving after it would put `shown` back to a smaller number, and
@@ -41,9 +46,12 @@ const openings = [
   /^\d+ entries of this run could not be written$/,
 ];
 
-// A line that is nothing but backticks, at column one. The record's fences are always a run of their
-// own on a line, which is what makes them findable without parsing Markdown.
-const fenceLine = /^(`{3,})\s*$/;
+// A fence at column one. The opening one may name what it holds — the record says `json` for a call's
+// arguments, which it writes itself — and CommonMark allows no such name on the closing fence, so the
+// close is found by the backticks alone. The record's fences are always a run of their own on a line,
+// which is what makes them findable without parsing Markdown.
+const openingFence = /^(`{3,})([^`]*)$/;
+const closingFence = /^(`{3,})\s*$/;
 
 // What a segment's first line says it is, after the time — or null where the line is no boundary at
 // all. The agent's own text is prose and goes in unfenced, so it may hold a `## ` line of its own;
@@ -81,7 +89,7 @@ function split(text) {
   let openFence = 0;
 
   for (const line of text.split("\n")) {
-    const fence = fenceLine.exec(line);
+    const fence = openFence === 0 ? openingFence.exec(line) : closingFence.exec(line);
 
     if (openFence === 0 && fence) {
       openFence = fence[1].length;
@@ -104,54 +112,358 @@ function split(text) {
 // What the one fenced block of a segment holds, or null where the segment is prose. Byte for byte:
 // the fences come off and nothing between them is touched.
 function fencedIn(body) {
-  const opening = body.findIndex((line) => fenceLine.test(line));
+  const opening = body.findIndex((line) => openingFence.test(line));
   if (opening < 0) {
     return null;
   }
 
-  const length = body[opening].trim().length;
+  const length = openingFence.exec(body[opening])[1].length;
   const closing = body.findIndex(
-    (line, at) => at > opening && fenceLine.test(line) && line.trim().length >= length,
+    (line, at) => at > opening && closingFence.test(line) && line.trim().length >= length,
   );
 
   return body.slice(opening + 1, closing < 0 ? body.length : closing).join("\n");
 }
 
-// One element per moment. A call and a result are one line with the block folded under them, so the
-// user can follow what the run did without reading the results in full and still reach any one of
-// them; the agent's own text and what Grimoire said are prose and are simply shown (ACCESS-006).
+// JSON laid out to be read. The record holds what the tool returned or what the hub sent, byte for
+// byte, and that is a single line with every newline and every non-ASCII character escaped — correct
+// in the file and close to unreadable on a screen. Laid out here and only here: the file is untouched
+// and the endpoint still serves it unaltered.
+//
+// A string holding newlines is written under its key as a block rather than on one escaped line,
+// because that string is usually the whole point — a wiki page a tool returned.
+function asReadableJson(text) {
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    // Not JSON. Whatever it is, it goes on the screen as it stands.
+    return null;
+  }
+
+  // A bare string or number gains nothing from being laid out, and a bare string that happens to
+  // parse — `"42"` — would come back with its quotes stripped, which is not what the record holds.
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+
+  return laidOut(value, "");
+}
+
+function laidOut(value, indent) {
+  const inner = `${indent}  `;
+
+  if (Array.isArray(value)) {
+    return value.length === 0
+      ? "[]"
+      : `[\n${value.map((v) => `${inner}${laidOut(v, inner)}`).join(",\n")}\n${indent}]`;
+  }
+
+  if (value !== null && typeof value === "object") {
+    const keys = Object.keys(value);
+
+    return keys.length === 0
+      ? "{}"
+      : `{\n${keys
+          .map((k) => `${inner}${JSON.stringify(k)}: ${laidOut(value[k], inner)}`)
+          .join(",\n")}\n${indent}}`;
+  }
+
+  if (typeof value === "string" && value.includes("\n")) {
+    // The text itself, one line per line, indented under its key. Its escapes are already gone —
+    // `JSON.parse` undid them — so an umlaut is an umlaut again.
+    return `\n${value
+      .split("\n")
+      .map((line) => `${inner}${line}`)
+      .join("\n")}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+// The head, as something to read rather than as pipes and dashes. The record writes the run's frame as
+// a two-column table, which is right for a file — an editor renders it — and is noise on a screen that
+// shows the file as text.
+//
+// This reads the record's own shape and nothing else: a row is a line that starts and ends with a bar,
+// and the row of dashes under the header is skipped. It is not a Markdown renderer, which DEC-019
+// rules out; it is the same kind of reading `split` already does for the segments, and anything it
+// does not recognise is left as the text it is.
+function framed(text) {
+  const lines = text.split("\n");
+  const rows = lines
+    .filter((line) => line.startsWith("|") && line.endsWith("|"))
+    .map((line) => line.slice(1, -1).split("|").map((cell) => cell.trim()))
+    // The header row of the record's tables carries no names — the two columns are a name and a
+    // value, and saying so would be a row of its own — and the row of dashes under it is Markdown's
+    // own. Neither is a row of the table a reader wants.
+    .filter((cells) => cells.length === 2 && !cells.every((cell) => cell === "" || /^-+$/.test(cell)));
+
+  if (rows.length === 0) {
+    // Nothing that reads as one of the record's tables. Whatever it is, it goes on the screen as the
+    // text it is.
+    const asText = document.createElement("div");
+    asText.className = "prose";
+    asText.textContent = text.trim();
+    return [asText];
+  }
+
+  // One box for either table, so that the two ends of a record look the same on the page as they read
+  // in the file — the head and the tail are the same two-column table.
+  const box = document.createElement("div");
+  box.className = "frame";
+
+  const before = lines.filter((line) => !line.startsWith("|")).join("\n").trim();
+
+  if (before.length > 0) {
+    const title = document.createElement("div");
+    title.className = "frame-title";
+    title.textContent = before;
+    box.append(title);
+  }
+
+  const table = document.createElement("table");
+  table.className = "frame-table";
+
+  for (const [name, value] of rows) {
+    const row = document.createElement("tr");
+
+    const key = document.createElement("th");
+    key.scope = "row";
+    key.textContent = name;
+
+    const held = document.createElement("td");
+    held.textContent = value;
+
+    row.append(key, held);
+    table.append(row);
+  }
+
+  box.append(table);
+  return [box];
+}
+
+// A fenced block, folded. One per call: its arguments, and what it returned.
+function folded(label, content) {
+  const block = document.createElement("details");
+  block.className = "result";
+
+  const summary = document.createElement("summary");
+  const lines = content.split("\n").length;
+
+  // The count and nothing else for a result, which is what a reader needs to decide whether to open
+  // it. "arguments" is named because it is the one that is not the answer (docs/ux.md, References).
+  summary.textContent =
+    label === "returned"
+      ? `${lines} ${lines === 1 ? "line" : "lines"}`
+      : `${label} — ${lines} ${lines === 1 ? "line" : "lines"}`;
+
+  const text = document.createElement("pre");
+  text.textContent = asReadableJson(content) ?? content;
+
+  block.append(summary, text);
+  return block;
+}
+
+/// Which tool a segment's first line is about, or null where it is about none.
+function toolOf(said) {
+  if (said.startsWith("called ")) {
+    return said.slice("called ".length);
+  }
+
+  return said.endsWith(" returned") ? said.slice(0, -" returned".length) : null;
+}
+
+// One element per segment, showing what the segment holds and nothing it does not. The record decides
+// what belongs inside what: the agent says what it is about to do, the calls that do it are written
+// inside that, and each answer inside its call. This draws that tree (RUNS-009, US3).
 function element(segment) {
   const item = document.createElement("li");
+  const { lead, inside } = sections(segment.body, 3);
 
-  const heading = document.createElement("div");
-  heading.className = "heading";
-  heading.textContent = segment.heading;
-  item.append(heading);
+  item.append(headingOf(segment, lead));
+  item.append(...bodyOf(segment, lead));
 
-  const fenced = isFenced(segment.said) ? fencedIn(segment.body) : null;
-
-  if (fenced === null) {
-    const prose = document.createElement("div");
-    prose.className = "prose";
-
-    // textContent, never innerHTML: this is what the agent wrote and what a tool returned.
-    prose.textContent = segment.body.join("\n").trim();
-    item.append(prose);
+  if (inside.length === 0) {
     return item;
   }
 
-  const folded = document.createElement("details");
-  folded.className = "result";
+  // A call at the top level — one made before the agent had said anything — holds its own answer
+  // inside it, not calls. What sits inside a section depends on what that section is.
+  if (segment.said.startsWith("called ")) {
+    for (const part of inside) {
+      item.append(...bodyOf(part, part.body));
+    }
 
-  const label = document.createElement("summary");
-  label.textContent = `${fenced.split("\n").length} lines`;
+    return item;
+  }
 
-  const block = document.createElement("pre");
-  block.textContent = fenced;
+  // The calls of this turn, folded away behind their count. Eight reads are eight lines the reader
+  // did not ask for; the sentence that explains them is the one they came for.
+  const calls = foldFor(item);
 
-  folded.append(label, block);
-  item.append(folded);
+  for (const part of inside) {
+    place(calls, part);
+  }
+
+  countCalls(calls);
   return item;
+}
+
+// Where one section of a turn goes. Not every section is a call: a turn that made several at once has
+// its answers written beside them, at the calls' own depth, because none of them could be nested. An
+// answer like that belongs in the oldest call still waiting for one — the same ordering the record
+// uses to attribute it, and the same one the transcript uses a layer further down.
+function place(calls, part) {
+  if (part.said.startsWith("called ")) {
+    calls.append(nested(part));
+    return;
+  }
+
+  const waiting = [...calls.querySelectorAll(":scope > .call")].find(
+    (call) => call.dataset.answered !== "yes",
+  );
+
+  if (waiting === undefined) {
+    // An answer with no call before it waiting for one. It is still part of the run, so it is shown
+    // rather than dropped.
+    calls.append(...bodyOf(part, part.body));
+    return;
+  }
+
+  waiting.append(...bodyOf(part, part.body));
+  waiting.dataset.answered = "yes";
+}
+
+// The count on the fold is the calls, not the sections: an answer written beside them is not one more
+// thing the agent did.
+function countCalls(calls) {
+  const drawn = calls.querySelectorAll(":scope > .call").length;
+
+  calls.querySelector(":scope > summary").textContent =
+    `${drawn} ${drawn === 1 ? "tool call" : "tool calls"}`;
+}
+
+// One call inside a turn: its own line, and whatever the record wrote inside it — its answer — folded
+// so that each can be opened on its own.
+function nested(segment) {
+  const held = document.createElement("div");
+  held.className = "call";
+
+  const { lead, inside } = sections(segment.body, 4);
+
+  held.append(headingOf(segment, lead));
+  held.append(...bodyOf(segment, lead));
+
+  for (const part of inside) {
+    held.append(...bodyOf(part, part.body));
+  }
+
+  return held;
+}
+
+// A moment's own line: the time, quietly, then what it is — and for a call, its arguments on that same
+// line, which is the shape docs/ux.md names as its reference.
+function headingOf(segment, lead) {
+  const heading = document.createElement("div");
+  heading.className = "heading";
+
+  const when = document.createElement("span");
+  when.className = "when";
+  when.textContent = timeIn(segment.heading);
+
+  const what = document.createElement("span");
+  const args = segment.said.startsWith("called ") ? fencedIn(lead) : null;
+  const inline = args === null ? null : oneLine(args);
+
+  what.textContent = inline === null ? segment.said : `${segment.said}(${inline.shown})`;
+
+  heading.append(when, " ", what);
+  return heading;
+}
+
+// What sits under that line: a fenced block folded, the record's own table as a table, prose as prose.
+// A call whose arguments went on its line does not repeat them, unless they had to be cut.
+function bodyOf(segment, body) {
+  const fenced = isFenced(segment.said) ? fencedIn(body) : null;
+
+  if (fenced === null) {
+    return shownAs(segment.said, body);
+  }
+
+  if (!segment.said.startsWith("called ")) {
+    return [folded("returned", fenced)];
+  }
+
+  const inline = oneLine(fenced);
+
+  return inline.cut ? [folded("arguments", fenced)] : [];
+}
+
+/// The time out of a segment's first line, to the second. The date is in the frame already, and a
+/// date on every line of a log is a column nobody reads.
+function timeIn(heading) {
+  const match = /\b(\d{2}:\d{2}:\d{2})\b/.exec(heading);
+
+  return match === null ? heading.split(" · ")[0] : match[1];
+}
+
+/// A call's arguments as they go on the call's own line, cut where they would not fit.
+function oneLine(args) {
+  const collapsed = args.replace(/\s+/g, " ").trim();
+
+  return collapsed.length <= 72
+    ? { shown: collapsed, cut: false }
+    : { shown: `${collapsed.slice(0, 72)}…`, cut: true };
+}
+
+// What one part of a segment looks like: a fenced block folded, the record's own table as a table, and
+// anything else as the prose it is.
+function shownAs(said, body) {
+  // The head and the tail are the record's two tables and are read the same way, wherever they sit.
+  if (said.startsWith("ended ")) {
+    return framed(body.join("\n"));
+  }
+
+  const prose = document.createElement("div");
+  prose.className = "prose";
+  prose.textContent = body.join("\n").trim();
+  return [prose];
+}
+
+// What a segment holds, as the record nests it: its own lines, and the sections written inside it,
+// each of which may hold sections of its own. A `###` or `####` line inside a fence is no more a
+// boundary than a `## ` one is — a tool result may hold any of them, and nothing of it is escaped
+// (contracts/run-record.md, rule 4).
+function sections(body, level) {
+  const marker = `${"#".repeat(level)} `;
+  const lead = [];
+  const inside = [];
+  let current = null;
+  let openFence = 0;
+
+  for (const line of body) {
+    const fence = openFence === 0 ? openingFence.exec(line) : closingFence.exec(line);
+
+    if (openFence === 0 && fence) {
+      openFence = fence[1].length;
+    } else if (openFence > 0 && fence && fence[1].length >= openFence) {
+      openFence = 0;
+    } else if (openFence === 0 && line.startsWith(marker)) {
+      const heading = line.slice(marker.length);
+      const said = opening(`## ${heading}`);
+
+      if (said !== null) {
+        current = { heading, said, body: [] };
+        inside.push(current);
+        continue;
+      }
+    }
+
+    (current ? current.body : lead).push(line);
+  }
+
+  return { lead, inside };
 }
 
 async function refresh() {
@@ -194,20 +506,106 @@ async function refresh() {
 
   // The frame is replaced rather than appended to, because it is the one part that grows in place:
   // while the run is under way it is the head alone, and the tail arrives as a segment of its own.
-  frame.textContent = head;
+  frame.replaceChildren(...framed(head));
 
   // Appended, and only what is not already there. An element already on the page is never replaced,
   // which is what keeps the scroll where the user left it and a result they had opened open.
-  for (const segment of segments.slice(shown)) {
-    record.append(element(segment));
-  }
+  segments.forEach((segment, at) => {
+    if (at >= shown.length) {
+      const drawn = element(segment);
+      record.append(drawn);
+      shown.push({ element: drawn, ...countsIn(segment) });
+      return;
+    }
 
-  shown = segments.length;
+    // A segment already on the page that has grown since. A record grows at both levels: a call added
+    // to a turn, and an answer added to a call. Each is added to the element that is there; nothing
+    // already drawn is touched, which is what keeps the scroll and an opened block where the user put
+    // them (ACCESS-006).
+    grew(shown[at], segment);
+  });
   message.textContent = "";
 }
 
 // How many entries of this run's record could not be written. It comes off the list, which is where
 // the count lives: the figures are state and the record is prose (research.md R-06).
+// How much of a segment is written: the sections inside it, and the sections inside each of those.
+function countsIn(segment) {
+  const { inside } = sections(segment.body, 3);
+
+  return { inside: inside.length, within: inside.map((part) => sections(part.body, 4).inside.length) };
+}
+
+// What a segment has gained since it was drawn, added where it belongs.
+function grew(held, segment) {
+  const { inside } = sections(segment.body, 3);
+
+  // A call at the top level holds its own answer, not calls.
+  if (segment.said.startsWith("called ")) {
+    for (const part of inside.slice(held.inside)) {
+      held.element.append(...bodyOf(part, part.body));
+    }
+
+    held.inside = inside.length;
+    return;
+  }
+
+  const calls = held.element.querySelector(":scope > details.calls");
+
+  // An answer written inside a call that is already on the page.
+  const drawnCalls = calls === null ? [] : [...calls.querySelectorAll(":scope > .call")];
+
+  inside.slice(0, held.inside).forEach((call, at) => {
+    if (!call.said.startsWith("called ")) {
+      return;
+    }
+
+    const { inside: within } = sections(call.body, 4);
+
+    if (within.length <= held.within[at]) {
+      return;
+    }
+
+    const drawn = drawnCalls[inside.slice(0, at).filter((p) => p.said.startsWith("called ")).length];
+
+    for (const part of within.slice(held.within[at])) {
+      drawn.append(...bodyOf(part, part.body));
+    }
+
+    held.within[at] = within.length;
+  });
+
+  if (inside.length <= held.inside) {
+    return;
+  }
+
+  // And sections added to the turn since — calls, or answers written beside them.
+  const fold = calls ?? foldFor(held.element);
+
+  for (const part of inside.slice(held.inside)) {
+    place(fold, part);
+    held.within.push(sections(part.body, 4).inside.length);
+  }
+
+  held.inside = inside.length;
+  countCalls(fold);
+}
+
+/// The fold a turn's calls go in, made where the turn had none yet.
+function foldFor(item) {
+  const fold = item.querySelector(":scope > details.calls");
+
+  if (fold !== null) {
+    return fold;
+  }
+
+  const made = document.createElement("details");
+  made.className = "calls";
+  made.append(document.createElement("summary"));
+  item.append(made);
+  return made;
+}
+
 async function refreshMissing() {
   const request = ++newestMissingRequest;
 

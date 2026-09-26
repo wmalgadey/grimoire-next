@@ -205,4 +205,74 @@
 
 **Made by**: owner, on amending the constitution to 2.0.0.
 
+## DEC-026 — A run's record is a port of the RUNS context, written to `<state>/runs/<runId>.md`
+
+**Decision**: `IRunRecord`, declared by the RUNS context, with one adapter `MarkdownRunRecord` writing one Markdown file per run into `runs/` inside the directory `--state` names. The Fast suite has an in-memory adapter at the same port.
+
+**Reason**: the record is what a run *did*, so it belongs to the context that owns what a run is; the filesystem is an external system and so appears only inside that context's adapter (V.2), which is the shape DEC-023 gave `ISubmissionStore`. It sits beside the SQLite file rather than in the wiki because Grimoire's bookkeeping in the user's repository would turn up in the version history that is their only undo — and `Program.cs` already refuses a `--state` inside the wiki, so the guard is inherited rather than written twice (research.md R-01). Writing it from the Agent context, where the stream is read, was rejected: that adapter reports and decides nothing, and which moments are worth recording is the hub's.
+
+**Made by**: plan `003-live-run-record` (research.md R-01).
+
+## DEC-027 — A record is a head at the start, moments appended, and a tail at the end; never rewritten
+
+**Decision**: the frame is split. What is known when the run begins is written then, the narrative is appended as the run proceeds, and what only the ending knows is appended when it ends. No byte already on disk is ever moved.
+
+**Reason**: RUNS-007 has the record appended and never rewritten, and an append is the cheapest write there is to make survive a stop — the concern DEC-023 settled for the queue. A frame patched in place would need the file rewritten at the end, which is what would make a run cut off by a stop unreadable: the one case the record matters most. It is also what makes "a live run and a run from last month look the same" true — the live one has no tail yet, and that *is* the difference (research.md R-02).
+
+**Made by**: plan `003-live-run-record` (research.md R-02).
+
+## DEC-028 — What a run did is read from the CLI's complete messages, in `AgentTranscript`
+
+**Decision**: every `tool_use` and `text` block of a complete `assistant` message, and every `tool_result` block of a complete `user` message, read in `AgentTranscript` and nowhere else. `thinking` blocks are not read. The nudge is appended by the hub, which knows it nudged, and never read back off the stream.
+
+**Reason**: `contracts/agent-cli-protocol.md` specified the `assistant` message's `tool_use` blocks in `001-first-ingest` and only now has a consumer. Measured on `claude` 2.1.283: the complete message arrives for every block, so nothing has to be assembled from the partial stream, which stays the cost ceiling's alone; and stdin messages are not echoed on stdout, so a `user` line is a tool result and the nudge cannot appear twice. A `thinking` block carries an empty string and a signature blob, which is nothing a person reads (research.md R-03, R-05).
+
+**One correction from implementation**: one message can carry several `tool_use` blocks, with their results arriving together in the next `user` message. The outstanding tool names are kept as a queue and each result takes the oldest, so order alone still attributes them and no `tool_use_id` reaches the record.
+
+**Made by**: plan `003-live-run-record` (research.md R-03).
+
+## DEC-029 — A tool result is kept whole, in a fence one backtick longer than anything inside it
+
+**Decision**: the result goes into the record byte for byte, inside a fenced block whose fence is a run of backticks one longer than the longest run of backticks in the content, and at least three.
+
+**Reason**: the owner decided nothing is cut — a record that silently loses part of a result is not a record of what the run did. That leaves the reader to protect, and two of them have to be: a person in an editor and `run.js`. A fixed fence breaks on a result containing a fence, which a run reading wiki pages full of code will produce; CommonMark's own longer-fence rule makes the block unambiguous for any content, alters nothing, and gives the browser a deterministic segmentation rule. Escaping was rejected because it changes what the tool returned, which is the one thing a record must not do (research.md R-04).
+
+**Made by**: plan `003-live-run-record` (research.md R-04).
+
+## DEC-030 — The run's figures are columns on the run row, never parsed back out of the record
+
+**Decision**: the tokens spent, the tool calls made and the entries the record could not hold are three columns on the `runs` table, written whenever one of them changes and never derived from the Markdown.
+
+**Reason**: the list polls once a second, and parsing prose Grimoire has just written to recover a number it already had is a seam. The figures are state, so they live where the state lives (DEC-023), and both they and the narrative are written from the same event, so they cannot disagree. Deriving them from the record at start-up was rejected: it would make the Markdown a data format, which DEC-027 kept it from being, and a record that could not be written would take the figures with it (research.md R-06).
+
+**Made by**: plan `003-live-run-record` (research.md R-06).
+
+## DEC-031 — An existing state file gains columns through `PRAGMA table_info` and `ALTER TABLE`
+
+**Decision**: after `CREATE TABLE IF NOT EXISTS`, the store reads `PRAGMA table_info(runs)` and issues one `ALTER TABLE runs ADD COLUMN` for each column it does not find. No version table, no ordered scripts, no ORM.
+
+**Reason**: DEC-023 rejected a migration *framework* as a mechanism with no consumer, and that still holds — but a consumer for bringing an existing file up to date exists now: the owner's own `submissions.db`, holding the ingests they have already made. The alternative is asking them to delete it, which throws their list away to save eight lines. `IF NOT EXISTS` is already this file's idempotent-schema idiom, and `ADD COLUMN` is a metadata-only change. That a committed `ALTER TABLE` survives is SQLite's decision and is not tested; that an older file comes back with its submissions intact and its figures at zero is ours, and the Contract suite proves it (research.md R-07).
+
+**Departs from**: DEC-023's "two tables that do not change shape" — stated here rather than silently broken.
+
+**Made by**: plan `003-live-run-record` (research.md R-07).
+
+## DEC-032 — Reading a run is a second static page, polled and appended to, with no Markdown renderer
+
+**Decision**: `run.html` and `run.js`, reached from the row by a link carrying the submission's identifier. It polls `GET /api/submissions/{id}/record`, which answers with the record's bytes, and renders one element per moment, appending only what is not already on the page and never replacing an element that is.
+
+**Reason**: reading a run is a second job, which is when `docs/ux.md` allows a second page; it gives the back button and a shareable URL for nothing. Appending rather than re-rendering is what makes "arriving lines must not move what the user is reading" true without measuring anything: a segment already on the page is never touched, so the scroll holds and a folded result the user has opened stays open. DEC-019 rules out a bundler and npm, so there is no renderer to reach for, and `docs/ux.md` asks for monospace wherever the content is a log or a file. Range requests were weighed and left out: the poll is over loopback and a record in the low hundreds of kilobytes costs nothing there, so the mechanism has no consumer yet (research.md R-08).
+
+**Made by**: plan `003-live-run-record` (research.md R-08).
+
+## DEC-033 — A record that cannot be written costs the run nothing; the gap is counted and shown
+
+**Decision**: no member of `IRunRecord` throws. The adapter catches its own IO failures, counts them, and the count travels with the run's figures; the record says how many entries were lost once a write succeeds again, and the browser says lines are missing wherever the count is above zero.
+
+**Reason**: the owner decided the run goes on and the gap is made visible. A throw out of the port would end the run, which is the opposite; a silent failure would leave the user unable to tell an unwritten record from an agent that did nothing. One count, written by the same call that writes the other two figures, makes the gap visible in both places the user looks (research.md R-10).
+
+**One correction from implementation**: a run ends once, whether or not its tail reached the disk. Marking it ended only on a successful write was tried so that a lost tail could be written later — nothing writes it later, because a run has no moments after its end, and it left the record able to take a late moment with no tail behind it. A lost tail is one more entry counted.
+
+**Made by**: plan `003-live-run-record` (research.md R-10).
+
 ## Superseded

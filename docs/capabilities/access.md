@@ -30,8 +30,18 @@ figures. Two halves, two levels: the response carries them (Fast), and the brows
 without the rows moving as a figure rises (E2E) — geometry only a real browser has.
 
 ACCESS-006 is a second page, reached from the row. It is a window onto the record RUNS-007 keeps and
-not a second place the run lives: the bytes it shows are the bytes of the file, and the user reads a
-run under way and a run from last month the same way.
+not a second place the run lives: what it shows is the file, fetched byte for byte from the endpoint,
+and the user reads a run under way and a run from last month the same way.
+
+It is a window rather than a copy, which means it may lay out what it shows. The record's two-column
+tables are drawn as tables and a block that parses as JSON is indented with its escapes undone —
+because a returned wiki page shown exactly as written is one line with every umlaut spelled `\u00FC`.
+Where *byte for byte* is promised is the file and the endpoint, and a test asserts it there. What
+laying out costs is named in `specs/003-live-run-record/contracts/run-record.md`. A tool call is one line with its result folded
+under it, which is how the user follows what the run did without reading the results in full and still
+reaches any one of them; the agent's own text is prose and is shown whole, fenced blocks in it
+included. Where the record could not hold something, the page says so — a gap that passed for an agent
+doing nothing would be worse than the gap (RUNS-007).
 
 ## Retired
 

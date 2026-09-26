@@ -26,12 +26,22 @@
       #message[data-kind="refused"] { color: #b3261e; }
       h2 { font-size: 1rem; font-weight: 600; margin-top: 2.5rem; }
       #submissions { list-style: none; margin: 0; padding: 0; }
+      /* Wrapping, because a row carries more than it did: when it held the time, the opening of the
+         text and one word, everything fitted on one line. With the model and two figures beside them
+         it does not, and the opening was the only item able to give way — it was squeezed to a single
+         character, which is exactly what ACCESS-004 asks the browser to show. The run's facts move to
+         a second line instead.
+
+         A figure changing cannot re-wrap the row: both figures have a fixed width and the model and
+         the opening do not change while a run is under way, so nothing here can change how the lines
+         break (ACCESS-005). */
       #submissions li {
         border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        column-gap: 1rem;
         display: flex;
-        gap: 1rem;
-        justify-content: space-between;
+        flex-wrap: wrap;
         padding: 0.5rem 0;
+        row-gap: 0.25rem;
       }
       #submissions time { flex: none; font-variant-numeric: tabular-nums; }
       /* Each figure in its own element, with tabular figures and a width kept for it, so that
@@ -55,11 +65,16 @@
       .tokens { width: 9ch; }
       .calls { width: 6ch; }
       .model { flex: none; opacity: 0.7; }
-      .open-run { flex: none; }
+      /* What the figure beside it counts. Its own element, so the figure holds nothing but the
+         number — the thing the cost ceiling counts and nothing else (DEC-015). */
+      .unit { flex: none; margin-left: -0.6rem; opacity: 0.7; }
+      .open-run { flex: none; margin-left: auto; }
+      .missing { flex: none; }
       /* One row per submission however long the text was: the opening is cut to the same length
          for every one of them, and what still will not fit is ended here (ACCESS-004). */
       .excerpt {
-        flex: 1 1 auto;
+        flex: 1 1 18ch;
+        min-width: 18ch;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;

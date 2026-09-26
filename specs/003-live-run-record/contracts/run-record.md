@@ -73,6 +73,22 @@ Markdown. **The wording is the adapter's and is not part of this contract** — 
 1. **A record is a sequence of segments.** A segment begins at a line that starts with `## ` at column
    one and runs to the line before the next such line, or to the end of the file. Everything before the
    first such line is the head.
+1. **A record nests as the agent works.** What the agent said opens a section (`## `); the calls it
+   then made are written inside it (`### `); and each answer is written inside its call (`#### `). A
+   run reads as it happened: the sentence that explains eight reads, and the eight reads under it,
+   each with what it returned under that.
+
+   A result is written inside a call only where that call is unmistakably the one it answers: written
+   immediately before it, same tool, and the only call still waiting. A turn that makes several calls
+   at once breaks that — their results arrive oldest first, so the first answers the *first* call while
+   the call above it is the last — and then each result is written beside the calls instead. The order
+   is what attributes them, and the order is the one they happened in.
+
+   Calls made before the agent has said anything have nothing to sit inside and stay at the top level.
+
+   This nesting is **in the file**, and therefore in an editor, on GitHub and in the browser alike.
+   Building it only when the page is drawn would show the owner something their own editor does not
+   (US3), which is why the heading level carries it.
 2. **A segment's first line says what it is**, after the time: `called <tool>`, `<tool> returned`,
    `the agent`, `Grimoire`, or `ended <done|failed> — <reason>`.
 3. **A fenced block holds everything that is not prose** — a call's arguments, and a call's result. Its
@@ -80,11 +96,26 @@ Markdown. **The wording is the adapter's and is not part of this contract** — 
    and at least three; its closing fence is a run of the same length at column one. This is CommonMark's
    own rule, and it is what makes a result containing a fence — which a run reading wiki pages full of
    code will produce — unambiguous without altering a byte of it (research.md R-04).
+   **The opening fence may name what it holds** — `json` for a call's arguments, which the hub writes
+   itself and therefore knows. A result carries no such name: it is whatever the tool returned, and a
+   name would be a guess. A reader takes the name as a hint and nothing more, and finds the close by the
+   backticks alone, which is where CommonMark allows no name at all.
 4. **A line that starts with `## ` inside a fenced block is not a segment boundary.** A reader finds the
    fence first and skips to its close. This is the one rule a naive split would get wrong, and it is why
    rule 3 is a promise and not a detail.
 5. **Nothing of a tool result is cut or escaped.** It goes in whole, byte for byte, however large
    (RUNS-009, the owner's decision in the spec's Clarifications).
+
+   That promise is about the **file and the endpoint**, which is where the owner's editor and any
+   other reader get it, and a test asserts the endpoint serves the file byte for byte. The page is
+   allowed to lay out what it shows: a two-column table as a table, and a block that parses as JSON
+   indented, with its escapes undone and a string holding newlines written as lines. Shown as written,
+   a returned wiki page is one line with every umlaut spelled `\u00FC` — correct and close to
+   unreadable, which is the owner's own finding from the first real run.
+
+   What the page must never do is make the file agree with it. Two things it loses in laying JSON out
+   are named here rather than left to be discovered: the exact spelling of whitespace and escapes, and
+   a duplicate key, which a parser keeps only once. Both remain in the file.
 
 ### What a record holds, in order
 
@@ -92,7 +123,14 @@ Markdown. **The wording is the adapter's and is not part of this contract** — 
 | --- | --- | --- |
 | Head | `Begin` | The run's identifier, the submission's, the pinned model, the granted tools, both ceilings, when the run started (RUNS-008) |
 | Moments | `Append` | Each tool call with its arguments; what each returned, whole; the agent's own text; anything Grimoire said to the agent — today only the nudge of RUNS-005 (RUNS-009) |
-| Tail | `End` | When it ended, `done` or `failed`, why, elapsed against the elapsed ceiling, tokens against the cost ceiling, and the tokens of every model the run touched (RUNS-008, DEC-015) |
+| Tail | `Ended` | When it ended, `done` or `failed`, why, elapsed against the elapsed ceiling, tokens against the cost ceiling, and the tokens of every model the run touched (RUNS-008, DEC-015) |
+
+**A run that never reported a breakdown has no model rows.** The tokens per model come from a turn's
+own report; a run stopped inside its first turn — a cost ceiling reached, a process that died, a tool
+surface that was not the grant — has none, and its tail holds the total against the ceiling and
+nothing more. The head still names the model it was dispatched on. Nothing is invented: attributing the
+whole total to that model would claim the CLI's background calls, which a run causes but never asks
+for, were made on it.
 
 **A record of a run still under way is the head and however many moments have happened.** It has no
 tail, and that is the only difference between it and a run from last month (the owner's wish, brief §3).

@@ -37,9 +37,26 @@ tokens of every model it touched — is appended when it ends. A run still under
 which is the only difference between its record and one from last month. The seven reasons are values
 inside RUNS-008 and not requirements of their own (Constitution IV.7).
 
+The tokens per model come from what the CLI reports when a turn ends. A run stopped before it ever
+reported one — a cost ceiling reached inside the first turn, a process that died, a tool surface that
+was not the grant — has no breakdown to record, and its tail holds the total against the ceiling and
+no model rows. The head still names the model the run was dispatched on. Nothing is invented to fill
+the gap: attributing the whole total to that model would claim the CLI's own background calls, which
+a run causes but never asks for, were made on it.
+
 RUNS-009 is what the run *did*, and nothing about what it was told: no instruction, no purpose
 description, no submitted text. A tool result goes in whole — nothing cut, nothing escaped — inside a
 fence longer than any run of backticks in it.
+
+**There is no reasoning in a record, because the CLI does not give any.** The agent's own text is
+recorded wherever it writes some, which is at the turn boundaries: it says what it is about to do,
+makes its calls, and says what it found. Inside one turn it makes call after call without prose, and
+that gap is the model's doing rather than something dropped on the way. Its *thinking* is a different
+matter and is not available at all — measured twice, on `claude-haiku-4-5` (research.md R-05) and
+again on `claude-sonnet-4-5` with CLI 2.1.283: the complete message carries `"thinking": ""` beside a
+several-hundred-character signature, and the streamed `thinking_delta` events carry empty strings too.
+There is nothing behind the signature to record. Should a later CLI deliver it, that is a change to
+what RUNS-009 covers and an owner's decision, not a silent addition.
 
 RUNS-010 exists apart from ACCESS-005 because keeping the figures and showing them are two
 behaviours, and because a stop must not lose them: `002-ingest-queue` assumed the token counts of a

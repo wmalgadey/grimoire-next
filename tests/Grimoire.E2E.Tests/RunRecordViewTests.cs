@@ -34,31 +34,46 @@ public sealed class RunRecordViewTests : PageTest
 
         var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
         hub.Agent.ReportIn(submission);
+
+        // A run as the agent works it: it says what it is about to do, makes the calls that do it, and
+        // says what it found.
+        hub.Agent.Said(submission, "I will read what the wiki already holds.");
         hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
         hub.Agent.Returned(submission, "read_page", ALongResult);
+        hub.Agent.Called(submission, "list_pages", "{}");
+        hub.Agent.Returned(submission, "list_pages", "ada.md");
         hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
-        hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
         hub.Agent.End(submission, RunOutcome.Done);
 
         await Page.GotoAsync(hub.Address);
-
-        // Opened from the row, which is the only way in: the link carries the submission, not the run.
         await Row(submission).Locator(".open-run").ClickAsync();
 
         // The frame first — the model it ran on and both ceilings (RUNS-008).
         await Expect(Page.Locator("#frame")).ToContainTextAsync("claude-opus-4-5-20251101");
         await Expect(Page.Locator("#frame")).ToContainTextAsync("Granted tools");
 
-        // Then what the run did, in the order it happened, and the tail last.
-        await Expect(Segments()).ToHaveCountAsync(5);
-        await Expect(Heading(0)).ToContainTextAsync("called read_page");
-        await Expect(Heading(1)).ToContainTextAsync("read_page returned");
-        await Expect(Heading(2)).ToContainTextAsync("the agent");
-        await Expect(Heading(3)).ToContainTextAsync("called write_page");
-        await Expect(Heading(4)).ToContainTextAsync("ended done");
 
-        // The agent's own text is prose and is simply there.
-        await Expect(Segments().Nth(2)).ToContainTextAsync("I will add the date.");
+        // Three sections: what the agent said, what it said afterwards, and the tail. The two calls
+        // are not sections of their own — they sit inside the sentence that explains them.
+        await Expect(Segments()).ToHaveCountAsync(3);
+        await Expect(Heading(0)).ToContainTextAsync("the agent");
+        await Expect(Segments().Nth(0)).ToContainTextAsync("I will read what the wiki already holds.");
+        await Expect(Heading(2)).ToContainTextAsync("ended done");
+
+        // The calls of that turn, folded away behind their count.
+        var calls = Segments().Nth(0).Locator("details.calls");
+        await Expect(calls.Locator("summary").First).ToHaveTextAsync("2 tool calls");
+        await Expect(calls.Locator(".call")).ToHaveCountAsync(2);
+
+        // Each one is a line of its own, with its arguments on it, and can be opened on its own.
+        await Expect(calls.Locator(".call").Nth(0)).ToContainTextAsync("called read_page");
+        await Expect(calls.Locator(".call").Nth(0)).ToContainTextAsync("ada.md");
+        await Expect(calls.Locator(".call").Nth(1)).ToContainTextAsync("called list_pages");
+        await Expect(calls.Locator(".call").Nth(0).Locator("details.result")).ToHaveCountAsync(1);
+
+        // And the tail is the record's second two-column table, read as a table rather than as pipes.
+        await Expect(Segments().Nth(2).Locator("table.frame-table")).ToHaveCountAsync(1);
+        await Expect(Segments().Nth(2)).ToContainTextAsync("Elapsed");
     }
 
     [Fact]
@@ -75,7 +90,8 @@ public sealed class RunRecordViewTests : PageTest
 
         await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
 
-        var result = Segments().Nth(1).Locator("details.result");
+        // The result sits in the entry of the call it answers, folded under its one line.
+        var result = Segments().Nth(0).Locator("details.result");
 
         // Folded: the user can follow what the run did without reading the results in full.
         await Expect(result.Locator("pre")).Not.ToBeVisibleAsync();
@@ -104,10 +120,11 @@ public sealed class RunRecordViewTests : PageTest
         await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
 
         // The result holds `## Ada Lovelace` at column one. A reader finds the fence first and skips
-        // to its close, so that line is no boundary and the result stays one segment
-        // (contracts/run-record.md, rule 4). Three segments: the call, its result, the tail.
-        await Expect(Segments()).ToHaveCountAsync(3);
-        await Expect(Heading(1)).ToContainTextAsync("read_page returned");
+        // to its close, so that line is no boundary and the result stays one moment
+        // (contracts/run-record.md, rule 4). Two entries: the call with its answer, and the tail.
+        await Expect(Segments()).ToHaveCountAsync(2);
+        await Expect(Heading(0)).ToContainTextAsync("called read_page");
+        await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(1);
     }
 
     [Fact]
@@ -150,10 +167,11 @@ public sealed class RunRecordViewTests : PageTest
         hub.Agent.Returned(submission, "read_page", ALongResult);
 
         await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
-        await Expect(Segments()).ToHaveCountAsync(2);
+        await Expect(Segments()).ToHaveCountAsync(1);
 
-        // The user opens the result and reads it. The run is still under way.
-        var result = Segments().Nth(1).Locator("details.result");
+        // The user opens the result and reads it, folded under the call's one line. The run is still
+        // under way.
+        var result = Segments().Nth(0).Locator("details.result");
         await result.Locator("summary").ClickAsync();
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
 
@@ -165,7 +183,7 @@ public sealed class RunRecordViewTests : PageTest
             hub.Agent.Said(submission, $"Reading page {i}. {new string('x', 2_000)}");
         }
 
-        await Expect(Segments()).ToHaveCountAsync(14);
+        await Expect(Segments()).ToHaveCountAsync(13);
 
         // The user scrolls to where they were reading and stays there. Scrolled through the document
         // rather than with the wheel: a wheel event is delivered and applied asynchronously, and on a
@@ -176,17 +194,19 @@ public sealed class RunRecordViewTests : PageTest
 
         Assert.True(scrolledTo > 0, "the page did not scroll, so there is no scroll position to keep");
 
-        var openedBefore = await Segments().Nth(1).BoundingBoxAsync();
+        var openedBefore = await Segments().Nth(0).BoundingBoxAsync();
 
         // More happens while the page is left open. The page polls; nothing is pushed to it.
         hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
         hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
 
-        await Expect(Segments()).ToHaveCountAsync(16);
+        // Fourteen, not fifteen: the call sits inside the sentence that explains it rather than
+        // opening a section of its own.
+        await Expect(Segments()).ToHaveCountAsync(14);
 
         // Below what was already there, in the order it happened.
-        await Expect(Heading(14)).ToContainTextAsync("the agent");
-        await Expect(Heading(15)).ToContainTextAsync("called write_page");
+        await Expect(Heading(13)).ToContainTextAsync("the agent");
+        await Expect(Segments().Nth(13).Locator(".call")).ToContainTextAsync("called write_page");
 
         // The scroll is where the user left it. This is the assertion T040 is actually about, and a
         // bounding box cannot make it: that is a layout coordinate, and it would hold even if the
@@ -197,15 +217,15 @@ public sealed class RunRecordViewTests : PageTest
         // already on the page is never replaced, which is what makes both true (ACCESS-006).
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
 
-        var openedAfter = await Segments().Nth(1).BoundingBoxAsync();
+        var openedAfter = await Segments().Nth(0).BoundingBoxAsync();
         Assert.Equal(openedBefore!.Y, openedAfter!.Y);
         Assert.Equal(openedBefore.Height, openedAfter.Height);
 
         // The run then ends while the page is still open, and the tail arrives the same way.
         hub.Agent.End(submission, RunOutcome.Done);
 
-        await Expect(Segments()).ToHaveCountAsync(17);
-        await Expect(Heading(16)).ToContainTextAsync("ended done");
+        await Expect(Segments()).ToHaveCountAsync(15);
+        await Expect(Heading(14)).ToContainTextAsync("ended done");
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
         Assert.Equal(scrolledTo, await Page.EvaluateAsync<double>("window.scrollY"));
     }
@@ -258,9 +278,114 @@ public sealed class RunRecordViewTests : PageTest
         }
     }
 
+    [Fact]
+    [Trait("req", "RUNS-007")]
+    public async Task View_SaysLinesAreMissing_WhenTheRecordCouldNotHoldThem()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
+        await Expect(Segments()).ToHaveCountAsync(1);
+
+        // The disk refuses the rest. The run goes on — that is what RUNS-007 decided — and the record
+        // keeps what it already has.
+        hub.StopTheRecordBeingWritten();
+
+        hub.Agent.Returned(submission, "read_page", ALongResult);
+        hub.Agent.Said(submission, "Ada Lovelace already has a page.");
+
+        // The view says so, while the user is looking at it. A gap that passed for an agent doing
+        // nothing would be worse than the gap (ACCESS-006, RUNS-007).
+        await Expect(Page.Locator("#missing")).ToContainTextAsync("2");
+        await Expect(Page.Locator("#missing")).Not.ToBeEmptyAsync();
+
+        // And what did get written is still there to read.
+        await Expect(Heading(0)).ToContainTextAsync("called read_page");
+    }
+
+    [Fact]
+    public async Task Answer_ArrivesWhileThePageIsOpen_InTheCallItAnswers()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Said(submission, "I will read what the wiki already holds.");
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
+
+        var calls = Segments().Nth(0).Locator("details.calls");
+        await Expect(calls.Locator("summary").First).ToHaveTextAsync("1 tool call");
+        await Expect(calls.Locator(".call details.result")).ToHaveCountAsync(0);
+
+        // The answer arrives while the page is open. It is written inside the call it answers, so it
+        // adds no segment at the top level — and a page that only watched the top level would show it
+        // just after a reload, which is not what ACCESS-006 promises.
+        hub.Agent.Returned(submission, "read_page", ALongResult);
+
+        await Expect(calls.Locator(".call details.result")).ToHaveCountAsync(1);
+        await Expect(calls.Locator(".call details.result > summary")).ToContainTextAsync("7 lines");
+
+        // And a second call of the same turn arrives the same way, into the fold that is already there.
+        hub.Agent.Called(submission, "list_pages", "{}");
+
+        await Expect(calls.Locator("summary").First).ToHaveTextAsync("2 tool calls");
+        await Expect(calls.Locator(".call")).ToHaveCountAsync(2);
+    }
+
+    [Fact]
+    public async Task Turn_CountsItsCalls_WhenTheirAnswersAreWrittenBesideThem()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Said(submission, "I will read both pages.");
+
+        // Two calls before either answer, which is how a turn that batches them arrives. Neither
+        // answer can be nested — the call above the first is the second — so the record writes both
+        // beside the calls, at the calls' own depth.
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+        hub.Agent.Called(submission, "read_page", """{"path":"grace.md"}""");
+        hub.Agent.Returned(submission, "read_page", "# Ada");
+        hub.Agent.Returned(submission, "read_page", "# Grace");
+        hub.Agent.End(submission, RunOutcome.Done);
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
+
+        var calls = Segments().Nth(0).Locator("details.calls");
+
+        // Two calls, not four sections. An answer written beside a call is not one more thing the
+        // agent did.
+        await Expect(calls.Locator("summary").First).ToHaveTextAsync("2 tool calls");
+        await Expect(calls.Locator(".call")).ToHaveCountAsync(2);
+
+        // And each answer sits in the call it answers, oldest first — which is the order the record
+        // attributes them by.
+        await Expect(calls.Locator(".call").Nth(0).Locator("details.result")).ToHaveCountAsync(1);
+        await Expect(calls.Locator(".call").Nth(1).Locator("details.result")).ToHaveCountAsync(1);
+
+        // Opened: the turn's fold first, then the answer inside the call it belongs to.
+        await calls.Locator("summary").First.ClickAsync();
+        await calls.Locator(".call").Nth(0).Locator("details.result > summary").ClickAsync();
+
+        await Expect(calls.Locator(".call").Nth(0).Locator("pre")).ToHaveTextAsync("# Ada");
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator Segments() => Page.Locator("#record li");
 
-    private ILocator Heading(int at) => Segments().Nth(at).Locator(".heading");
+    /// <summary>
+    /// A segment's own first line. Not the headings of the calls inside it, which are their own.
+    /// </summary>
+    private ILocator Heading(int at) => Segments().Nth(at).Locator("> .heading");
 }
