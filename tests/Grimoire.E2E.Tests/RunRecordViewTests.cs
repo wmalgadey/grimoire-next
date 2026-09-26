@@ -1,3 +1,4 @@
+using System.Text;
 using Grimoire.Agent;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit.v3;
@@ -156,21 +157,23 @@ public sealed class RunRecordViewTests : PageTest
         await result.Locator("summary").ClickAsync();
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
 
-        // Enough of the run to push the page past one screen, so that there is a scroll position to
-        // keep at all. Without this the document never scrolls and the assertion below would hold
+        // Enough of the run to push the page well past one screen, so that there is a scroll position
+        // to keep at all. Without this the document never scrolls and the assertion below would hold
         // whatever the implementation did.
         for (var i = 0; i < 12; i++)
         {
-            hub.Agent.Said(submission, $"Reading page {i}. {new string('x', 400)}");
+            hub.Agent.Said(submission, $"Reading page {i}. {new string('x', 2_000)}");
         }
 
         await Expect(Segments()).ToHaveCountAsync(14);
 
-        // The user scrolls to where they were reading and stays there.
-        await Page.Mouse.WheelAsync(0, 600);
-        await Expect(Page.Locator("body")).ToBeVisibleAsync();
+        // The user scrolls to where they were reading and stays there. Scrolled through the document
+        // rather than with the wheel: a wheel event is delivered and applied asynchronously, and on a
+        // CI runner it had not landed by the time the position was read — which the guard below caught
+        // rather than letting the test pass on an unscrolled page.
+        var scrolledTo = await Page.EvaluateAsync<double>(
+            "() => { window.scrollTo(0, Math.floor(document.body.scrollHeight / 2)); return window.scrollY; }");
 
-        var scrolledTo = await Page.EvaluateAsync<double>("window.scrollY");
         Assert.True(scrolledTo > 0, "the page did not scroll, so there is no scroll position to keep");
 
         var openedBefore = await Segments().Nth(1).BoundingBoxAsync();
@@ -205,6 +208,54 @@ public sealed class RunRecordViewTests : PageTest
         await Expect(Heading(16)).ToContainTextAsync("ended done");
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
         Assert.Equal(scrolledTo, await Page.EvaluateAsync<double>("window.scrollY"));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-007")]
+    public async Task Record_ServedIsTheFileOnDisk_AndTheWikiHoldsNoneOfIt()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+        hub.Agent.Returned(submission, "read_page", ALongResult);
+        hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
+        hub.Agent.End(submission, RunOutcome.Done);
+
+        // What is on disk. One file, under the state directory Grimoire owns, named for the run.
+        var records = Directory.GetFiles(Path.Combine(hub.StateDirectory, "runs"), "*.md");
+        var onDisk = await File.ReadAllBytesAsync(Assert.Single(records), token);
+
+        // Byte for byte, which is what ACCESS-006 promises and what makes the browser a window onto
+        // the record rather than a second place the run lives. Compared as bytes and not as text: a
+        // line-by-line comparison would pass on a response that had been reordered, had a line
+        // repeated, or had its blank lines dropped — and the blank lines are what separate one segment
+        // from the next (US3, contracts/run-record.md).
+        Assert.Equal(onDisk, await hub.RecordBytesAsync(submission, token));
+
+        // The record really does hold the run, rather than both being empty and equal.
+        var text = Encoding.UTF8.GetString(onDisk);
+        Assert.Contains("Ada Lovelace already has a page.", text, StringComparison.Ordinal);
+        Assert.Contains("ended done", text, StringComparison.Ordinal);
+
+        // And the wiki holds none of it. Grimoire's bookkeeping in the user's repository would turn up
+        // in the version history that is their only undo (Invariants 1 and 3, DEC-023).
+        //
+        // Every file under the wiki, whatever it is called: a record written there under another name
+        // or another extension is the same mistake, and an assertion that only looked at `.md` files
+        // would pass on it.
+        var inTheWiki = Directory.GetFiles(hub.WikiDirectory, "*", SearchOption.AllDirectories);
+
+        foreach (var file in inTheWiki)
+        {
+            var held = await File.ReadAllTextAsync(file, token);
+
+            Assert.DoesNotContain($"# Run {Path.GetFileNameWithoutExtension(records[0])}", held, StringComparison.Ordinal);
+            Assert.DoesNotContain("ended done", held, StringComparison.Ordinal);
+            Assert.NotEqual(Path.GetFileName(records[0]), Path.GetFileName(file));
+        }
     }
 
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");

@@ -163,6 +163,44 @@ public sealed class RunRecordTests
         Assert.Equal(written.Count - 2, written.ToList().IndexOf(notice));
     }
 
+    [Fact]
+    [Trait("req", "RUNS-007")]
+    public async Task Record_AsksTheWikiForNothing()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+        hub.Harness.Did(submission.Id, Returned("# Ada\n"));
+        hub.Harness.Did(submission.Id, new TranscriptMoment(RunMomentKind.AgentSaid, Tool: null, "Adding the date."));
+
+        // The log entry is there, so the run ends done and the whole record is written — head, four
+        // moments and the tail. The append below is this test putting the entry there; it is the only
+        // thing in this test that is not Grimoire writing a record.
+        await hub.Wiki.AppendLogAsync($"Run {run.Id} wrote a page.\n", TestContext.Current.CancellationToken);
+
+        await hub.Harness.StoppedAsync(submission.Id);
+
+        Assert.NotNull(hub.Record.HeadOf(run.Id));
+        Assert.NotNull(hub.Record.TailOf(run.Id));
+
+        // Everything the wiki was asked, whole and in order, from the run beginning to its tail. Two
+        // entries and no others: this test's own append, and RUNS-005's read of log.md for the run's
+        // identifier. Nothing written by Grimoire, nothing else read, and the wiki never listed — the
+        // record is Grimoire's own bookkeeping and lives outside it (RUNS-007, US3).
+        //
+        // The whole list rather than what follows some mark taken part way through, because a read
+        // made while the moments were being recorded is the case this is for, and it happens before
+        // any such mark.
+        Assert.Equal(
+            [$"append {InMemoryWikiStore.LogPath}", $"read {InMemoryWikiStore.LogPath}"],
+            hub.Wiki.Asked);
+
+        // And nothing of the record is among the wiki's files.
+        Assert.DoesNotContain(hub.Wiki.Files.Keys, path => path.Contains(run.Id.ToString(), StringComparison.Ordinal));
+    }
+
     private static TranscriptMoment Returned(string content) =>
         new(RunMomentKind.ToolReturned, "read_page", content);
 }

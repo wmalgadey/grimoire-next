@@ -138,6 +138,14 @@ internal sealed class HubUnderTest : IAsyncDisposable
 
     public string Address { get; }
 
+    /// <summary>
+    /// Where Grimoire keeps its own bookkeeping — the submissions and the records — and the wiki it
+    /// writes into. Siblings, never one inside the other (contracts/submission-store.md).
+    /// </summary>
+    public string StateDirectory => Path.Combine(directory, "state");
+
+    public string WikiDirectory => Path.Combine(directory, "wiki");
+
     /// <summary>The run the hub dispatched to, which a test drives from state to state.</summary>
     public DrivableHarness Agent { get; }
 
@@ -226,6 +234,22 @@ internal sealed class HubUnderTest : IAsyncDisposable
             .ConfigureAwait(false);
 
         response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// One run's record as the endpoint answers it, unaltered. Read as bytes and not as text: what
+    /// ACCESS-006 promises is the file's bytes, and a string comparison would pass on a response that
+    /// had been re-encoded, reordered or had its blank lines dropped.
+    /// </summary>
+    public async Task<byte[]> RecordBytesAsync(Guid submission, CancellationToken cancellationToken)
+    {
+        var response = await client
+            .GetAsync(new Uri($"/api/submissions/{submission}/record", UriKind.Relative), cancellationToken)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
