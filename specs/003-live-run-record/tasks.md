@@ -303,7 +303,7 @@ rather than work of its own", and what it adds is the two assertions nothing els
       with its reason and "Made by: plan `003-live-run-record`". The one that departs from DEC-023's
       "two tables that do not change shape" says so — **Req:** Principle II.6
 - [X] T052 Walk `docs/review-checklist.md` — **Req:** Principle Gov.2
-- [ ] T053 Classify the survivors from the mutation artifact of the PR to main into
+- [X] T053 Classify the survivors from the mutation artifact of the PR to main into
       `specs/003-live-run-record/mutation.md`: per survivor, the test that should have killed it and
       does not, or the reason none should. A survivor becomes a test only where it names a requirement
       the suite does not actually verify. Nothing here is a threshold and nothing is run locally —

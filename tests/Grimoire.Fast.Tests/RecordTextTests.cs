@@ -110,6 +110,35 @@ public sealed class RecordTextTests
         Assert.Contains("3", rendered, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(0, "## ")]
+    [InlineData(1, "### ")]
+    [InlineData(2, "#### ")]
+    [Trait("req", "RUNS-009")]
+    public void Moment_OpensAtTheHeadingLevelOfItsDepth(int depth, string level)
+    {
+        var rendered = RecordText.Moment(
+            new RunMoment(Guid.NewGuid(), FastSuite.Start, RunMomentKind.AgentSaid, Tool: null, "A word.", depth));
+
+        // The depth is written as the heading level and nowhere else: it is what puts a call inside
+        // the turn that explains it and an answer inside its call, in the file and therefore in an
+        // editor, on GitHub and in the browser alike (contracts/run-record.md, US3).
+        Assert.StartsWith(level, rendered, StringComparison.Ordinal);
+        Assert.False(rendered.StartsWith(level + "#", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-009")]
+    public void Result_NamesTheToolThatReturned()
+    {
+        var rendered = RecordText.Moment(Returned("what it held"));
+
+        // A segment's first line says what it is, and for a result that is which call returned
+        // (contracts/run-record.md, rule 2). `run.js` finds the segment by that shape.
+        Assert.StartsWith("## ", rendered, StringComparison.Ordinal);
+        Assert.Contains("read_page returned", rendered, StringComparison.Ordinal);
+    }
+
     private static RunMoment Returned(string content) =>
         new(Guid.NewGuid(), FastSuite.Start, RunMomentKind.ToolReturned, "read_page", content);
 }

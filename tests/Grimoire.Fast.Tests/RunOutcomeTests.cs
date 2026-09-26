@@ -82,6 +82,20 @@ public sealed class RunOutcomeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-008")]
+    [Trait("req", "GUARD-004")]
+    public void Exit_SaysTheTimeCeiling_WhenTheRunStandsExactlyOnIt()
+    {
+        // Exactly on the ceiling is on it: `Ceilings.ReachedBy` says so, and the reason recorded has
+        // to agree — a run that ran out of time recorded as having run out of money would name the
+        // wrong one of RUNS-008's seven.
+        var ending = run.Exited(exitCode: 0, Ceilings.Fixed.Elapsed);
+
+        Assert.Equal(RunOutcome.Failed, ending.Outcome);
+        Assert.Equal(RunEndedBecause.TimeCeiling, ending.Because);
+    }
+
+    [Fact]
     public void Log_NamesTheRun_WhenItHoldsTheIdentifierAsPlainText() =>
         Assert.True(run.IsNamedIn($"## 2026-09-20\n\nRun {run.Id} added one page and linked it.\n"));
 
