@@ -43,6 +43,7 @@ The wiki lives in the user's own repository, in plain files. Nothing in it needs
 | What exists and how does it behave? | `docs/capabilities/`              |
 | What is proven?                     | `docs/trace.md`                   |
 | Which rules apply?                  | `.specify/memory/constitution.md` |
+| Why is the stack what it is?        | `docs/decisions.md`               |
 | How must a screen look and read?    | `docs/ux.md`                      |
 | What is a PR checked against?       | `docs/review-checklist.md`        |
 | How did it come about?              | `specs/NNN-*`                     |
