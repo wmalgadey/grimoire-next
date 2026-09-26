@@ -46,16 +46,28 @@ public sealed class RunConductor(
     private sealed record Watched(Run Run, ITimer Deadline, Lock Gate)
     {
         /// <summary>
-        /// The tool of the call written last for this run, while it is still waiting for its result.
+        /// The tool of the moment written last for this run, where that moment was a call.
+        /// </summary>
+        public string? CallWrittenLast { get; set; }
+
+        /// <summary>
+        /// How many calls this run has made that have not yet been answered.
         /// </summary>
         /// <remarks>
-        /// What decides whether a result is written <em>under</em> its call or beside it. The record
-        /// is appended to and never rewritten, so a result can only join the call above it — which is
-        /// where it belongs whenever the agent made one call and waited. A turn that makes several at
-        /// once breaks that adjacency, and then each result opens a section of its own naming its
-        /// tool, which is truthful about the order rather than tidy about it (RUNS-007, RUNS-009).
+        /// Both of these decide one thing: whether a result is written <em>under</em> the call above
+        /// it or beside it. The record is appended to and never rewritten, so a result can only join
+        /// the call immediately above — and it belongs there only when that call is unmistakably the
+        /// one it answers, which means exactly one call was outstanding.
+        /// <para>
+        /// A turn that makes several calls at once breaks that. Their results arrive oldest first, so
+        /// the first result answers the <em>first</em> call while the call above it is the last one —
+        /// nesting it there would say a call returned something it never returned. Counting is what
+        /// tells the two cases apart: with more than one outstanding, every result of that turn opens
+        /// a section of its own and names its tool, which is truthful about the order rather than
+        /// tidy about it (RUNS-007, RUNS-009).
+        /// </para>
         /// </remarks>
-        public string? AwaitingResultFrom { get; set; }
+        public int CallsAwaitingTheirResult { get; set; }
     }
 
     /// <summary>
@@ -211,19 +223,27 @@ public sealed class RunConductor(
                 return;
             }
 
+            // Nested only where the call above is unmistakably the one this answers: it was written
+            // immediately before, it is the same tool, and it was the only call still waiting.
             var answersTheCallBefore =
                 moment.Kind == RunMomentKind.ToolReturned
                 && moment.Tool is not null
-                && watched.AwaitingResultFrom == moment.Tool;
+                && watched.CallWrittenLast == moment.Tool
+                && watched.CallsAwaitingTheirResult == 1;
 
             record.Append(RunMoment.Of(watched.Run.Id, clock.GetUtcNow(), moment, answersTheCallBefore));
-
-            watched.AwaitingResultFrom = moment.Kind == RunMomentKind.ToolCalled ? moment.Tool : null;
 
             if (moment.Kind == RunMomentKind.ToolCalled)
             {
                 watched.Run.ToolCalled();
+                watched.CallsAwaitingTheirResult++;
             }
+            else if (moment.Kind == RunMomentKind.ToolReturned)
+            {
+                watched.CallsAwaitingTheirResult = Math.Max(0, watched.CallsAwaitingTheirResult - 1);
+            }
+
+            watched.CallWrittenLast = moment.Kind == RunMomentKind.ToolCalled ? moment.Tool : null;
 
             // After every moment, not only after a tool call. The append above may have failed, and
             // then the count of what the record could not hold has risen — a run whose lost moments
@@ -300,7 +320,7 @@ public sealed class RunConductor(
                 record.Append(RunMoment.GrimoireSaid(
                     watched.Run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
 
-                watched.AwaitingResultFrom = null;
+                watched.CallWrittenLast = null;
             }
         }
 

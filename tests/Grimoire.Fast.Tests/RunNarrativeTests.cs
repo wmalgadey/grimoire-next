@@ -157,6 +157,60 @@ public sealed class RunNarrativeTests
         Assert.Single(moments, m => m.Kind == RunMomentKind.GrimoireSaid);
     }
 
+    [Fact]
+    [Trait("req", "RUNS-009")]
+    public async Task Result_IsNotPutUnderACallItDoesNotAnswer_WhenOneTurnMakesSeveral()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+
+        // Two calls to the same tool in one turn, then their results, oldest first — which is how the
+        // CLI sends them and how AgentTranscript reads them.
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"popkultur/patrick.md"}""");
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"sources/anmut.md"}""");
+        hub.Harness.Did(submission.Id, Returned("# Popkultur"));
+        hub.Harness.Did(submission.Id, Returned("# Quellen"));
+
+        var moments = hub.Record.MomentsOf(run.Id);
+
+        Assert.Equal(
+            [RunMomentKind.ToolCalled, RunMomentKind.ToolCalled, RunMomentKind.ToolReturned, RunMomentKind.ToolReturned],
+            moments.Select(m => m.Kind));
+
+        // Neither result is written under a call. The first answers the *first* call while the call
+        // above it is the second, so nesting it there would say a call returned something it never
+        // returned — which is what the owner saw: the answers one call out of step.
+        Assert.All(moments.Where(m => m.Kind == RunMomentKind.ToolReturned), m => Assert.False(m.AnswersTheCallBefore));
+
+        // The order is what attributes them, and the order is the one they happened in.
+        Assert.Equal(["# Popkultur", "# Quellen"], moments.Where(m => m.Kind == RunMomentKind.ToolReturned).Select(m => m.Content));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-009")]
+    public async Task Result_IsPutUnderItsCall_WhenTheAgentMadeOneAndWaited()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"popkultur/patrick.md"}""");
+        hub.Harness.Did(submission.Id, Returned("# Popkultur"));
+
+        // One call, one result: the call above it is unmistakably the one it answers, so the record
+        // writes it inside that call — in the file, and therefore wherever the file is read (US3).
+        var returned = Assert.Single(
+            hub.Record.MomentsOf(run.Id),
+            m => m.Kind == RunMomentKind.ToolReturned);
+
+        Assert.True(returned.AnswersTheCallBefore);
+    }
+
+    private static TranscriptMoment Returned(string content) =>
+        new(RunMomentKind.ToolReturned, "read_page", content);
+
     private static RunMoment AtNoon(TranscriptMoment moment) =>
         RunMoment.Of(Guid.NewGuid(), FastSuite.Start, moment);
 }
