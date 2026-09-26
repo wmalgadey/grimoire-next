@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Grimoire.Agent;
 using Grimoire.Runs;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -105,8 +106,19 @@ public sealed record SubmissionView(
 /// <summary>
 /// Every submission the user made, with its current state, newest first (ACCESS-004, ACCESS-005).
 /// </summary>
+/// <param name="CostCeiling">
+/// The cost ceiling every run in this list is held to, in the same quantity
+/// <see cref="SubmissionView.CostSpent"/> is in (GUARD-004).
+/// </param>
+/// <remarks>
+/// The ceiling is on the list and not on each row, because it is the hub's value and the same for
+/// every run in it. It is here at all because the figure beside it means nothing alone: input-token
+/// equivalents have no unit and no scale a reader carries in their head, and 12 000 says something
+/// only against the 2 000 000 it is written against (ACCESS-005, docs/ux.md).
+/// </remarks>
 public sealed record SubmissionListView(
-    [property: JsonPropertyName("submissions")] IReadOnlyList<SubmissionView> Submissions);
+    [property: JsonPropertyName("submissions")] IReadOnlyList<SubmissionView> Submissions,
+    [property: JsonPropertyName("costCeiling")] long CostCeiling);
 
 /// <summary>The text the browser posts.</summary>
 public sealed record SubmissionRequest([property: JsonPropertyName("text")] string? Text);
@@ -156,7 +168,7 @@ public static class SubmissionsEndpoints
         // (Constitution II.1). What a run *did* is the record, served as the file it is by
         // RunRecordEndpoint, and not a second machine-shaped view of a run (ACCESS-006).
         endpoints.MapGet("/api/submissions", () =>
-            new SubmissionListView([.. board.All.Select(SubmissionView.Of)]));
+            new SubmissionListView([.. board.All.Select(SubmissionView.Of)], Ceilings.Fixed.Cost));
 
         // The acknowledgement addresses a submission, which has exactly one run (INGEST-002), so
         // naming it names its failed run — and no run identifier has to reach the browser for the

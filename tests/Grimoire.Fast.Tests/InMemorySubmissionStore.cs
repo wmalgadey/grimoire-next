@@ -130,7 +130,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
         }
     }
 
-    public void RecordFigures(Guid runId, long costSpent, int toolCalls, int entriesLost)
+    public void RecordFigures(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost)
     {
         lock (gate)
         {
@@ -139,6 +139,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
             runs[runId] = runs[runId] with
             {
                 CostSpent = costSpent,
+                Tokens = tokens,
                 ToolCalls = toolCalls,
                 EntriesLost = entriesLost,
             };
@@ -150,7 +151,13 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
     }
 
     public void Ended(
-        Guid submissionId, SubmissionState terminal, Guid runId, long costSpent, int toolCalls, int entriesLost)
+        Guid submissionId,
+        SubmissionState terminal,
+        Guid runId,
+        long costSpent,
+        ModelTokens tokens,
+        int toolCalls,
+        int entriesLost)
     {
         lock (gate)
         {
@@ -160,6 +167,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
             runs[runId] = runs[runId] with
             {
                 CostSpent = costSpent,
+                Tokens = tokens,
                 ToolCalls = toolCalls,
                 EntriesLost = entriesLost,
             };

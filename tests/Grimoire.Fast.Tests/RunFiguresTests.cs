@@ -179,7 +179,8 @@ public sealed class RunFiguresTests
         // it afterwards. The record already dropped the moment for arriving after the tail, so counting
         // it here would put a figure on the row that is in no record at all — and RUNS-010 has the
         // figures stand as the run's final ones once it has ended.
-        hub.Board.RunFiguresAre(submission.Id, costSpent: 999_999, toolCalls: 99, entriesLost: 7);
+        hub.Board.RunFiguresAre(
+            submission.Id, costSpent: 999_999, tokens: default, toolCalls: 99, entriesLost: 7);
 
         Assert.Equal(final, submission.Status.Run);
         Assert.Equal(writes, hub.Journal.Entries.Count);

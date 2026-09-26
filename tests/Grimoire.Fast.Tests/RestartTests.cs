@@ -104,6 +104,10 @@ public sealed class RestartTests
         // the per-model breakdown did not (RUNS-010, DEC-015). The time nobody measured is not
         // guessed from the run's start — that span is mostly the stop itself (RUNS-008).
         Assert.Equal(((10 * 12_000) + (50 * 400)) / 10, tail.CostSpent);
+
+        // The four raw counts survived with it: they are columns of their own, because the weighting
+        // cannot be undone and the ceiling is calibrated from what real runs caused (GUARD-004).
+        Assert.Equal(new ModelTokens(12_000, 400, 0, 0), tail.Tokens);
         Assert.Empty(tail.TokensPerModel);
         Assert.Null(tail.Elapsed);
     }

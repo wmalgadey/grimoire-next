@@ -123,14 +123,20 @@ Markdown. **The wording is the adapter's and is not part of this contract** — 
 | --- | --- | --- |
 | Head | `Begin` | The run's identifier, the submission's, the pinned model, the granted tools, both ceilings, when the run started (RUNS-008) |
 | Moments | `Append` | Each tool call with its arguments; what each returned, whole; the agent's own text; anything Grimoire said to the agent — today only the nudge of RUNS-005 (RUNS-009) |
-| Tail | `Ended` | When it ended, `done` or `failed`, why, elapsed against the elapsed ceiling, tokens against the cost ceiling, and the tokens of every model the run touched (RUNS-008, DEC-015) |
+| Tail | `Ended` | When it ended, `done` or `failed`, why, elapsed against the elapsed ceiling, what it cost against the cost ceiling, the four raw token counts behind that cost — input, output, cache read, cache write — and what every model the run touched cost (RUNS-008, DEC-015) |
 
-**A run that never reported a breakdown has no model rows.** The tokens per model come from a turn's
+**A run that never reported a breakdown has no model rows.** The per-model figures come from a turn's
 own report; a run stopped inside its first turn — a cost ceiling reached, a process that died, a tool
-surface that was not the grant — has none, and its tail holds the total against the ceiling and
-nothing more. The head still names the model it was dispatched on. Nothing is invented: attributing the
-whole total to that model would claim the CLI's background calls, which a run causes but never asks
-for, were made on it.
+surface that was not the grant — has none, and its tail holds the cost against the ceiling with the
+four raw counts behind it and nothing more. The head still names the model it was dispatched on.
+Nothing is invented: attributing the whole cost to that model would claim the CLI's background calls,
+which a run causes but never asks for, were made on it.
+
+**The four raw counts are in the tail beside the weighted figure**, because the weighting cannot be
+undone: a run that thought hard and a run that re-read a large cache can cost the same and are not
+the same run, and the ceiling's placeholder value is calibrated from what real runs caused
+(GUARD-004). The model rows are in the same weighted quantity as the cost above them, so they add up
+to it.
 
 **A record of a run still under way is the head and however many moments have happened.** It has no
 tail, and that is the only difference between it and a run from last month (the owner's wish, brief §3).
@@ -147,7 +153,8 @@ tail, and that is the only difference between it and a run from last month (the 
   blob, which is nothing a person reads (research.md R-05).
 - Anything of the wiki's content beyond what a tool call returned. Grimoire reads nothing in the wiki to
   write a record; RUNS-005's `log.md` read is unchanged and is for the run's identifier alone.
-- A currency figure. Cost is tokens (DEC-015).
+- A currency figure. Cost is input-token equivalents, which is not money and not a token count
+  (GUARD-004, DEC-015).
 
 ### Reasons a run ended
 

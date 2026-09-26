@@ -6,6 +6,10 @@ const text = document.getElementById("text");
 const message = document.getElementById("message");
 const submissions = document.getElementById("submissions");
 
+// The cost ceiling, as the last list said it. Nothing is drawn before the first list arrives, so no
+// row is ever written against a ceiling this page invented.
+let costCeiling = 0;
+
 // How often the list asks. There is no push channel (contracts/hub-http-api.md), and a run takes
 // minutes, so a second is soon enough to feel live and rare enough to be nothing.
 const pollEveryMs = 1000;
@@ -61,13 +65,15 @@ function whenSubmitted(submittedAt) {
 }
 
 // Whole numbers with a thin space between the thousands, which is what makes 2 004 118 readable at
-// a glance. Tokens are the same quantity the cost ceiling counts and are never currency (DEC-015).
-function figure(tokens) {
-  return tokens.toLocaleString("en-GB").replace(/,/g, "\u2009");
+// a glance. Never currency: what a run costs is counted in input-token equivalents, which have no
+// unit of their own (DEC-015).
+function figure(number) {
+  return number.toLocaleString("en-GB").replace(/,/g, "\u2009");
 }
 
 // Each submission is one row: when it was made, the opening of the text, its state, and — where it
-// has a run — that run's model, the tokens it has spent and the tool calls it has made (ACCESS-005).
+// has a run — that run's model, what it has spent against the cost ceiling and the tool calls it has
+// made (ACCESS-005).
 // The opening is what lets the user tell one row from another, and which text a failed run was
 // working on (ACCESS-004).
 //
@@ -113,19 +119,20 @@ function ensureRunParts(item, submission) {
   model.className = "model";
   model.textContent = submission.model;
 
-  const tokens = document.createElement("span");
-  tokens.className = "figure tokens";
+  // What the run has cost, written against the ceiling it is held to: "x / y". No unit beside it,
+  // because the quantity has none — it is the four token classes weighted by what each is billed at,
+  // and calling it tokens would be a lie the old label told (GUARD-004, DEC-015). The ceiling is
+  // what makes the bare number mean something: a run at 12 000 of 2 000 000 has spent almost
+  // nothing, and 12 000 on its own says neither that nor the opposite.
+  const cost = document.createElement("span");
+  cost.className = "figure cost";
 
   const calls = document.createElement("span");
   calls.className = "figure calls";
 
-  // What each figure is. On one line the column said it; wrapped onto a second, two bare numbers say
-  // nothing (docs/ux.md: never a number on a screen the user cannot make sense of). The labels are
-  // their own elements, so each figure still holds nothing but the number.
-  const tokenUnit = document.createElement("span");
-  tokenUnit.className = "unit";
-  tokenUnit.textContent = "tokens";
-
+  // What the figure beside it is. On one line the column said it; wrapped onto a second, a bare
+  // number says nothing (docs/ux.md: never a number on a screen the user cannot make sense of). Its
+  // own element, so the figure holds nothing but the number.
   const callUnit = document.createElement("span");
   callUnit.className = "unit";
   callUnit.textContent = "tool calls";
@@ -144,7 +151,7 @@ function ensureRunParts(item, submission) {
   // link too. Still no identifier — neither the submission's nor the run's.
   open.setAttribute("aria-label", `Open the run for: ${submission.excerpt}`);
 
-  item.append(" ", model, " ", tokens, " ", tokenUnit, " ", calls, " ", callUnit, " ", open);
+  item.append(" ", model, " ", cost, " ", calls, " ", callUnit, " ", open);
 }
 
 function textOf(element, words) {
@@ -160,7 +167,7 @@ function update(item, submission) {
 
   if (submission.model !== undefined) {
     ensureRunParts(item, submission);
-    textOf(item.querySelector(".tokens"), figure(submission.costSpent));
+    textOf(item.querySelector(".cost"), `${figure(submission.costSpent)} / ${figure(costCeiling)}`);
     textOf(item.querySelector(".calls"), figure(submission.toolCalls));
   }
 
@@ -245,6 +252,12 @@ async function refresh() {
   if (!body || request !== newestRequest) {
     return;
   }
+
+  // The ceiling every row's cost is written against. It comes with the list rather than being
+  // written into this file, because it is the hub's value and not the browser's — the owner
+  // revises it in `Ceilings.Fixed` and the page must not then show a figure out of a different
+  // run (GUARD-004).
+  costCeiling = body.costCeiling;
 
   for (const submission of body.submissions) {
     update(rowFor(submission), submission);
