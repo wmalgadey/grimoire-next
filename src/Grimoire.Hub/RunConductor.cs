@@ -51,6 +51,18 @@ public sealed class RunConductor(
         public string? CallWrittenLast { get; set; }
 
         /// <summary>
+        /// Whether the agent has said something that the calls after it belong to.
+        /// </summary>
+        /// <remarks>
+        /// A run reads as the agent works: it says what it is about to do, makes the calls that do it,
+        /// and says what it found. That first sentence opens a turn, and the calls of that turn sit
+        /// inside it — which is what lets a reader fold away eight reads and keep the sentence that
+        /// explains them. Calls made before the agent has said anything sit at the top level, because
+        /// there is nothing yet for them to sit inside.
+        /// </remarks>
+        public bool TurnIsOpen { get; set; }
+
+        /// <summary>
         /// How many calls this run has made that have not yet been answered.
         /// </summary>
         /// <remarks>
@@ -223,15 +235,25 @@ public sealed class RunConductor(
                 return;
             }
 
-            // Nested only where the call above is unmistakably the one this answers: it was written
-            // immediately before, it is the same tool, and it was the only call still waiting.
-            var answersTheCallBefore =
-                moment.Kind == RunMomentKind.ToolReturned
-                && moment.Tool is not null
-                && watched.CallWrittenLast == moment.Tool
-                && watched.CallsAwaitingTheirResult == 1;
+            // A call sits inside the turn the agent opened, and a result inside the call it answers —
+            // but only where that call is unmistakably the one it answers: written immediately before,
+            // same tool, and the only call still waiting. A turn that makes several calls at once
+            // breaks that adjacency, so each of its results sits beside the calls instead, and the
+            // order is what attributes them.
+            var callDepth = watched.TurnIsOpen ? 1 : 0;
 
-            record.Append(RunMoment.Of(watched.Run.Id, clock.GetUtcNow(), moment, answersTheCallBefore));
+            var depth = moment.Kind switch
+            {
+                RunMomentKind.ToolCalled => callDepth,
+                RunMomentKind.ToolReturned when
+                    moment.Tool is not null
+                    && watched.CallWrittenLast == moment.Tool
+                    && watched.CallsAwaitingTheirResult == 1 => callDepth + 1,
+                RunMomentKind.ToolReturned => callDepth,
+                _ => 0,
+            };
+
+            record.Append(RunMoment.Of(watched.Run.Id, clock.GetUtcNow(), moment, depth));
 
             if (moment.Kind == RunMomentKind.ToolCalled)
             {
@@ -241,6 +263,13 @@ public sealed class RunConductor(
             else if (moment.Kind == RunMomentKind.ToolReturned)
             {
                 watched.CallsAwaitingTheirResult = Math.Max(0, watched.CallsAwaitingTheirResult - 1);
+            }
+            else
+            {
+                // The agent said something, or Grimoire did: a new turn, and the calls that follow
+                // belong to it.
+                watched.TurnIsOpen = true;
+                watched.CallsAwaitingTheirResult = 0;
             }
 
             watched.CallWrittenLast = moment.Kind == RunMomentKind.ToolCalled ? moment.Tool : null;

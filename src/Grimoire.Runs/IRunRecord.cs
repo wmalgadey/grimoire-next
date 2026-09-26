@@ -50,9 +50,11 @@ public sealed record RunFrameTail(
 /// the adapter: the clock is the hub's (DEC-018), and an adapter that read one for itself would put
 /// a record's times outside what the Fast suite can drive.
 /// </remarks>
-/// <param name="AnswersTheCallBefore">
-/// This is what the call written immediately before it returned, so it belongs <em>under</em> that
-/// call in the record rather than beside it.
+/// <param name="Depth">
+/// How deep this moment sits in the record: <c>0</c> opens a section of its own, <c>1</c> sits inside
+/// the one above it, <c>2</c> inside that. It is written as the heading level — <c>##</c>, <c>###</c>,
+/// <c>####</c> — so the nesting is in the file and therefore in an editor, on GitHub and in the
+/// browser alike, rather than being built when the page is drawn (US3).
 /// </param>
 public sealed record RunMoment(
     Guid RunId,
@@ -60,14 +62,13 @@ public sealed record RunMoment(
     RunMomentKind Kind,
     string? Tool,
     string? Content,
-    bool AnswersTheCallBefore = false)
+    int Depth = 0)
 {
-    public static RunMoment Of(
-        Guid runId, DateTimeOffset at, TranscriptMoment moment, bool answersTheCallBefore = false)
+    public static RunMoment Of(Guid runId, DateTimeOffset at, TranscriptMoment moment, int depth = 0)
     {
         ArgumentNullException.ThrowIfNull(moment);
 
-        return new RunMoment(runId, at, moment.Kind, moment.Tool, moment.Content, answersTheCallBefore);
+        return new RunMoment(runId, at, moment.Kind, moment.Tool, moment.Content, depth);
     }
 
     /// <summary>What Grimoire told the agent — today only the nudge (RUNS-005, DEC-017).</summary>

@@ -179,10 +179,14 @@ public sealed class RunNarrativeTests
             [RunMomentKind.ToolCalled, RunMomentKind.ToolCalled, RunMomentKind.ToolReturned, RunMomentKind.ToolReturned],
             moments.Select(m => m.Kind));
 
-        // Neither result is written under a call. The first answers the *first* call while the call
-        // above it is the second, so nesting it there would say a call returned something it never
-        // returned — which is what the owner saw: the answers one call out of step.
-        Assert.All(moments.Where(m => m.Kind == RunMomentKind.ToolReturned), m => Assert.False(m.AnswersTheCallBefore));
+        // Neither result is written under a call: each sits beside them, at the calls' own depth. The
+        // first answers the *first* call while the call above it is the second, so nesting it there
+        // would say a call returned something it never returned — which is what the owner saw, the
+        // answers one call out of step.
+        var calls = moments.Where(m => m.Kind == RunMomentKind.ToolCalled).ToList();
+        Assert.All(
+            moments.Where(m => m.Kind == RunMomentKind.ToolReturned),
+            m => Assert.Equal(calls[0].Depth, m.Depth));
 
         // The order is what attributes them, and the order is the one they happened in.
         Assert.Equal(["# Popkultur", "# Quellen"], moments.Where(m => m.Kind == RunMomentKind.ToolReturned).Select(m => m.Content));
@@ -201,15 +205,50 @@ public sealed class RunNarrativeTests
 
         // One call, one result: the call above it is unmistakably the one it answers, so the record
         // writes it inside that call — in the file, and therefore wherever the file is read (US3).
-        var returned = Assert.Single(
-            hub.Record.MomentsOf(run.Id),
-            m => m.Kind == RunMomentKind.ToolReturned);
+        var called = Assert.Single(hub.Record.MomentsOf(run.Id), m => m.Kind == RunMomentKind.ToolCalled);
+        var returned = Assert.Single(hub.Record.MomentsOf(run.Id), m => m.Kind == RunMomentKind.ToolReturned);
 
-        Assert.True(returned.AnswersTheCallBefore);
+        Assert.Equal(called.Depth + 1, returned.Depth);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-009")]
+    public async Task Calls_SitInsideWhatTheAgentSaidBeforeThem()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+
+        // A run reads as the agent works: it says what it is about to do, makes the calls that do it,
+        // and says what it found.
+        hub.Harness.Did(submission.Id, Said("Ich lese zuerst, was im Wiki schon steht."));
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+        hub.Harness.Did(submission.Id, Returned("# Eine Seite"));
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+        hub.Harness.Did(submission.Id, Returned("# Noch eine"));
+        hub.Harness.Did(submission.Id, Said("Das Wiki hat noch keinen Abschnitt dafür."));
+
+        var moments = hub.Record.MomentsOf(run.Id);
+
+        // What the agent said opens a section; the calls it then made sit inside it, and each answer
+        // inside its call. That is what lets a reader fold eight reads away and keep the sentence
+        // that explains them — and it is in the file, so an editor shows the same shape (US3).
+        Assert.Equal(
+            [0, 1, 2, 1, 2, 0],
+            moments.Select(m => m.Depth));
+
+        // A call made before the agent has said anything has nothing to sit inside, so it stays at
+        // the top.
+        var second = await hub.AcceptedAsync("Ein zweiter Text.");
+        Assert.Equal(SubmissionState.Submitted, second.State);
     }
 
     private static TranscriptMoment Returned(string content) =>
         new(RunMomentKind.ToolReturned, "read_page", content);
+
+    private static TranscriptMoment Said(string text) =>
+        new(RunMomentKind.AgentSaid, Tool: null, text);
 
     private static RunMoment AtNoon(TranscriptMoment moment) =>
         RunMoment.Of(Guid.NewGuid(), FastSuite.Start, moment);

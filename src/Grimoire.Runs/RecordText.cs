@@ -74,15 +74,11 @@ public static class RecordText
             _ => throw new ArgumentOutOfRangeException(nameof(moment), moment.Kind, "not one of the four kinds"),
         };
 
-        // A result that answers the call written just before it goes one heading level down, so that
-        // it sits *inside* that call rather than beside it — in the file, and therefore in an editor,
-        // on GitHub, and in the browser alike. A question and its answer are one thing the run did,
-        // and the record is what says so; the browser only shows what is there (RUNS-009, US3).
-        //
-        // Where a result cannot be nested — several calls in one turn, so the call it answers is not
-        // the one before it — it opens a section of its own and names its tool, which keeps the record
-        // truthful about the order rather than tidy about it.
-        var level = moment.AnswersTheCallBefore ? "###" : "##";
+        // The moment's depth as a heading level. A run reads as the agent works: it says what it is
+        // about to do, and the calls it then makes sit inside that, each with its answer inside it.
+        // The nesting is in the file, so an editor, GitHub and the browser show the same shape and
+        // nothing is built at drawing time (RUNS-009, US3).
+        var level = new string('#', 2 + Math.Clamp(moment.Depth, 0, 2));
 
         var text = new StringBuilder();
         text.Append(CultureInfo.InvariantCulture, $"{level} {Moment(moment.At)} · {opening}\n\n");

@@ -34,47 +34,46 @@ public sealed class RunRecordViewTests : PageTest
 
         var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
         hub.Agent.ReportIn(submission);
+
+        // A run as the agent works it: it says what it is about to do, makes the calls that do it, and
+        // says what it found.
+        hub.Agent.Said(submission, "I will read what the wiki already holds.");
         hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
         hub.Agent.Returned(submission, "read_page", ALongResult);
-        hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
-        // A call with no arguments at all, which is what a listing tool makes. Its block is the
-        // shortest a record can hold, and a reader that mistakes its closing fence for an opening one
-        // swallows the segment behind it.
         hub.Agent.Called(submission, "list_pages", "{}");
+        hub.Agent.Returned(submission, "list_pages", "ada.md");
+        hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
         hub.Agent.End(submission, RunOutcome.Done);
 
         await Page.GotoAsync(hub.Address);
-
-        // Opened from the row, which is the only way in: the link carries the submission, not the run.
         await Row(submission).Locator(".open-run").ClickAsync();
 
         // The frame first — the model it ran on and both ceilings (RUNS-008).
         await Expect(Page.Locator("#frame")).ToContainTextAsync("claude-opus-4-5-20251101");
         await Expect(Page.Locator("#frame")).ToContainTextAsync("Granted tools");
 
-        // Then what the run did, in the order it happened, and the tail last. A call and what it
-        // returned are one entry — one question and its answer — so four entries carry five moments.
-        await Expect(Segments()).ToHaveCountAsync(4);
-        await Expect(Heading(0)).ToContainTextAsync("called read_page");
-        await Expect(Heading(1)).ToContainTextAsync("the agent");
-        await Expect(Heading(2)).ToContainTextAsync("called list_pages");
-        await Expect(Heading(3)).ToContainTextAsync("ended done");
 
+        // Three sections: what the agent said, what it said afterwards, and the tail. The two calls
+        // are not sections of their own — they sit inside the sentence that explains them.
+        await Expect(Segments()).ToHaveCountAsync(3);
+        await Expect(Heading(0)).ToContainTextAsync("the agent");
+        await Expect(Segments().Nth(0)).ToContainTextAsync("I will read what the wiki already holds.");
+        await Expect(Heading(2)).ToContainTextAsync("ended done");
 
+        // The calls of that turn, folded away behind their count.
+        var calls = Segments().Nth(0).Locator("details.calls");
+        await Expect(calls.Locator("summary").First).ToHaveTextAsync("2 tool calls");
+        await Expect(calls.Locator(".call")).ToHaveCountAsync(2);
 
-
-        // A tool call is one line — the tool and its arguments on it — with the result folded
-        // underneath, which is the shape docs/ux.md names as its reference. One fold, not two.
-        await Expect(Heading(0)).ToContainTextAsync("ada.md");
-        await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(1);
-        await Expect(Segments().Nth(0).Locator("summary")).ToContainTextAsync("7 lines");
-
-        // The agent's own text is prose and is simply there.
-        await Expect(Segments().Nth(1)).ToContainTextAsync("I will add the date.");
+        // Each one is a line of its own, with its arguments on it, and can be opened on its own.
+        await Expect(calls.Locator(".call").Nth(0)).ToContainTextAsync("called read_page");
+        await Expect(calls.Locator(".call").Nth(0)).ToContainTextAsync("ada.md");
+        await Expect(calls.Locator(".call").Nth(1)).ToContainTextAsync("called list_pages");
+        await Expect(calls.Locator(".call").Nth(0).Locator("details.result")).ToHaveCountAsync(1);
 
         // And the tail is the record's second two-column table, read as a table rather than as pipes.
-        await Expect(Segments().Nth(3).Locator("table.frame-table")).ToHaveCountAsync(1);
-        await Expect(Segments().Nth(3)).ToContainTextAsync("Elapsed");
+        await Expect(Segments().Nth(2).Locator("table.frame-table")).ToHaveCountAsync(1);
+        await Expect(Segments().Nth(2)).ToContainTextAsync("Elapsed");
     }
 
     [Fact]
@@ -201,11 +200,13 @@ public sealed class RunRecordViewTests : PageTest
         hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
         hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
 
-        await Expect(Segments()).ToHaveCountAsync(15);
+        // Fourteen, not fifteen: the call sits inside the sentence that explains it rather than
+        // opening a section of its own.
+        await Expect(Segments()).ToHaveCountAsync(14);
 
         // Below what was already there, in the order it happened.
         await Expect(Heading(13)).ToContainTextAsync("the agent");
-        await Expect(Heading(14)).ToContainTextAsync("called write_page");
+        await Expect(Segments().Nth(13).Locator(".call")).ToContainTextAsync("called write_page");
 
         // The scroll is where the user left it. This is the assertion T040 is actually about, and a
         // bounding box cannot make it: that is a layout coordinate, and it would hold even if the
@@ -223,8 +224,8 @@ public sealed class RunRecordViewTests : PageTest
         // The run then ends while the page is still open, and the tail arrives the same way.
         hub.Agent.End(submission, RunOutcome.Done);
 
-        await Expect(Segments()).ToHaveCountAsync(16);
-        await Expect(Heading(15)).ToContainTextAsync("ended done");
+        await Expect(Segments()).ToHaveCountAsync(15);
+        await Expect(Heading(14)).ToContainTextAsync("ended done");
         await Expect(result.Locator("pre")).ToBeVisibleAsync();
         Assert.Equal(scrolledTo, await Page.EvaluateAsync<double>("window.scrollY"));
     }
@@ -311,5 +312,8 @@ public sealed class RunRecordViewTests : PageTest
 
     private ILocator Segments() => Page.Locator("#record li");
 
-    private ILocator Heading(int at) => Segments().Nth(at).Locator(".heading");
+    /// <summary>
+    /// A segment's own first line. Not the headings of the calls inside it, which are their own.
+    /// </summary>
+    private ILocator Heading(int at) => Segments().Nth(at).Locator("> .heading");
 }

@@ -50,6 +50,20 @@
       li .sub-heading ~ * { margin-left: 1rem; }
       /* A tool call is one line and its result is folded under it, so the user can follow what the
          run did without reading the results in full and still reach any one of them (ACCESS-006). */
+      /* The calls of a turn, folded under the sentence that explains them, and each one indented so
+         that the nesting the record writes is the nesting the reader sees (docs/ux.md). */
+      .calls > summary {
+        cursor: pointer;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.875rem;
+        opacity: 0.6;
+      }
+      .call {
+        border-left: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+        margin: 0.3rem 0 0.3rem 0.5rem;
+        padding-left: 0.8rem;
+      }
+
       /* The fold reads as the terminal's does: a turnstile and a count, indented under its call. */
       .result summary {
         cursor: pointer;

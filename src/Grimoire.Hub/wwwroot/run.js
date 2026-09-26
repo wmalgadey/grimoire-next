@@ -266,18 +266,68 @@ function toolOf(said) {
   return said.endsWith(" returned") ? said.slice(0, -" returned".length) : null;
 }
 
-// One element per segment, showing what the segment holds. The record decides what belongs together:
-// a result that answers the call above it is written as a section *inside* that call, so an editor,
-// GitHub and this page all show one thing the run did — a question and its answer. Nothing is paired
-// here (RUNS-009, US3).
+// One element per segment, showing what the segment holds and nothing it does not. The record decides
+// what belongs inside what: the agent says what it is about to do, the calls that do it are written
+// inside that, and each answer inside its call. This draws that tree (RUNS-009, US3).
 function element(segment) {
   const item = document.createElement("li");
-  const { lead, inside } = sections(segment.body);
+  const { lead, inside } = sections(segment.body, 3);
 
-  // A tool call is **one line**, its result folded underneath, the agent's own text as prose in
-  // between — the shape docs/ux.md names as its reference, and the one the owner reads daily in
-  // Claude Code. The call's arguments go on that line where they fit, rather than behind a second
-  // disclosure that turns one call into four lines.
+  item.append(headingOf(segment, lead));
+  item.append(...bodyOf(segment, lead));
+
+  if (inside.length === 0) {
+    return item;
+  }
+
+  // A call at the top level — one made before the agent had said anything — holds its own answer
+  // inside it, not calls. What sits inside a section depends on what that section is.
+  if (segment.said.startsWith("called ")) {
+    for (const part of inside) {
+      item.append(...bodyOf(part, part.body));
+    }
+
+    return item;
+  }
+
+  // The calls of this turn, folded away behind their count. Eight reads are eight lines the reader
+  // did not ask for; the sentence that explains them is the one they came for.
+  const calls = document.createElement("details");
+  calls.className = "calls";
+
+  const summary = document.createElement("summary");
+  summary.textContent = `${inside.length} ${inside.length === 1 ? "tool call" : "tool calls"}`;
+  calls.append(summary);
+
+  for (const call of inside) {
+    calls.append(nested(call));
+  }
+
+  item.append(calls);
+  return item;
+}
+
+// One call inside a turn: its own line, and whatever the record wrote inside it — its answer — folded
+// so that each can be opened on its own.
+function nested(segment) {
+  const held = document.createElement("div");
+  held.className = "call";
+
+  const { lead, inside } = sections(segment.body, 4);
+
+  held.append(headingOf(segment, lead));
+  held.append(...bodyOf(segment, lead));
+
+  for (const part of inside) {
+    held.append(...bodyOf(part, part.body));
+  }
+
+  return held;
+}
+
+// A moment's own line: the time, quietly, then what it is — and for a call, its arguments on that same
+// line, which is the shape docs/ux.md names as its reference.
+function headingOf(segment, lead) {
   const heading = document.createElement("div");
   heading.className = "heading";
 
@@ -289,29 +339,28 @@ function element(segment) {
   const args = segment.said.startsWith("called ") ? fencedIn(lead) : null;
   const inline = args === null ? null : oneLine(args);
 
-  what.textContent =
-    inline === null ? segment.said : `${segment.said}(${inline.shown})`;
+  what.textContent = inline === null ? segment.said : `${segment.said}(${inline.shown})`;
 
   heading.append(when, " ", what);
-  item.append(heading);
+  return heading;
+}
 
-  // Where the arguments did not fit on the line, they are still reachable — quietly, and under the
-  // call they belong to.
-  if (inline !== null && inline.cut) {
-    item.append(folded("arguments", args));
+// What sits under that line: a fenced block folded, the record's own table as a table, prose as prose.
+// A call whose arguments went on its line does not repeat them, unless they had to be cut.
+function bodyOf(segment, body) {
+  const fenced = isFenced(segment.said) ? fencedIn(body) : null;
+
+  if (fenced === null) {
+    return shownAs(segment.said, body);
   }
 
-  if (args === null) {
-    item.append(...shownAs(segment.said, lead));
+  if (!segment.said.startsWith("called ")) {
+    return [folded("returned", fenced)];
   }
 
-  // The result, folded underneath. The record wrote it as a section inside this call, so this is
-  // showing what is there rather than pairing anything (US3).
-  for (const part of inside) {
-    item.append(...shownAs(part.said, part.body));
-  }
+  const inline = oneLine(fenced);
 
-  return item;
+  return inline.cut ? [folded("arguments", fenced)] : [];
 }
 
 /// The time out of a segment's first line, to the second. The date is in the frame already, and a
@@ -334,12 +383,6 @@ function oneLine(args) {
 // What one part of a segment looks like: a fenced block folded, the record's own table as a table, and
 // anything else as the prose it is.
 function shownAs(said, body) {
-  const fenced = isFenced(said) ? fencedIn(body) : null;
-
-  if (fenced !== null) {
-    return [folded(said.startsWith("called ") ? "arguments" : "returned", fenced)];
-  }
-
   // The head and the tail are the record's two tables and are read the same way, wherever they sit.
   if (said.startsWith("ended ")) {
     return framed(body.join("\n"));
@@ -351,10 +394,12 @@ function shownAs(said, body) {
   return [prose];
 }
 
-// A segment's own lines, and the sections written inside it. A `### ` line inside a fence is no more a
-// boundary than a `## ` one is — a tool result may hold either, and nothing of it is escaped
+// What a segment holds, as the record nests it: its own lines, and the sections written inside it,
+// each of which may hold sections of its own. A `###` or `####` line inside a fence is no more a
+// boundary than a `## ` one is — a tool result may hold any of them, and nothing of it is escaped
 // (contracts/run-record.md, rule 4).
-function sections(body) {
+function sections(body, level) {
+  const marker = `${"#".repeat(level)} `;
   const lead = [];
   const inside = [];
   let current = null;
@@ -367,11 +412,12 @@ function sections(body) {
       openFence = fence[1].length;
     } else if (openFence > 0 && fence && fence[1].length >= openFence) {
       openFence = 0;
-    } else if (openFence === 0 && line.startsWith("### ")) {
-      const said = opening(`## ${line.slice(4)}`);
+    } else if (openFence === 0 && line.startsWith(marker)) {
+      const heading = line.slice(marker.length);
+      const said = opening(`## ${heading}`);
 
       if (said !== null) {
-        current = { heading: line.slice(4), said, body: [] };
+        current = { heading, said, body: [] };
         inside.push(current);
         continue;
       }

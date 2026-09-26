@@ -73,17 +73,22 @@ Markdown. **The wording is the adapter's and is not part of this contract** — 
 1. **A record is a sequence of segments.** A segment begins at a line that starts with `## ` at column
    one and runs to the line before the next such line, or to the end of the file. Everything before the
    first such line is the head.
-1. **A result may be written inside the call it answers**, as a section one level down (`### ` at
-   column one). It is written there only where that call is unmistakably the one it answers: the call
-   was written immediately before it, for the same tool, and it was the only call still waiting. A turn
-   that makes several calls at once breaks that — their results arrive oldest first, so the first
-   answers the *first* call while the call above it is the last — and then each result opens a segment
-   of its own naming its tool. The order is what attributes them, and the order is the one they
-   happened in.
+1. **A record nests as the agent works.** What the agent said opens a section (`## `); the calls it
+   then made are written inside it (`### `); and each answer is written inside its call (`#### `). A
+   run reads as it happened: the sentence that explains eight reads, and the eight reads under it,
+   each with what it returned under that.
 
-   This is what makes a call and its answer one thing **in the file**, and therefore in an editor, on
-   GitHub and in the browser alike. Pairing them only when rendering would show the owner something
-   their own editor does not (US3).
+   A result is written inside a call only where that call is unmistakably the one it answers: written
+   immediately before it, same tool, and the only call still waiting. A turn that makes several calls
+   at once breaks that — their results arrive oldest first, so the first answers the *first* call while
+   the call above it is the last — and then each result is written beside the calls instead. The order
+   is what attributes them, and the order is the one they happened in.
+
+   Calls made before the agent has said anything have nothing to sit inside and stay at the top level.
+
+   This nesting is **in the file**, and therefore in an editor, on GitHub and in the browser alike.
+   Building it only when the page is drawn would show the owner something their own editor does not
+   (US3), which is why the heading level carries it.
 2. **A segment's first line says what it is**, after the time: `called <tool>`, `<tool> returned`,
    `the agent`, `Grimoire`, or `ended <done|failed> — <reason>`.
 3. **A fenced block holds everything that is not prose** — a call's arguments, and a call's result. Its
