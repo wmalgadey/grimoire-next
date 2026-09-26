@@ -185,13 +185,14 @@ public sealed class RunRecordTests
         Assert.NotNull(hub.Record.HeadOf(run.Id));
         Assert.NotNull(hub.Record.TailOf(run.Id));
 
-        // **Everything** the wiki was ever asked, from the run beginning to its tail — not the tail of
-        // that list. Asserted as a suffix, a page read taken while the moments were being recorded
-        // would fall before the mark and pass unseen, which is exactly the thing RUNS-007 is about.
+        // Everything the wiki was asked, whole and in order, from the run beginning to its tail. Two
+        // entries and no others: this test's own append, and RUNS-005's read of log.md for the run's
+        // identifier. Nothing written by Grimoire, nothing else read, and the wiki never listed — the
+        // record is Grimoire's own bookkeeping and lives outside it (RUNS-007, US3).
         //
-        // Two entries: this test's own append, and RUNS-005's read of log.md for the run's identifier.
-        // Nothing written by Grimoire, nothing else read, and the wiki never listed — the record is
-        // Grimoire's own bookkeeping and lives outside it (RUNS-007, US3).
+        // The whole list rather than what follows some mark taken part way through, because a read
+        // made while the moments were being recorded is the case this is for, and it happens before
+        // any such mark.
         Assert.Equal(
             [$"append {InMemoryWikiStore.LogPath}", $"read {InMemoryWikiStore.LogPath}"],
             hub.Wiki.Asked);
