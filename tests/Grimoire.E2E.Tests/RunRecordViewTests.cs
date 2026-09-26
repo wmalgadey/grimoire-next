@@ -61,6 +61,7 @@ public sealed class RunRecordViewTests : PageTest
         await Expect(Heading(3)).ToContainTextAsync("ended done");
 
 
+
         // The call carries both halves, each folded and each named.
         await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(2);
         await Expect(Segments().Nth(0).Locator("summary").Nth(0)).ToContainTextAsync("arguments");

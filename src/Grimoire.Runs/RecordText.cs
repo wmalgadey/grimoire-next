@@ -74,8 +74,18 @@ public static class RecordText
             _ => throw new ArgumentOutOfRangeException(nameof(moment), moment.Kind, "not one of the four kinds"),
         };
 
+        // A result that answers the call written just before it goes one heading level down, so that
+        // it sits *inside* that call rather than beside it — in the file, and therefore in an editor,
+        // on GitHub, and in the browser alike. A question and its answer are one thing the run did,
+        // and the record is what says so; the browser only shows what is there (RUNS-009, US3).
+        //
+        // Where a result cannot be nested — several calls in one turn, so the call it answers is not
+        // the one before it — it opens a section of its own and names its tool, which keeps the record
+        // truthful about the order rather than tidy about it.
+        var level = moment.AnswersTheCallBefore ? "###" : "##";
+
         var text = new StringBuilder();
-        text.Append(CultureInfo.InvariantCulture, $"## {Moment(moment.At)} · {opening}\n\n");
+        text.Append(CultureInfo.InvariantCulture, $"{level} {Moment(moment.At)} · {opening}\n\n");
 
         if (moment.Content is not { } content)
         {
@@ -110,6 +120,9 @@ public static class RecordText
         var outcome = tail.Outcome == RunOutcome.Done ? "done" : "failed";
 
         text.Append(CultureInfo.InvariantCulture, $"## {Moment(tail.EndedAt)} · ended {outcome} — {Because(tail.EndedBecause)}\n\n");
+
+        // The same two-column table the head is written as, so that the two ends of a record read the
+        // same way wherever they are read.
         text.Append("| | |\n| --- | --- |\n");
         Row(text, "Ended", Moment(tail.EndedAt));
         Row(text, "Elapsed", $"{Duration(tail.Elapsed)} of {Duration(tail.Ceilings.Elapsed)}");

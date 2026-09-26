@@ -43,7 +43,20 @@ public sealed class RunConductor(
     /// never the other way about, which is what keeps the three from making a cycle.
     /// </para>
     /// </param>
-    private sealed record Watched(Run Run, ITimer Deadline, Lock Gate);
+    private sealed record Watched(Run Run, ITimer Deadline, Lock Gate)
+    {
+        /// <summary>
+        /// The tool of the call written last for this run, while it is still waiting for its result.
+        /// </summary>
+        /// <remarks>
+        /// What decides whether a result is written <em>under</em> its call or beside it. The record
+        /// is appended to and never rewritten, so a result can only join the call above it — which is
+        /// where it belongs whenever the agent made one call and waited. A turn that makes several at
+        /// once breaks that adjacency, and then each result opens a section of its own naming its
+        /// tool, which is truthful about the order rather than tidy about it (RUNS-007, RUNS-009).
+        /// </remarks>
+        public string? AwaitingResultFrom { get; set; }
+    }
 
     /// <summary>
     /// A run for this submission, with its grant and both ceilings recorded on it. Called by the
@@ -198,7 +211,14 @@ public sealed class RunConductor(
                 return;
             }
 
-            record.Append(RunMoment.Of(watched.Run.Id, clock.GetUtcNow(), moment));
+            var answersTheCallBefore =
+                moment.Kind == RunMomentKind.ToolReturned
+                && moment.Tool is not null
+                && watched.AwaitingResultFrom == moment.Tool;
+
+            record.Append(RunMoment.Of(watched.Run.Id, clock.GetUtcNow(), moment, answersTheCallBefore));
+
+            watched.AwaitingResultFrom = moment.Kind == RunMomentKind.ToolCalled ? moment.Tool : null;
 
             if (moment.Kind == RunMomentKind.ToolCalled)
             {
@@ -279,6 +299,8 @@ public sealed class RunConductor(
                 // before it is sent — a send that then fails ends the run, and the tail says so.
                 record.Append(RunMoment.GrimoireSaid(
                     watched.Run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
+
+                watched.AwaitingResultFrom = null;
             }
         }
 

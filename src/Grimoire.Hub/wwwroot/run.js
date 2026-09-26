@@ -200,14 +200,18 @@ function framed(text) {
     return [asText];
   }
 
-  const shown = [];
+  // One box for either table, so that the two ends of a record look the same on the page as they read
+  // in the file — the head and the tail are the same two-column table.
+  const box = document.createElement("div");
+  box.className = "frame";
+
   const before = lines.filter((line) => !line.startsWith("|")).join("\n").trim();
 
   if (before.length > 0) {
     const title = document.createElement("div");
     title.className = "frame-title";
     title.textContent = before;
-    shown.push(title);
+    box.append(title);
   }
 
   const table = document.createElement("table");
@@ -227,8 +231,8 @@ function framed(text) {
     table.append(row);
   }
 
-  shown.push(table);
-  return shown;
+  box.append(table);
+  return [box];
 }
 
 // A fenced block, folded. One per call: its arguments, and what it returned.
@@ -256,69 +260,82 @@ function toolOf(said) {
   return said.endsWith(" returned") ? said.slice(0, -" returned".length) : null;
 }
 
-// One element per tool call — the call and what it returned together, because they are one thing the
-// run did: a question and its answer. The record keeps them as two moments in the order they happened
-// (RUNS-009); pairing them is the page's reading of that, not a change to what is written.
-//
-// The agent's own text and what Grimoire said are prose and are simply shown. The frame's tail holds
-// the same kind of two-column table the head does, and is read the same way.
+// One element per segment, showing what the segment holds. The record decides what belongs together:
+// a result that answers the call above it is written as a section *inside* that call, so an editor,
+// GitHub and this page all show one thing the run did — a question and its answer. Nothing is paired
+// here (RUNS-009, US3).
 function element(segment) {
   const item = document.createElement("li");
 
   const heading = document.createElement("div");
   heading.className = "heading";
-
-  // The record's own first line, unchanged. A call keeps "called X" as its heading and gains the
-  // answer beneath it, so an entry reads as the question it was and then what came back.
   heading.textContent = segment.heading;
   item.append(heading);
 
-  const tool = toolOf(segment.said);
+  const { lead, inside } = sections(segment.body);
 
-  const fenced = isFenced(segment.said) ? fencedIn(segment.body) : null;
+  item.append(...shownAs(segment.said, lead));
 
-  if (fenced === null) {
-    // The tail is a two-column table, just as the head is, and is read as one. Everything else
-    // unfenced is the agent's own words or Grimoire's, and prose is shown whole — an agent that
-    // writes a table in its answer must not have it taken apart and rebuilt (ACCESS-006).
-    if (segment.said.startsWith("ended ")) {
-      item.append(...framed(segment.body.join("\n")));
-      return item;
-    }
-
-    const prose = document.createElement("div");
-    prose.className = "prose";
-    prose.textContent = segment.body.join("\n").trim();
-    item.append(prose);
-    return item;
+  for (const part of inside) {
+    const sub = document.createElement("div");
+    sub.className = "sub-heading";
+    sub.textContent = part.heading;
+    item.append(sub, ...shownAs(part.said, part.body));
   }
 
-  if (segment.said.startsWith("called ")) {
-    // Named as waiting, so the result that follows knows the entry it belongs in.
-    item.dataset.awaiting = tool;
-  }
-
-  item.append(folded(segment.said.startsWith("called ") ? "arguments" : "returned", fenced));
   return item;
 }
 
-// Where a result belongs: inside the entry of the call it answers. Appended to it — never replacing
-// what is there, which is what keeps the scroll and an opened block where the user put them
-// (ACCESS-006).
-//
-// The **oldest** entry still waiting for that tool, not the last one on the page. One message can
-// carry several tool calls and their results arrive together, oldest first, so after calls A and B
-// the first result is A's while the last entry is B's — matched against the last entry, A's result
-// would start an entry of its own and the page would read out of order. This is the same ordering the
-// transcript uses to attribute a result to its call, one layer up.
-function resultBelongsTo(segment) {
-  if (!segment.said.endsWith(" returned")) {
-    return null;
+// What one part of a segment looks like: a fenced block folded, the record's own table as a table, and
+// anything else as the prose it is.
+function shownAs(said, body) {
+  const fenced = isFenced(said) ? fencedIn(body) : null;
+
+  if (fenced !== null) {
+    return [folded(said.startsWith("called ") ? "arguments" : "returned", fenced)];
   }
 
-  const tool = toolOf(segment.said);
+  // The head and the tail are the record's two tables and are read the same way, wherever they sit.
+  if (said.startsWith("ended ")) {
+    return framed(body.join("\n"));
+  }
 
-  return [...record.children].find((entry) => entry.dataset.awaiting === tool) ?? null;
+  const prose = document.createElement("div");
+  prose.className = "prose";
+  prose.textContent = body.join("\n").trim();
+  return [prose];
+}
+
+// A segment's own lines, and the sections written inside it. A `### ` line inside a fence is no more a
+// boundary than a `## ` one is — a tool result may hold either, and nothing of it is escaped
+// (contracts/run-record.md, rule 4).
+function sections(body) {
+  const lead = [];
+  const inside = [];
+  let current = null;
+  let openFence = 0;
+
+  for (const line of body) {
+    const fence = openFence === 0 ? openingFence.exec(line) : closingFence.exec(line);
+
+    if (openFence === 0 && fence) {
+      openFence = fence[1].length;
+    } else if (openFence > 0 && fence && fence[1].length >= openFence) {
+      openFence = 0;
+    } else if (openFence === 0 && line.startsWith("### ")) {
+      const said = opening(`## ${line.slice(4)}`);
+
+      if (said !== null) {
+        current = { heading: line.slice(4), said, body: [] };
+        inside.push(current);
+        continue;
+      }
+    }
+
+    (current ? current.body : lead).push(line);
+  }
+
+  return { lead, inside };
 }
 
 async function refresh() {
@@ -367,16 +384,7 @@ async function refresh() {
   // which is what keeps the scroll where the user left it and a result they had opened open. A result
   // is appended *into* the entry of the call it answers, which is an addition and not a replacement.
   for (const segment of segments.slice(shown)) {
-    const answers = resultBelongsTo(segment);
-
-    if (answers === null) {
-      record.append(element(segment));
-      continue;
-    }
-
-    const fenced = fencedIn(segment.body);
-    answers.append(fenced === null ? framed(segment.body.join("\n"))[0] : folded("returned", fenced));
-    delete answers.dataset.awaiting;
+    record.append(element(segment));
   }
 
   shown = segments.length;

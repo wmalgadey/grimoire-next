@@ -50,18 +50,24 @@ public sealed record RunFrameTail(
 /// the adapter: the clock is the hub's (DEC-018), and an adapter that read one for itself would put
 /// a record's times outside what the Fast suite can drive.
 /// </remarks>
+/// <param name="AnswersTheCallBefore">
+/// This is what the call written immediately before it returned, so it belongs <em>under</em> that
+/// call in the record rather than beside it.
+/// </param>
 public sealed record RunMoment(
     Guid RunId,
     DateTimeOffset At,
     RunMomentKind Kind,
     string? Tool,
-    string? Content)
+    string? Content,
+    bool AnswersTheCallBefore = false)
 {
-    public static RunMoment Of(Guid runId, DateTimeOffset at, TranscriptMoment moment)
+    public static RunMoment Of(
+        Guid runId, DateTimeOffset at, TranscriptMoment moment, bool answersTheCallBefore = false)
     {
         ArgumentNullException.ThrowIfNull(moment);
 
-        return new RunMoment(runId, at, moment.Kind, moment.Tool, moment.Content);
+        return new RunMoment(runId, at, moment.Kind, moment.Tool, moment.Content, answersTheCallBefore);
     }
 
     /// <summary>What Grimoire told the agent — today only the nudge (RUNS-005, DEC-017).</summary>
