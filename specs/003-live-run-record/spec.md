@@ -218,6 +218,18 @@ behaviours, and because a stop must not lose them: `002-ingest-queue` assumed th
 cut-off run need not survive, and that assumption is withdrawn here — the row of a failed run still
 carries what that run spent.
 
+### Changed after this feature closed
+
+All three follow GUARD-004 becoming a weighted quantity (`001-first-ingest` research.md R-15,
+DEC-015). The sentences stay under their own IDs; `docs/capabilities/` carries the current wording
+and these rows are the change record (Constitution IV.1, IV.2).
+
+| ID | Status | Was | Is now, and why |
+| --- | --- | --- | --- |
+| RUNS-008 | changed | "…both ceilings with the values the run reached against them, the tokens spent per model the run caused…" | "…both ceilings with the values the run reached against them, **the four raw token counts behind the cost it reached — input, output, cache read, cache write — what each model the run caused spent**…" The cost the tail states is now weighted, and weighting cannot be undone: a run that thought hard and a run that re-read a large cache can cost the same and are not the same run. The four raw counts are also what the ceiling's placeholder value is calibrated from after the acceptance run |
+| RUNS-010 | changed | "…the tokens it has spent — the same quantity the cost ceiling counts — and the number of tool calls…" | "…**what it has spent** — the same quantity the cost ceiling counts — **the four raw token counts behind that figure**, and the number of tool calls…" The coupling to the ceiling is unchanged and deliberate: the row shows the quantity the ceiling counts and no second definition of cost. The raw counts join it because they must survive a stop with it, in the same write |
+| ACCESS-005 | changed | "…that run's model, the tokens it has spent and the number of tool calls it has made…" | "…that run's model, **what it has spent against the cost ceiling it is held to**, and the number of tool calls it has made…" Input-token equivalents have no unit and no scale a reader carries in their head, so the browser shows `12 000 / 2 000 000` and no label: a bare number would be one `docs/ux.md` rules out, and the word "tokens" would be false. The four raw counts are not on the row — they are in the record, which is where a reader goes when the one figure is not enough |
+
 ### Retired in this feature
 
 | ID | Was | Why retired |

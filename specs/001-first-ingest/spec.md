@@ -181,6 +181,15 @@ The user returns to the browser and sees, for every text they submitted, whether
 | RUNS-001 | Every submission MUST carry exactly one state at a time, drawn from submitted, running, done, failed. | test |
 | RUNS-005 | A run MUST end done when the agent stopped on its own, neither ceiling was reached, and the wiki's log holds an entry for that run; an entry belongs to a run when `log.md` contains that run's identifier. When the agent stops inside both ceilings and the log holds no entry for the run, Grimoire MUST tell the agent once that the entry is missing and let it continue within the ceilings; if the agent then stops and the entry is there, the run MUST end done. In every other case the run MUST end failed. Grimoire MUST read nothing else in the wiki to decide this. | test |
 
+### Changed after this feature closed
+
+The sentence stays under its own ID; nothing is renumbered and nothing is retired (Constitution IV.1,
+IV.2). `docs/capabilities/guard.md` carries the current wording, and this row is the change record.
+
+| ID | Status | Was | Is now, and why |
+| --- | --- | --- | --- |
+| GUARD-004 | changed | "…a fixed ceiling on cost counted in **model tokens**." | "…a fixed ceiling on cost counted in **input-token equivalents** — the four token classes a model call reports, each weighted by what it is billed at relative to an input token." The four classes are billed at ratios of 1 : 5 : 0.1 : 2, so the raw sum this feature built measured turns × context size and not cost: it stopped a run re-reading a large cache — the cheapest thing the CLI does — while letting a run of the same money in output tokens run five times as far. Everything else in the requirement is unchanged: still two fixed ceilings, still one interrupt, still failed. See research.md R-15 for the measurement and DEC-015 for the decision |
+
 ### Why review *(one line per `review` requirement)*
 
 | ID | Why neither a test nor an eval can prove it |

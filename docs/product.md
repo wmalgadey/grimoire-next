@@ -97,6 +97,7 @@ first feature is a Later outcome, not an invariant.
 | OUT-13 | monitor the runs and the wiki's structural state over time in a dashboard                               | Later  | RUNS, LINT                        |                                    |
 | OUT-14 | have Grimoire help me phrase the wiki's description, while I make the change myself                     | Later  | WIKI                              |                                    |
 | OUT-15 | stop committing by hand, because a run puts its own changes into the wiki's history                     | Later  | WIKI, RUNS                        |                                    |
+| OUT-23 | see how much of my subscription's usage window my runs have used                                       | Later  | RUNS, ACCESS                      |                                    |
 
 Against the core loop (§3): steps 1 and 2 are OUT-01, step 3 is OUT-02, step 4 is OUT-03. The loop closes once Next is done, not with Now alone.
 
@@ -120,6 +121,10 @@ A trigger moves an outcome from Later to Next.
 - OUT-20: as soon as I remove the traces of a bad source by hand for the first time and it takes longer than 15 minutes.
 - OUT-21: after OUT-18 and before runs go unattended. Not earlier.
 - OUT-22: as soon as I paste chat excerpts as text for the third time in one week.
+- OUT-23: as soon as a run is refused, or I hold one back, because I do not know how much of the
+  five-hour window is left. The figure is already in every run's stream (`rate_limit_event`, with a
+  five-hour and a seven-day utilization); showing it is the work. It is a display and never a
+  ceiling — what a subscription's window is for is mine to decide, not Grimoire's.
 
 ## 9. Open questions
 
