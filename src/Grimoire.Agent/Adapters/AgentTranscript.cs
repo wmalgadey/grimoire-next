@@ -94,9 +94,9 @@ public sealed record TranscriptEvent(TranscriptSays Says, long Cost = 0, bool En
 /// then <em>does</em> about each — the states, the ceilings, the single nudge — stays the hub's.
 /// </para>
 /// <para>
-/// It keeps one thing between lines: the highest cost seen so far. That is what makes the streamed
-/// <c>usage</c>, which is cumulative within a response, add up to a turn rather than to a multiple
-/// of it.
+/// It keeps one thing between lines: the highest count of each token class seen so far. That is what
+/// makes the streamed <c>usage</c>, which is cumulative within a response, add up to a turn rather
+/// than to a multiple of it.
 /// </para>
 /// <para>
 /// The CLI namespaces every MCP tool as <c>mcp__wiki__&lt;name&gt;</c>, and this file owns that
@@ -114,12 +114,10 @@ public sealed class AgentTranscript(ToolGrant grant)
 
     private const string InterruptCapability = "interrupt_receipt_v1";
 
-    /// <summary>The highest cost this run has reported, across every line read so far.</summary>
-    private long spent;
-
     /// <summary>
-    /// The four raw counts the highest cost was computed from. They move together, so that the
-    /// counters written down for a run are the ones behind the figure the ceiling was read against.
+    /// The highest count of each class this run has reported, across every line read so far. The
+    /// cost is weighed from these and never kept beside them, so the figure the ceiling is read
+    /// against is always the one these four make.
     /// </summary>
     private ModelTokens spentTokens;
 
@@ -185,21 +183,20 @@ public sealed class AgentTranscript(ToolGrant grant)
                 //
                 // Added class by class and weighted afterwards, which is what makes this figure and
                 // the one the next result reconciles to comparable at all (GUARD-004).
-                Raise(reconciled + StreamedTokens(message));
+                Keep(reconciled + StreamedTokens(message));
                 return Spent(TranscriptSays.CostSoFar);
 
             case "result":
                 // modelUsage is the authority and it is cumulative across the session, so the
                 // whole run's cost is the last one and not the sum of them (R-04, measured).
                 var perModel = ModelUsage(message);
-                var reported = Ceilings.Sum(perModel.Values);
 
-                if (Ceilings.CostOf(reported) > Ceilings.CostOf(reconciled))
-                {
-                    reconciled = reported;
-                }
-
-                Raise(reconciled);
+                // Class by class, because modelUsage only ever grows: a result that adds tokens
+                // without adding a whole equivalent — nine more cache reads — must still move the
+                // base the next turn streams on top of, or that turn is counted from a figure a
+                // result out of date.
+                reconciled = reconciled.HighestOf(Ceilings.Sum(perModel.Values));
+                Keep(reconciled);
 
                 return Spent(TranscriptSays.AgentStopped, EndedAbnormally(message)) with
                 {
@@ -224,25 +221,14 @@ public sealed class AgentTranscript(ToolGrant grant)
     }
 
     /// <summary>
-    /// The run has reported counts that may cost more than anything before them. The four raw
-    /// counts and the figure they weigh to move together, and neither ever goes backwards.
+    /// The run has reported counts. The four are kept class by class, and the cost is what they
+    /// weigh to — so neither can go backwards and the figure is always the one these four make.
     /// </summary>
-    private void Raise(ModelTokens candidate)
-    {
-        var cost = Ceilings.CostOf(candidate);
-
-        if (cost <= spent)
-        {
-            return;
-        }
-
-        spent = cost;
-        spentTokens = candidate;
-    }
+    private void Keep(ModelTokens reported) => spentTokens = spentTokens.HighestOf(reported);
 
     /// <summary>What the run has spent, as every line that reports cost says it.</summary>
     private TranscriptEvent Spent(TranscriptSays says, bool endedAbnormally = false) =>
-        new(says, spent, endedAbnormally) { Tokens = spentTokens };
+        new(says, Ceilings.CostOf(spentTokens), endedAbnormally) { Tokens = spentTokens };
 
     /// <summary>
     /// The moments one complete message holds, in the order its blocks arrived (RUNS-009).

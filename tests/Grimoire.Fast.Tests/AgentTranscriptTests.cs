@@ -238,6 +238,39 @@ public sealed class AgentTranscriptTests
 
     [Fact]
     [Trait("req", "GUARD-004")]
+    public void Result_KeepsWhatTheNextTurnStreamsOnTopOf_WhenItAddsLessThanOneEquivalent()
+    {
+        // Ten cache reads are one equivalent, so nine more of them cost nothing yet. The counts
+        // still have to move: read as "the reading that cost most", the second result would be
+        // dropped and the turn after it would stream on top of 100 rather than 109 — and the
+        // tenth read of the next turn, which does cost, would never be counted (GUARD-004).
+        const string hundredReads =
+            """
+            {"type":"result","subtype":"success","modelUsage":{"m":{"cacheReadInputTokens":100}}}
+            """;
+        const string nineMore =
+            """
+            {"type":"result","subtype":"success","modelUsage":{"m":{"cacheReadInputTokens":109}}}
+            """;
+        const string oneMoreStreamed =
+            """
+            {"type":"stream_event","event":{"type":"message_delta","usage":{"cache_read_input_tokens":1}}}
+            """;
+
+        var transcript = Transcript();
+        transcript.Read(hundredReads);
+
+        var unchanged = transcript.Read(nineMore);
+
+        // The figure stands still and the counts behind it do not.
+        Assert.Equal(10, unchanged.Cost);
+        Assert.Equal(new ModelTokens(0, 0, 109, 0), unchanged.Tokens);
+
+        Assert.Equal(11, transcript.Read(oneMoreStreamed).Cost);
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-004")]
     public void Result_CountsNoLessThanTheTurnBefore_WhenALaterResultReportsLess()
     {
         var transcript = Transcript();

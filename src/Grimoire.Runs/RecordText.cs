@@ -129,12 +129,14 @@ public static class RecordText
             : "not measured");
         Row(text, "Cost", $"{Figure(tail.CostSpent)} of {Figure(tail.Ceilings.Cost)}");
 
-        // Which model spent it, so that the figure on the row can be read against the models behind
-        // it, and in the same quantity — the rows add up to the row above them. Ordered by name, so
-        // that two records of the same run read the same way.
+        // Which model was given and produced what, in the CLI's own four counts. Not each model's
+        // cost: the weighting divides once for the whole run, and weighing each model on its own
+        // would drop a tenth per model — two models with five cache reads each would show nothing
+        // twice where the run was charged one. These add up exactly. Ordered by name, so that two
+        // records of the same run read the same way.
         foreach (var (model, spent) in tail.TokensPerModel.OrderBy(m => m.Key, StringComparer.Ordinal))
         {
-            Row(text, model, Figure(Ceilings.CostOf(spent)));
+            Row(text, model, Counts(spent));
         }
 
         return text.Append('\n').ToString();
@@ -212,6 +214,15 @@ public static class RecordText
         elapsed.TotalMinutes >= 1
             ? string.Create(CultureInfo.InvariantCulture, $"{(int)elapsed.TotalMinutes} min {elapsed.Seconds} s")
             : string.Create(CultureInfo.InvariantCulture, $"{elapsed.Seconds} s");
+
+    /// <summary>
+    /// One model's four counts on one line, in the order the rows above state them: what it was
+    /// given, what it produced, what it read back and what it wrote away (RUNS-008).
+    /// </summary>
+    private static string Counts(ModelTokens spent) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{Figure(spent.InputTokens)} in · {Figure(spent.OutputTokens)} out · "
+            + $"{Figure(spent.CacheReadInputTokens)} cache read · {Figure(spent.CacheCreationInputTokens)} cache write");
 
     /// <summary>A figure, grouped, because the cost ceiling is seven digits long (DEC-015).</summary>
     private static string Figure(long figure) => figure.ToString("N0", CultureInfo.InvariantCulture);

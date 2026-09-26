@@ -16,6 +16,24 @@ public readonly record struct ModelTokens(
     /// <summary>The four classes of two counts, added class by class.</summary>
     public static ModelTokens operator +(ModelTokens left, ModelTokens right) => left.Plus(right);
 
+    /// <summary>
+    /// The higher of two readings, class by class. Every one of the four only ever grows within a
+    /// run — <c>modelUsage</c> is cumulative across the session — so a reading that is lower in one
+    /// class is a reading of less than the whole run, and taking the higher of each is what keeps a
+    /// running count monotone without ever inventing one (GUARD-004).
+    /// </summary>
+    /// <remarks>
+    /// Class by class rather than by what the two <em>cost</em>: a later reading can add tokens and
+    /// weigh to the same figure — ten cache reads are one equivalent, and nine of them are none —
+    /// and dropping it would leave the counts behind the figure a turn out of date, and the next
+    /// turn streaming on top of a base that is short.
+    /// </remarks>
+    public ModelTokens HighestOf(ModelTokens other) => new(
+        Math.Max(InputTokens, other.InputTokens),
+        Math.Max(OutputTokens, other.OutputTokens),
+        Math.Max(CacheReadInputTokens, other.CacheReadInputTokens),
+        Math.Max(CacheCreationInputTokens, other.CacheCreationInputTokens));
+
     /// <summary>The named form of <c>+</c>, which CA2225 asks for.</summary>
     public ModelTokens Plus(ModelTokens other) => new(
         InputTokens + other.InputTokens,

@@ -144,20 +144,21 @@ public sealed class Run
     /// carried.
     /// </summary>
     /// <remarks>
-    /// The raw counts move with the cost and only where it rises, so that the four written down for a
-    /// run are the ones the figure beside them was weighed from. The breakdown is taken only where
-    /// there is one: a streamed line reports no models, and replacing the breakdown with nothing
-    /// would lose what the last <c>result</c> established.
+    /// Each of the three is kept at the highest it has been: the cost, every one of the four counts,
+    /// and — where the line carried one — the breakdown. The breakdown is taken only where there is
+    /// one: a streamed line reports no models, and replacing it with nothing would lose what the
+    /// last <c>result</c> established.
     /// </remarks>
     public void Spent(RunSpend spend)
     {
         ArgumentNullException.ThrowIfNull(spend);
 
-        if (spend.Cost > CostSpent)
-        {
-            CostSpent = spend.Cost;
-            Tokens = spend.Tokens;
-        }
+        CostSpent = Math.Max(CostSpent, spend.Cost);
+
+        // Class by class, and not "the counts of whichever reading cost most": a reading can add
+        // tokens without adding a whole equivalent, and the counts written down for a run would
+        // then be a turn out of date behind the figure beside them (GUARD-004).
+        Tokens = Tokens.HighestOf(spend.Tokens);
 
         if (spend.PerModel.Count > 0)
         {
