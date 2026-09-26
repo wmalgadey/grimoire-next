@@ -95,6 +95,23 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    public void Results_AreEachAttributedToTheirOwnCall_WhenOneTurnMakesSeveral()
+    {
+        var transcript = Transcript();
+
+        var called = transcript.Read(RecordedTranscript.TwoToolCalls).Moments;
+        var returned = transcript.Read(RecordedTranscript.TwoToolResults).Moments;
+
+        Assert.Equal(["mcp__wiki__read_page", "mcp__wiki__list_pages"], called.Select(m => m.Tool));
+
+        // One name per result, oldest first. Read as one remembered name, both results would have been
+        // attributed to the second call — which is a record saying a call returned something it never
+        // returned (RUNS-009).
+        Assert.Equal(["mcp__wiki__read_page", "mcp__wiki__list_pages"], returned.Select(m => m.Tool));
+        Assert.Equal(["# Ada", "ada.md"], returned.Select(m => m.Content));
+    }
+
+    [Fact]
     public void Thinking_IsNotAMoment() =>
         // Measured: an empty `thinking` and a signature blob. RUNS-009 asks for the agent's own text,
         // and a signature is not text (research.md R-05).

@@ -114,11 +114,18 @@ public sealed class AgentTranscript(ToolGrant grant)
     private long reconciled;
 
     /// <summary>
-    /// The tool the last <c>tool_use</c> block named, so that the result following it can say which
-    /// call returned. A run makes one call at a time in the order the stream reports it, which is what
-    /// makes order enough and an identifier in the record unnecessary (data-model.md §RunMoment).
+    /// The tools whose calls have not yet returned, oldest first, so that each result can say which
+    /// call returned.
     /// </summary>
-    private string? lastToolCalled;
+    /// <remarks>
+    /// A queue rather than one name. data-model.md assumed a run makes one call at a time, and one
+    /// <c>assistant</c> message can in fact carry several <c>tool_use</c> blocks — the field is an
+    /// array and the API allows it — with the results arriving together in the next <c>user</c>
+    /// message. Kept as one name, every result of such a turn was attributed to the last call, which
+    /// is exactly what RUNS-009 forbids. The order is still all that is read: the CLI's
+    /// <c>tool_use_id</c> stays unread, so no identifier reaches the record (Constitution II.1).
+    /// </remarks>
+    private readonly Queue<string?> awaitingTheirResults = new();
 
     /// <summary>
     /// Whether what <c>system/init</c> reported is this run's grant. The bare names the grant
@@ -213,17 +220,22 @@ public sealed class AgentTranscript(ToolGrant grant)
             switch (Text(block["type"]))
             {
                 case "tool_use":
-                    // The name is kept for the result that follows. The CLI's `tool_use_id` is read
-                    // to nothing: a run makes one call at a time in the order the stream reports it,
-                    // and an identifier in the record would be a field with no reader (II.1).
-                    lastToolCalled = Text(block["name"]);
+                    // The name joins the queue for the result that will follow it. The CLI's
+                    // `tool_use_id` is read to nothing: the order the stream reports is enough, and an
+                    // identifier in the record would be a field with no reader (II.1).
+                    var called = Text(block["name"]);
+                    awaitingTheirResults.Enqueue(called);
                     moments.Add(new TranscriptMoment(
-                        RunMomentKind.ToolCalled, lastToolCalled, block["input"]?.ToJsonString()));
+                        RunMomentKind.ToolCalled, called, block["input"]?.ToJsonString()));
                     break;
 
                 case "tool_result":
+                    // One name per result, oldest first. A result with no call before it — which the
+                    // protocol should not produce — carries none rather than borrowing another's.
                     moments.Add(new TranscriptMoment(
-                        RunMomentKind.ToolReturned, lastToolCalled, ResultContent(block["content"])));
+                        RunMomentKind.ToolReturned,
+                        awaitingTheirResults.TryDequeue(out var returned) ? returned : null,
+                        ResultContent(block["content"])));
                     break;
 
                 case "text":

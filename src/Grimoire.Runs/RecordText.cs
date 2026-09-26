@@ -65,7 +65,10 @@ public static class RecordText
         var opening = moment.Kind switch
         {
             RunMomentKind.ToolCalled => $"called {moment.Tool}",
-            RunMomentKind.ToolReturned => $"{moment.Tool} returned",
+            // A result with no call before it names no tool. "a tool" rather than nothing, because a
+            // segment's first line has to say what it is for a reader to find it at all
+            // (contracts/run-record.md, rule 2).
+            RunMomentKind.ToolReturned => $"{moment.Tool ?? "a tool"} returned",
             RunMomentKind.AgentSaid => "the agent",
             RunMomentKind.GrimoireSaid => "Grimoire",
             _ => throw new ArgumentOutOfRangeException(nameof(moment), moment.Kind, "not one of the four kinds"),

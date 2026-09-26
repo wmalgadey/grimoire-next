@@ -235,6 +235,22 @@ internal static class RecordedTranscript
         """;
 
     /// <summary>
+    /// Two <c>tool_use</c> blocks in one <c>assistant</c> message. <c>content</c> is an array and the
+    /// API allows several calls in one turn, which is what makes attributing their results by order
+    /// rather than by the last name seen the only correct reading (RUNS-009).
+    /// </summary>
+    internal const string TwoToolCalls =
+        """
+        {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_0A","name":"mcp__wiki__read_page","input":{"path":"ada.md"}},{"type":"tool_use","id":"toolu_0B","name":"mcp__wiki__list_pages","input":{}}]}}
+        """;
+
+    /// <summary>Their two results, arriving together in the next <c>user</c> message, in the same order.</summary>
+    internal const string TwoToolResults =
+        """
+        {"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_0A","type":"tool_result","content":"# Ada"},{"tool_use_id":"toolu_0B","type":"tool_result","content":"ada.md"}]}}
+        """;
+
+    /// <summary>
     /// The complete <c>assistant</c> message's <c>thinking</c> block, measured: an empty string and a
     /// signature blob. Nothing a person reads, so nothing the record holds (research.md R-05).
     /// </summary>

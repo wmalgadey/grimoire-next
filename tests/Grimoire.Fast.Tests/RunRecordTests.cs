@@ -113,6 +113,29 @@ public sealed class RunRecordTests
 
     [Fact]
     [Trait("req", "RUNS-007")]
+    public async Task Record_TakesNoMoment_AfterItsTail()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        var ended = hub.Record.Of(run.Id);
+
+        // A moment already in flight when the run ended: the conductor looks a run up and appends in
+        // two steps, so one can arrive after the ending that removed it. Nothing is written after the
+        // tail (contracts/run-record.md), and nothing is counted lost either — no write failed, the run
+        // was simply already over.
+        hub.Record.Append(new RunMoment(
+            run.Id, FastSuite.Start, RunMomentKind.AgentSaid, Tool: null, "one word too late"));
+
+        Assert.Equal(ended, hub.Record.Of(run.Id));
+        Assert.Equal(0, hub.Record.EntriesLost(run.Id));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-007")]
     public async Task Write_IsCountedAndDoesNotThrow_WhenTheRecordCannotBeWritten()
     {
         var submission = await hub.AcceptedAsync();

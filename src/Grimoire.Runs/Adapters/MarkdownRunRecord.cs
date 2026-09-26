@@ -74,7 +74,21 @@ public sealed class MarkdownRunRecord : IRunRecord
     {
         ArgumentNullException.ThrowIfNull(moment);
 
-        Write(moment.RunId, moment.At, RecordText.Moment(moment));
+        lock (gate)
+        {
+            // Nothing is written after the tail (contracts/run-record.md). Enforced here rather than
+            // by whoever calls: the conductor looks a run up and appends in two steps, so a moment
+            // already in flight can arrive after the ending that removed it — and this file is the one
+            // place that knows whether the tail is on disk. Such a moment is dropped and not counted
+            // lost: no write failed, the run was simply already over, which is how a late report is
+            // already treated everywhere else.
+            if (ended.Contains(moment.RunId))
+            {
+                return;
+            }
+
+            Write(moment.RunId, moment.At, RecordText.Moment(moment));
+        }
     }
 
     public void Ended(RunFrameTail tail)
@@ -83,15 +97,19 @@ public sealed class MarkdownRunRecord : IRunRecord
 
         lock (gate)
         {
-            // A run ends once, and nothing is written after the tail. The conductor already removes
-            // an ended run, so this is the second guard rather than the only one — and it is what
-            // makes a later report a no-op on disk too (contracts/run-record.md).
-            if (!ended.Add(tail.RunId))
+            // A run ends once, so a second call appends nothing.
+            if (ended.Contains(tail.RunId))
             {
                 return;
             }
 
-            Write(tail.RunId, tail.EndedAt, RecordText.Tail(tail));
+            // Marked ended only once the tail is actually on disk. Marked before, a tail lost to a
+            // full disk could never be written at all, and the record would be missing its tail with
+            // nothing able to put one there (RUNS-007).
+            if (Write(tail.RunId, tail.EndedAt, RecordText.Tail(tail)))
+            {
+                ended.Add(tail.RunId);
+            }
         }
     }
 
@@ -105,14 +123,14 @@ public sealed class MarkdownRunRecord : IRunRecord
 
     /// <summary>
     /// One append, committed before this returns, with the gap that preceded it put where it
-    /// happened.
+    /// happened. Answers whether it reached the disk.
     /// </summary>
     /// <remarks>
     /// Under one lock: two moments of one run arrive on whatever thread the harness reads on, and
     /// two appends racing would interleave halves of two segments — a record no reader could
     /// segment. The lock is held across the whole write for the same reason.
     /// </remarks>
-    private void Write(Guid runId, DateTimeOffset at, string text)
+    private bool Write(Guid runId, DateTimeOffset at, string text)
     {
         lock (gate)
         {
@@ -132,10 +150,11 @@ public sealed class MarkdownRunRecord : IRunRecord
                 // with the run's figures until a write succeeds again.
                 lost[runId] = lost.GetValueOrDefault(runId) + 1;
                 unannounced[runId] = missing + 1;
-                return;
+                return false;
             }
 
             unannounced[runId] = 0;
+            return true;
         }
     }
 

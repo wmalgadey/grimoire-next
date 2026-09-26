@@ -133,6 +133,56 @@ public sealed class MarkdownRunRecordTests : IDisposable
         Assert.Equal(2, record.EntriesLost(head.RunId));
     }
 
+    [Fact]
+    public void Tail_CanStillBeWritten_WhenItsFirstWriteFailed()
+    {
+        var head = AHead();
+        var runs = Path.Combine(state, "runs");
+        var record = new MarkdownRunRecord(state);
+
+        record.Begin(head);
+
+        // The disk goes away just as the run ends.
+        Directory.Delete(runs, recursive: true);
+        File.WriteAllText(runs, "not a directory");
+
+        record.Ended(ATail(head.RunId, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry));
+
+        Assert.Equal(1, record.EntriesLost(head.RunId));
+
+        // And comes back. A tail that could not be written is not a tail: had the run been marked
+        // ended on the attempt rather than on the write, the record could never have got one at all,
+        // and it would be missing its tail with nothing able to put one there (RUNS-007).
+        File.Delete(runs);
+        Directory.CreateDirectory(runs);
+
+        record.Ended(ATail(head.RunId, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry));
+
+        var text = File.ReadAllText(Path.Combine(runs, $"{head.RunId}.md"));
+        Assert.Contains("ended done", text, StringComparison.Ordinal);
+        Assert.Contains("1 entries", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Record_TakesNoMoment_AfterItsTail()
+    {
+        var head = AHead();
+        var record = new MarkdownRunRecord(state);
+
+        record.Begin(head);
+        record.Ended(ATail(head.RunId, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry));
+
+        var file = Path.Combine(state, "runs", $"{head.RunId}.md");
+        var ended = File.ReadAllText(file);
+
+        record.Append(Returned(head.RunId, "one word too late"));
+
+        // Nothing is written after the tail, and nothing is counted lost: no write failed
+        // (contracts/run-record.md).
+        Assert.Equal(ended, File.ReadAllText(file));
+        Assert.Equal(0, record.EntriesLost(head.RunId));
+    }
+
     private static RunFrameHead AHead() => new(
         Guid.NewGuid(),
         Guid.NewGuid(),
