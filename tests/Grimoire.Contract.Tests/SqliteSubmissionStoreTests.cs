@@ -1,6 +1,7 @@
 using Grimoire.Agent;
 using Grimoire.Runs;
 using Grimoire.Runs.Adapters;
+using Microsoft.Data.Sqlite;
 
 namespace Grimoire.Contract.Tests;
 
@@ -183,6 +184,103 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         // The first start of a new Grimoire: the file and its two tables are made here, and there
         // is nothing to read back.
         Assert.Empty(Reopened().Load());
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-010")]
+    public void Figures_RoundTripThroughTheFile()
+    {
+        var submission = ASubmission("Ada Lovelace wrote the first program.", Noon);
+        var run = ARun(submission.Id, Noon);
+        var store = Reopened();
+
+        store.Add(submission);
+        store.AssignRun(submission.Id, run);
+        store.RecordFigures(run.Id, tokensUsed: 148_233, toolCalls: 9, entriesLost: 2);
+
+        var read = Reopened().Load().Single().Run!;
+
+        Assert.Equal(PinnedModel, read.Model);
+        Assert.Equal(148_233, read.TokensUsed);
+        Assert.Equal(9, read.ToolCalls);
+        Assert.Equal(2, read.EntriesLost);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-010")]
+    public void OlderFile_ComesBackWithItsSubmissionsIntactAndItsFiguresAtZero()
+    {
+        var submissionId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+
+        // The four columns this Grimoire wants are not there, because the Grimoire that wrote this file
+        // did not have them. The owner's own `submissions.db` is exactly this file, and the alternative
+        // to reading it is asking them to delete the list of everything they ever submitted
+        // (research.md R-07).
+        WriteAFileOfTheOlderSchema(submissionId, runId);
+
+        var read = Assert.Single(Reopened().Load());
+
+        Assert.Equal(submissionId, read.Id);
+        Assert.Equal("An older Grimoire wrote this.", read.Text);
+        Assert.Equal(SubmissionState.Done, read.State);
+        Assert.Equal(runId, read.Run!.Id);
+        Assert.Equal(ToolGrant.ForIngest, read.Run.GrantedTools);
+
+        // Nothing is known about what an older run spent, and zero is the only honest answer a column
+        // can give. The model is left empty rather than guessed at: the current `--model` would claim
+        // the run had used one it may never have seen.
+        Assert.Equal(string.Empty, read.Run.Model);
+        Assert.Equal(0, read.Run.TokensUsed);
+        Assert.Equal(0, read.Run.ToolCalls);
+        Assert.Equal(0, read.Run.EntriesLost);
+    }
+
+    /// <summary>
+    /// A file with the schema <c>002-ingest-queue</c> left, written with no help from the adapter under
+    /// test — a fixture the adapter built would not be an older file at all.
+    /// </summary>
+    private void WriteAFileOfTheOlderSchema(Guid submissionId, Guid runId)
+    {
+        using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder
+            {
+                DataSource = Path.Combine(directory, "submissions.db"),
+                Mode = SqliteOpenMode.ReadWriteCreate,
+            }.ToString());
+
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            CREATE TABLE submissions (
+                id              TEXT PRIMARY KEY,
+                text            TEXT NOT NULL,
+                submitted_at    TEXT NOT NULL,
+                state           TEXT NOT NULL,
+                run_id          TEXT NULL,
+                acknowledged_at TEXT NULL
+            );
+
+            CREATE TABLE runs (
+                id                       TEXT PRIMARY KEY,
+                submission_id            TEXT NOT NULL,
+                started_at               TEXT NOT NULL,
+                granted_tools            TEXT NOT NULL,
+                grant_recorded_at        TEXT NOT NULL,
+                agent_process_id         INTEGER NULL,
+                agent_process_started_at TEXT NULL
+            );
+
+            INSERT INTO submissions VALUES
+                ('{submissionId}', 'An older Grimoire wrote this.', '{Noon:O}', 'done', '{runId}', NULL);
+
+            INSERT INTO runs VALUES
+                ('{runId}', '{submissionId}', '{Noon:O}',
+                 '{string.Join('\n', ToolGrant.ForIngest)}', '{Noon:O}', NULL, NULL);
+            """;
+
+        command.ExecuteNonQuery();
     }
 
     public void Dispose() => Directory.Delete(directory, recursive: true);
