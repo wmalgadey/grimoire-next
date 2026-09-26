@@ -137,6 +137,53 @@ public sealed class RunRecordViewTests : PageTest
         await Expect(agent.Locator(".prose")).ToContainTextAsync("ada.md");
     }
 
+    [Fact]
+    public async Task Moments_ArriveBelowWhatIsThere_WithoutDisturbingIt()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(submission);
+        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
+        hub.Agent.Returned(submission, "read_page", ALongResult);
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
+        await Expect(Segments()).ToHaveCountAsync(2);
+
+        // The user opens the result and reads it. The run is still under way.
+        var result = Segments().Nth(1).Locator("details.result");
+        await result.Locator("summary").ClickAsync();
+        await Expect(result.Locator("pre")).ToBeVisibleAsync();
+
+        var openedBefore = await Segments().Nth(1).BoundingBoxAsync();
+
+        // More happens while the page is left open. The page polls; nothing is pushed to it.
+        hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
+        hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
+
+        await Expect(Segments()).ToHaveCountAsync(4);
+
+        // Below what was already there, in the order it happened.
+        await Expect(Heading(2)).ToContainTextAsync("the agent");
+        await Expect(Heading(3)).ToContainTextAsync("called write_page");
+
+        // And what the user was reading is untouched: still open, and still where it was. An element
+        // already on the page is never replaced, which is what makes that true (ACCESS-006).
+        await Expect(result.Locator("pre")).ToBeVisibleAsync();
+
+        var openedAfter = await Segments().Nth(1).BoundingBoxAsync();
+        Assert.Equal(openedBefore!.Y, openedAfter!.Y);
+        Assert.Equal(openedBefore.Height, openedAfter.Height);
+
+        // The run then ends while the page is still open, and the tail arrives the same way.
+        hub.Agent.End(submission, RunOutcome.Done);
+
+        await Expect(Segments()).ToHaveCountAsync(5);
+        await Expect(Heading(4)).ToContainTextAsync("ended done");
+        await Expect(result.Locator("pre")).ToBeVisibleAsync();
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator Segments() => Page.Locator("#record li");
