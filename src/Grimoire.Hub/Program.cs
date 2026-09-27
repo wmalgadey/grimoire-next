@@ -190,10 +190,20 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
     }
 
     /// <summary>
-    /// A path with every link along it resolved. Neither directory need exist yet — the state
-    /// directory usually does not on a first start — so the nearest ancestor that does is resolved
-    /// and what was below it is put back on.
+    /// A path with every link <b>along</b> it resolved, not only one on the end.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Neither directory need exist yet — the state directory usually does not on a first start — so
+    /// the nearest ancestor that does is resolved and what was below it is put back on.
+    /// </para>
+    /// <para>
+    /// Resolving only the final component is not enough, and the case is ordinary rather than exotic:
+    /// a vault reached through a link with the wiki an ordinary directory under it. The vault would
+    /// resolve to its target while the wiki stayed spelled through the link, and the wiki would read as
+    /// outside the vault it is plainly inside — a refused start the owner could do nothing about.
+    /// </para>
+    /// </remarks>
     private static string RealPathOf(string path)
     {
         var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
@@ -211,9 +221,42 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
             at = parent;
         }
 
-        var resolved = new DirectoryInfo(at).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? at;
+        return Path.TrimEndingDirectorySeparator(Path.Combine([ResolvedWholly(at), .. below]));
+    }
 
-        return Path.TrimEndingDirectorySeparator(Path.Combine([resolved, .. below]));
+    /// <summary>
+    /// An existing path with every component resolved, deepest first and then its ancestors.
+    /// </summary>
+    /// <remarks>
+    /// The bound is what keeps a link that points at itself — or at a loop of them — from spinning
+    /// here for ever. A path nested more deeply than that resolves as far as it got, which is the same
+    /// answer as before this existed and no worse.
+    /// </remarks>
+    private static string ResolvedWholly(string existing)
+    {
+        const int Links = 64;
+
+        var at = existing;
+
+        for (var followed = 0; followed < Links; followed++)
+        {
+            if (new DirectoryInfo(at).ResolveLinkTarget(returnFinalTarget: true)?.FullName is not { } target)
+            {
+                break;
+            }
+
+            at = Path.TrimEndingDirectorySeparator(target);
+        }
+
+        // And then what it hangs off, because a link anywhere above counts as much as one here.
+        if (Path.GetDirectoryName(at) is not { } parent || parent == at)
+        {
+            return at;
+        }
+
+        var resolved = ResolvedWholly(parent);
+
+        return resolved == parent ? at : Path.Combine(resolved, Path.GetFileName(at));
     }
 
     /// <summary>
