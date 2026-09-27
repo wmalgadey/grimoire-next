@@ -103,7 +103,7 @@ public sealed class RunBoardTests
 
         Assert.Null(submission.RunId);
 
-        await hub.AcknowledgeAsync(failing.Id);
+        await hub.AcknowledgeQuestionAsync(failing.Id);
         Assert.NotNull(submission.RunId);
     }
 

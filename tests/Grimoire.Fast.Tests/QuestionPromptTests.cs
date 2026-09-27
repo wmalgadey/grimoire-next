@@ -157,7 +157,7 @@ public sealed class QuestionPromptTests
 
         hub.Harness.Did(failed.Id, new TranscriptMoment(RunMomentKind.AgentSaid, null, "Half a sen"));
         hub.Harness.End(failed.Id, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
-        await hub.AcknowledgeAsync(failed.Id);
+        await hub.AcknowledgeQuestionAsync(failed.Id);
 
         var follow = await hub.AskedAsync("And who was her mother?");
 

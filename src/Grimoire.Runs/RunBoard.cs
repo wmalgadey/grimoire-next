@@ -502,11 +502,25 @@ public sealed class RunBoard(
     /// failed, or not one this Grimoire knows. A page loaded before the last run failed can send
     /// exactly that, and the answer to it is that nothing happens (contracts/hub-http-api.md).
     /// </remarks>
-    public void Acknowledge(Guid queuedId)
+    public void AcknowledgeSubmission(Guid submissionId) => Acknowledge<Submission>(submissionId);
+
+    /// <summary>
+    /// The same, for a question — and <b>only</b> a question (QUERY-006, ACCESS-003).
+    /// </summary>
+    /// <remarks>
+    /// The two are separate because the two doors are: the chat's acknowledgement addresses a question
+    /// and the list's addresses a submission, and one that located either kind would let a submission's
+    /// failure be cleared through the chat, by an id the chat never showed. What a door may act on is
+    /// part of what the door is.
+    /// </remarks>
+    public void AcknowledgeQuestion(Guid questionId) => Acknowledge<Question>(questionId);
+
+    private void Acknowledge<TQueued>(Guid queuedId)
+        where TQueued : Queued
     {
         lock (gate)
         {
-            if (Located(queuedId) is { IsUnacknowledgedFailure: true } failure)
+            if (Located(queuedId) is TQueued { IsUnacknowledgedFailure: true } failure)
             {
                 var at = clock.GetUtcNow();
                 failure.Acknowledged(at);
@@ -639,6 +653,50 @@ public sealed class RunBoard(
                 store.RecordFigures(run, costSpent, tokens, toolCalls, entriesLost);
                 changed?.Invoke(working);
             }
+        }
+    }
+
+    /// <summary>
+    /// The chat is put away, and every question that was in it goes with it (QUERY-005, RUNS-003).
+    /// </summary>
+    /// <param name="putTheChatAway">
+    /// What empties the chat itself, called <b>inside this board's lock</b> so that the two are one
+    /// step. The lock order is board → chat throughout, which is the order this keeps.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// One operation rather than two, because a question accepted between them would be added to the
+    /// chat and then removed from it while staying queued here — on the board, waiting its turn, and
+    /// in no conversation. <see cref="Ask"/> takes this same lock, so there is no such moment.
+    /// </para>
+    /// <para>
+    /// <b>A question that never started goes entirely.</b> It has no run to respect — there is nothing
+    /// to leave alone — and dispatched afterwards it would spend the one run slot and a whole ceiling
+    /// producing an answer no chat can show, while the questions of the new conversation waited behind
+    /// it. One that has <em>ended</em> goes with it, for the same reason and with nothing left to lose.
+    /// </para>
+    /// <para>
+    /// <b>One still being answered stays.</b> Its run is not a chat and goes on being a run
+    /// (QUERY-005), so it goes on holding the queue while it runs — and it is marked, so that when it
+    /// ends failed the failure does not hold the queue for ever: the turn carrying its only control is
+    /// long gone by then, and no browser could clear it (RUNS-003).
+    /// </para>
+    /// </remarks>
+    public void StartANewChat(Action putTheChatAway)
+    {
+        ArgumentNullException.ThrowIfNull(putTheChatAway);
+
+        lock (gate)
+        {
+            queued.RemoveAll(q => q is Question && !q.IsUnderWay);
+
+            // What is left of the old chat's questions is what is still being answered.
+            foreach (var question in queued.OfType<Question>())
+            {
+                question.TheChatIsGone();
+            }
+
+            putTheChatAway();
         }
     }
 

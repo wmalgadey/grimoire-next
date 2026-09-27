@@ -198,7 +198,7 @@ public static class SubmissionsEndpoints
         // user to clear one (research.md R-06).
         endpoints.MapPost("/api/submissions/{id:guid}/acknowledgement", async (Guid id) =>
         {
-            board.Acknowledge(id);
+            board.AcknowledgeSubmission(id);
 
             // Asked either way. The board decides whether anything may start, and an
             // acknowledgement that cleared nothing simply leaves it deciding no.

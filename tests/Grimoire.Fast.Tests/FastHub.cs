@@ -166,7 +166,21 @@ internal sealed class FastHub
     /// </summary>
     public Task AcknowledgeAsync(Guid submissionId)
     {
-        Board.Acknowledge(submissionId);
+        Board.AcknowledgeSubmission(submissionId);
+        return Queue.PumpAsync();
+    }
+
+    /// <summary>
+    /// A question's failure acknowledged, the way the chat's endpoint acknowledges it (QUERY-006).
+    /// </summary>
+    /// <remarks>
+    /// Its own helper, because the two doors are its own: the chat's acknowledgement addresses a
+    /// question and the list's a submission, and one that took either would let a test pass through a
+    /// door the browser does not have.
+    /// </remarks>
+    public Task AcknowledgeQuestionAsync(Guid questionId)
+    {
+        Board.AcknowledgeQuestion(questionId);
         return Queue.PumpAsync();
     }
 

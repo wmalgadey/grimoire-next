@@ -314,7 +314,14 @@ public static class HubApplication
         var asking = new ChatIntake(board, queue);
 
         app.MapSubmissions(intake, board, queue, instructions.Read, live);
-        app.MapChat(asking, chat, instructions.Read, live, VaultView.FromStartUp(options.VaultName, options.WikiPathInVault));
+        app.MapChat(
+            asking,
+            chat,
+            board,
+            queue,
+            instructions.Read,
+            live,
+            VaultView.FromStartUp(options.VaultName, options.WikiPathInVault));
         app.MapRunRecord(board, record, live);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to

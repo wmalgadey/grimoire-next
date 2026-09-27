@@ -230,6 +230,8 @@ public static class ChatEndpoints
         this IEndpointRouteBuilder endpoints,
         ChatIntake intake,
         Chat chat,
+        RunBoard board,
+        RunQueue queue,
         SubmissionsEndpoints.StartUpInputsCheck startUpInputs,
         LiveUpdates live,
         VaultView? vault)
@@ -237,6 +239,8 @@ public static class ChatEndpoints
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(intake);
         ArgumentNullException.ThrowIfNull(chat);
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(live);
 
         endpoints.MapPost("/api/chat/questions", async (QuestionRequest? request) =>
@@ -263,6 +267,52 @@ public static class ChatEndpoints
                 sent => Increments(chat, sent, vault),
                 token)));
 
+        // A new chat (QUERY-005). Every browser reading the chat is sent the new, empty snapshot,
+        // because there is one chat and they all read it — so this empties both tabs rather than the
+        // one it was asked from. `Chat.Start` wakes them itself.
+        //
+        // **A question still being answered is not stopped.** Its run is not a chat and goes on being
+        // a run: it holds the queue until it ends and its figures stay with it (RUNS-010). What it
+        // produces belongs to the chat that is gone (research.md R-13).
+        endpoints.MapPost("/api/chat", async () =>
+        {
+            // **One step, under the board's lock.** Emptying the chat and letting its questions go
+            // are the same act: done as two, a question accepted in between would be added to the chat
+            // and then taken out of it while staying queued on the board — waiting its turn, and in no
+            // conversation (RunBoard.StartANewChat).
+            //
+            // A failure the user can no longer see does not hold the queue, which is RUNS-003's last
+            // clause reaching the case a new chat makes. A question still being answered goes on
+            // holding it while its run runs, and is disregarded only if that run ends failed — by then
+            // its control is long gone with the turn it sat on (QUERY-005, research.md R-13).
+            board.StartANewChat(chat.Start);
+
+            // Asked either way, as the acknowledgement below asks: the board decides whether anything
+            // may start, and one that cleared nothing simply leaves it deciding no.
+            await queue.PumpAsync().ConfigureAwait(false);
+
+            return Results.NoContent();
+        });
+
+        // The user has seen that this question got no answer (ACCESS-003, RUNS-003, QUERY-006).
+        //
+        // It exists because a failed question blocks the queue exactly as a failed ingest does, and
+        // there is no row in the submissions list to clear it from — a question is not a submission.
+        endpoints.MapPost("/api/chat/questions/{id:guid}/acknowledgement", async (Guid id) =>
+        {
+            board.AcknowledgeQuestion(id);
+
+            // Asked either way. The board decides whether anything may start, and an acknowledgement
+            // that cleared nothing simply leaves it deciding no.
+            await queue.PumpAsync().ConfigureAwait(false);
+
+            // **One status for both cases**, as the submission's acknowledgement already gives: a page
+            // loaded before the last run failed can acknowledge a failure that has already been
+            // cleared, and answering that with an error would put a failure on the user's screen for a
+            // request that did exactly what it should — nothing.
+            return Results.NoContent();
+        });
+
         return endpoints;
     }
 
@@ -280,12 +330,16 @@ public static class ChatEndpoints
         // The turns and the position in the change log, taken together. Read apart, a piece of an
         // answer arriving between the two would be in this snapshot *and* past the position — so the
         // next wake would send it again and the browser would show it twice.
-        var snapshot = chat.Snapshot();
+        yield return SnapshotOf(chat.Snapshot(), sent, vault);
+    }
 
+    /// <summary>The whole chat as one event, and this subscriber moved to where that reading ends.</summary>
+    private static SseItem<object> SnapshotOf(ChatSnapshot snapshot, Sent sent, VaultView? vault)
+    {
         sent.Generation = snapshot.Generation;
         sent.Changes = snapshot.Changes.Count;
 
-        yield return new SseItem<object>(
+        return new SseItem<object>(
             new ChatView(
                 [.. snapshot.Turns.Select(ChatTurnView.Of)],
                 snapshot.Turns.Sum(turn => turn.Question.Figures?.CostSpent ?? 0),
@@ -303,21 +357,19 @@ public static class ChatEndpoints
     /// </remarks>
     private static IEnumerable<SseItem<object>> Increments(Chat chat, Sent sent, VaultView? vault)
     {
-        if (chat.Generation != sent.Generation)
-        {
-            foreach (var afresh in Opening(chat, sent, vault))
-            {
-                yield return afresh;
-            }
+        // **One reading, and the generation read from it** — not asked for separately before it. Asked
+        // first, a new chat starting between the question and the snapshot would give this pass an
+        // empty chat with a new generation and nothing to send: the wake that the new chat raised would
+        // be spent here producing no event, and the browser would go on showing the old conversation
+        // until some later change happened to arrive. Which, on a chat that was just emptied, may be
+        // never.
+        var snapshot = chat.Snapshot();
 
+        if (snapshot.Generation != sent.Generation)
+        {
+            yield return SnapshotOf(snapshot, sent, vault);
             yield break;
         }
-
-        // The changes and the turns they refer to, from **one** reading. Taken apart, a question
-        // joining the chat between them would leave a descriptor pointing at a turn that is not there:
-        // skipped, and then skipped past for good, so that browser would never be told about the
-        // question at all (Chat.Snapshot).
-        var snapshot = chat.Snapshot();
 
         for (var at = sent.Changes; at < snapshot.Changes.Count; at++)
         {
@@ -394,6 +446,13 @@ public static class ChatEndpoints
             state = view.State,
             because = view.Because,
             costSpent = view.CostSpent,
+
+            // **Beyond what contracts/hub-http-api.md lists for this event**, and it has to be. The
+            // control ACCESS-003 asks for is offered on the strength of this, and a question's failure
+            // arrives as an increment — a browser that only learnt it from a snapshot would show no
+            // control until something else made it reconnect. Whether a failure is still waiting to be
+            // seen is part of the question's state, which is what this event is for.
+            awaitingAcknowledgement = view.AwaitingAcknowledgement,
             total = chat.Total,
         };
     }

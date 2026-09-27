@@ -272,6 +272,30 @@ function questionChanged(item, turn) {
   textOf(item.querySelector(".state"), states[turn.state] ?? turn.state);
   textOf(item.querySelector(".because"), turn.because ?? "");
 
+  // **Nothing the run produced is shown as its answer** where it got none (QUERY-006). The text is
+  // still held — it is what the run did, and the steps under it say the rest — but half a sentence
+  // from a run that stopped at a ceiling is not an answer, and showing it as one would be an answer
+  // that looks like an answer and is not.
+  //
+  // Set on the item rather than by removing the element, because an element once drawn is never
+  // replaced (ACCESS-007) — and a question can only reach this state once.
+  item.dataset.state = turn.state;
+
+  // The one control, and only on the question whose failure is still waiting to be acknowledged. A
+  // question without it offers nothing: a control that did nothing would be a lie (ACCESS-003).
+  const offered = item.querySelector(".acknowledge");
+
+  if (turn.awaitingAcknowledgement && !offered) {
+    const acknowledge = document.createElement("button");
+    acknowledge.type = "button";
+    acknowledge.className = "acknowledge";
+    acknowledge.textContent = "Acknowledge";
+    acknowledge.addEventListener("click", () => acknowledged(turn.id));
+    item.querySelector(".about").append(acknowledge);
+  } else if (!turn.awaitingAcknowledgement && offered) {
+    offered.remove();
+  }
+
   // Absent where there is no run — and not a zero, which would claim a run that spent nothing rather
   // than no run at all (ACCESS-008).
   textOf(
@@ -280,6 +304,18 @@ function questionChanged(item, turn) {
       ? ""
       : `${figure(turn.costSpent)} / ${figure(costCeiling)}`,
   );
+}
+
+// Acknowledging a failure is what lets the queue move on (RUNS-003). Nothing is asked for afterwards:
+// the acknowledgement changes the board, and the chat is sent what changed — the question still reads
+// that it got no answer, and the control it offered is gone, which is the user's confirmation.
+async function acknowledged(id) {
+  try {
+    await fetch(`/api/chat/questions/${id}/acknowledgement`, { method: "POST" });
+  } catch {
+    // Grimoire could not be reached. Nothing was acknowledged and the control is still there; what is
+    // on the screen stays, because a state that has not been contradicted is still the last one known.
+  }
 }
 
 function textOf(element, words) {
@@ -302,6 +338,15 @@ function spent(figures) {
 // (ACCESS-007).
 function drawn(body) {
   costCeiling = body.costCeiling;
+
+  // A chat that has been put away takes its turns with it. This is the one place the page removes
+  // what it has drawn, and it is not a redraw of anything: the conversation is gone, so there is
+  // nothing left whose place could be disturbed (QUERY-005, ACCESS-007).
+  for (const drawnTurn of [...chat.children]) {
+    if (!body.turns.some((turn) => turn.id === drawnTurn.dataset.id)) {
+      drawnTurn.remove();
+    }
+  }
 
   // Where a page can be opened, or nothing. Read before any answer is drawn, so the first one drawn
   // already knows whether its references can be followed.
@@ -353,6 +398,19 @@ function openingIsSetUp() {
 // A dropped connection is `EventSource`'s own to make again, and it opens with a fresh snapshot — which
 // is what ACCESS-007's last clause asks for: the chat as it then stands, including what arrived while
 // the browser was away. Nothing here reconnects, replays or reads a `Last-Event-ID`.
+// A new chat (QUERY-005). Nothing is drawn from the answer: there is one chat and every browser reads
+// it, so the empty snapshot that arrives is what empties this tab **and every other one**.
+//
+// No confirmation is asked for. `docs/ux.md` rules out modal dialogs, and a chat is kept nowhere —
+// starting a new one destroys nothing that was going to survive Grimoire stopping anyway.
+document.getElementById("new-chat").addEventListener("click", async () => {
+  try {
+    await fetch("/api/chat", { method: "POST" });
+  } catch {
+    show("refused", "Grimoire could not be reached.");
+  }
+});
+
 const events = new EventSource("/api/chat/events");
 
 events.addEventListener("chat", (event) => drawn(JSON.parse(event.data)));

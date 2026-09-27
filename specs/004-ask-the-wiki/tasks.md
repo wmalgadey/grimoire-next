@@ -461,50 +461,50 @@ nothing of the old one is reachable.
 
 **Branch**: `004-ask-the-wiki-phase-6-conversation`
 
-- [ ] T073 [US3] Register **QUERY-006** in `docs/capabilities/query.md` with proof `test`, and
+- [X] T073 [US3] Register **QUERY-006** in `docs/capabilities/query.md` with proof `test`, and
       complete QUERY-005's sentence there with its "exactly one chat, the same one for every browser"
       and "start a new chat" clauses. Before any test of this phase (Constitution IV.2) — **Req:** Principle IV.2
 
 ### Tests for User Story 3
 
-- [ ] T074 [P] [US3] `QuestionPromptTests` in `tests/Grimoire.Fast.Tests/`: a follow-up's dispatch
+- [X] T074 [P] [US3] `QuestionPromptTests` in `tests/Grimoire.Fast.Tests/`: a follow-up's dispatch
       carries **every** earlier question and the answer text it produced, in order, and **no steps** —
       what the agent did to reach an earlier answer is for the user to check, not context the next run
       needs. A chat is a sequence of runs, not one agent kept alive: each question gets its own run
       with its own grant and its own ceilings (RUNS-002, RUNS-006 untouched) — **Req:** QUERY-002 | **Level:** Fast — **Why not lower:** what a dispatch carries is assembled in-process by `InstructionLoader`
-- [ ] T075 [P] [US3] `ChatTests` in `tests/Grimoire.Fast.Tests/`: a new chat is empty, nothing of the
+- [X] T075 [P] [US3] `ChatTests` in `tests/Grimoire.Fast.Tests/`: a new chat is empty, nothing of the
       previous one is reachable and nothing of it is kept anywhere; and a question **still being
       answered is not stopped** — its run goes on being a run, what it produces belongs to the chat
       that is gone and appears in no new one, and its figures stay with the run — **Req:** QUERY-005, RUNS-010 | **Level:** Fast — **Why not lower:** the chat is memory and the run is driven in-process; nothing here needs a browser
-- [ ] T076 [P] [US3] `FailedQuestionTests` in `tests/Grimoire.Fast.Tests/`: when a question's run ends
+- [X] T076 [P] [US3] `FailedQuestionTests` in `tests/Grimoire.Fast.Tests/`: when a question's run ends
       failed — at either ceiling, with a dead process, or reporting a tool outside its grant — the chat
       says against that question that it got no answer **and why**, and **nothing the run had produced
       is presented as its answer**; the failure blocks the next run until it is acknowledged, and
       afterwards the question can be asked again — **Req:** QUERY-006, RUNS-003, GUARD-004 | **Level:** Fast — **Why not lower:** the reasons come from `RunEndedBecause` and `FakeTimeProvider` drives the ceilings (DEC-018); the Fast suite has 15 s in total, so nothing waits for a real one
-- [ ] T077 [P] [US3] `ChatStreamTests` in `tests/Grimoire.Fast.Tests/`: a turn reads `no-answer` with
+- [X] T077 [P] [US3] `ChatStreamTests` in `tests/Grimoire.Fast.Tests/`: a turn reads `no-answer` with
       its `because`, carries `awaitingAcknowledgement` **only** while the failure is unacknowledged,
       and the acknowledgement answers `204` whether it cleared a failure or nothing — the one status
       the submission's acknowledgement already gives, because acknowledging a failure already cleared
       did exactly what it should — **Req:** QUERY-006, ACCESS-003 | **Level:** Fast — **Why not lower:** in-process through `HubApplication.Build`, as the submission's acknowledgement already is
-- [ ] T078 [US3] `ChatLifetimeTests` in `tests/Grimoire.E2E.Tests/`: with the chat open in **two
+- [X] T078 [US3] `ChatLifetimeTests` in `tests/Grimoire.E2E.Tests/`: with the chat open in **two
       browser tabs**, a question asked in one appears in the other, and starting a new chat empties
       both — there is one chat and every browser reads it, and nothing tells one reader from another —
       **Req:** QUERY-005 | **Level:** E2E — **Why not lower:** "a question asked in one tab appears in the other" is geometry only two real browsers have (research.md R-11)
-- [ ] T079 [US3] `ChatLifetimeTests`: a question asked while a submission's run is under way reads
+- [X] T079 [US3] `ChatLifetimeTests`: a question asked while a submission's run is under way reads
       **waiting its turn** in the chat, is answered after that run ends and never beside it; and a
       question whose run failed offers the one control that acknowledges it, after which the queue
       moves — **Req:** ACCESS-007, RUNS-002, QUERY-006 | **Level:** E2E — **Why not lower:** the waiting state and the one control are what the browser shows, and the two kinds queueing together is only visible where both pages are open
 
 ### Implementation for User Story 3
 
-- [ ] T080 [US3] `src/Grimoire.Hub/Api/ChatEndpoints.cs`: `POST /api/chat` answering `204` and
+- [X] T080 [US3] `src/Grimoire.Hub/Api/ChatEndpoints.cs`: `POST /api/chat` answering `204` and
       sending every reader the new, empty snapshot; and
       `POST /api/chat/questions/{id}/acknowledgement` answering `204` either way. The acknowledgement
       exists because a failed question blocks the queue as a failed ingest does and there is no row to
       clear it from — ACCESS-003's wording is unchanged (research.md R-12) — **Req:** QUERY-005, QUERY-006, ACCESS-003
-- [ ] T081 [US3] `src/Grimoire.Hub/Chat.cs`: `Start()` replaces the turns and the total whole, and a
+- [X] T081 [US3] `src/Grimoire.Hub/Chat.cs`: `Start()` replaces the turns and the total whole, and a
       run still in progress writes into the chat that is gone and never into the new one — **Req:** QUERY-005
-- [ ] T082 [US3] `src/Grimoire.Hub/wwwroot/chat.js` and `chat.html`: the control that starts a new
+- [X] T082 [US3] `src/Grimoire.Hub/wwwroot/chat.js` and `chat.html`: the control that starts a new
       chat; a waiting question said to be waiting; a question that got no answer saying why, with the
       one control that acknowledges it beside it and nothing half-written shown as an answer. No modal
       confirmation and no self-dismissing toast (`docs/ux.md`) — **Req:** QUERY-005, QUERY-006, ACCESS-007

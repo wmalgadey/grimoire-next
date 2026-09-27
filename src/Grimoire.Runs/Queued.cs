@@ -97,7 +97,7 @@ public abstract class Queued
     /// Blocking: a failure nobody has acknowledged — the one thing that holds the queue (RUNS-003).
     /// It holds a question exactly as it holds a submission. Assumes the board's lock.
     /// </summary>
-    internal bool IsUnacknowledgedFailure => terminal == RunOutcome.Failed && acknowledgedAt is null;
+    internal virtual bool IsUnacknowledgedFailure => terminal == RunOutcome.Failed && acknowledgedAt is null;
 
     /// <summary>How its run ended, or null while it has not. Assumes the board's lock.</summary>
     private protected RunOutcome? Terminal => terminal;

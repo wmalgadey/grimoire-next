@@ -195,6 +195,83 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-003")]
+    public async Task NewChat_LeavesTheQueueMoving_WhenARunItTookAwayFailsAfterwards()
+    {
+        var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
+
+        Assert.NotNull(question.RunId);
+
+        // The chat is put away **while that question is still being answered**. It has not failed yet,
+        // so there is nothing to disregard at this moment — which is exactly the case a fix that only
+        // looked at the failures it could already see would miss.
+        hub.Board.StartANewChat(hub.Chat.Start);
+
+        Assert.Empty(hub.Chat.Turns);
+
+        // And then its run fails. The turn that carried its acknowledgement control is long gone, so a
+        // block here is one nothing could ever lift (RUNS-003, QUERY-005).
+        hub.Harness.End(question.Id, RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
+        await Task.Yield();
+
+        Assert.Equal(QuestionState.NoAnswer, question.State);
+
+        // The queue moves.
+        var afterwards = await hub.AcceptedAsync("Grace Hopper found the first bug.");
+
+        Assert.NotNull(afterwards.RunId);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-002")]
+    public async Task NewChat_StartsNoQuestionThatWasStillWaitingWhenItWentAway()
+    {
+        var running = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+        var waiting = (await hub.AskAsync("What does the wiki say about Ada Lovelace?")).Accepted!;
+
+        Assert.Null(waiting.RunId);
+
+        // The conversation is put away while that question has **not started**. It has no run to
+        // respect — there is nothing to leave alone — and started afterwards it would spend the one run
+        // slot and a whole ceiling on an answer no chat can show, while the new conversation's
+        // questions waited behind it (QUERY-005, RUNS-002).
+        hub.Board.StartANewChat(hub.Chat.Start);
+
+        var asked = await hub.AskedAsync("And who was her mother?");
+
+        hub.Harness.End(running.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        // The new chat's question runs. The one that went away never does, and is on the board no more.
+        Assert.NotNull(asked.RunId);
+        Assert.Null(waiting.RunId);
+        Assert.Null(hub.Board.Find(waiting.Id));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-003")]
+    public async Task NewChat_LeavesASubmissionsFailureHoldingTheQueue()
+    {
+        var failing = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+
+        hub.Harness.End(failing.Id, RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
+        await Task.Yield();
+
+        // A new chat is about questions. **A submission's failure is untouched by it**: it is on disk,
+        // it is on the list, and its row still offers the control — so it goes on holding the queue
+        // exactly as RUNS-003 says (research.md R-12).
+        hub.Board.StartANewChat(hub.Chat.Start);
+
+        var behind = await hub.AcceptedAsync("Grace Hopper found the first bug.");
+
+        Assert.Null(behind.RunId);
+
+        await hub.AcknowledgeAsync(failing.Id);
+
+        Assert.NotNull(behind.RunId);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-002")]
     [Trait("req", "QUERY-002")]
     public async Task Chat_ShowsTheQuestionsInTheOrderTheyWillRun_WhenSeveralAreAskedAtOnce()
@@ -281,6 +358,110 @@ public sealed class ChatTests
         await holding;
 
         Assert.Equal("She wrote the first program.", Assert.Single(locking.Chat.Turns).Answer);
+    }
+
+    [Fact]
+    public async Task NewChat_IsEmpty()
+    {
+        var question = await hub.AskedAsync();
+
+        Said(question, "She wrote the first program.");
+        hub.Harness.Called(question.Id, "read_page", """{"path":"people/ada-lovelace.md"}""");
+        hub.Harness.Spend(question.Id, 12_000);
+
+        hub.Chat.Start();
+
+        // Nothing in it, and nothing spent in it: the total is a sum over the turns, so it is a
+        // consequence of the chat being empty rather than a second thing to clear (QUERY-005).
+        Assert.Empty(hub.Chat.Turns);
+        Assert.Equal(0, hub.Chat.Total);
+    }
+
+    [Fact]
+    public async Task NewChat_ReachesNothingOfThePreviousOne()
+    {
+        var gone = await hub.AskedAsync();
+        var generation = hub.Chat.Generation;
+
+        hub.Chat.Start();
+        hub.Harness.End(gone.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        var asked = await hub.AskedAsync("And who was her mother?");
+
+        // The question that was asked in the chat that is gone is in no turn of this one — and the
+        // generation has risen, which is what tells a browser reading changes forward that the turns
+        // those changes point at belong to a conversation that no longer exists (QUERY-005).
+        Assert.True(hub.Chat.Generation > generation, "a new chat is not the one it replaced");
+        Assert.Equal([asked.Id], hub.Chat.Turns.Select(turn => turn.Question.Id));
+    }
+
+    [Fact]
+    public async Task NewChat_KeepsNothingOfThePreviousOne()
+    {
+        var question = await hub.AskedAsync();
+
+        Said(question, "She wrote the first program.");
+        hub.Harness.Called(question.Id, "read_page", """{"path":"people/ada-lovelace.md"}""");
+
+        hub.Chat.Start();
+
+        // Not held anywhere it could be read back from: not in the chat's own log of what changed —
+        // which is how a connected browser is told the one thing that changed, and would otherwise
+        // still describe turns that are gone — and not on disk, where a question never was
+        // (QUERY-005).
+        Assert.Empty(hub.Chat.Snapshot().Changes);
+        Assert.Empty(hub.Store.Load());
+    }
+
+    [Fact]
+    public async Task NewChat_LeavesTheRunHoldingTheQueue()
+    {
+        var question = await hub.AskedAsync();
+
+        hub.Chat.Start();
+
+        var behind = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+
+        // **A question still being answered is not stopped.** Its run is not a chat: it goes on being
+        // the one run there may be, so what was accepted after it waits its turn. Grimoire has no way
+        // to stop a run except a ceiling (RUNS-002, research.md R-13).
+        Assert.Equal(QuestionState.Answering, question.State);
+        Assert.Equal(SubmissionState.Submitted, behind.State);
+        Assert.Equal([question.Id], hub.Harness.Dispatched.Select(dispatch => dispatch.SubmissionId));
+    }
+
+    [Fact]
+    public async Task NewChat_HoldsNothingTheRunUnderWayProduces()
+    {
+        var question = await hub.AskedAsync();
+
+        hub.Chat.Start();
+
+        Said(question, "She wrote the first program.");
+        hub.Harness.Called(question.Id, "read_page", """{"path":"people/ada-lovelace.md"}""");
+
+        // What that run produces belongs to the chat that is gone: the turn it was writing into is not
+        // in this one, so its answer and its steps appear nowhere here (QUERY-005, research.md R-13).
+        Assert.Empty(hub.Chat.Turns);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-010")]
+    public async Task NewChat_LeavesTheFiguresWithTheRunUnderWay()
+    {
+        var question = await hub.AskedAsync();
+
+        hub.Chat.Start();
+
+        hub.Harness.Spend(question.Id, 12_000);
+
+        // The figures are the run's and were never the chat's, so a new chat does not lose what a run
+        // under way is spending — which is also what the ceiling it is measured against reads
+        // (RUNS-010, GUARD-004). The new chat's total is nought all the same: it sums its own turns,
+        // and this run is answering a question that is no longer one of them.
+        Assert.Equal(12_000, question.Figures!.CostSpent);
+        Assert.Equal(0, hub.Chat.Total);
     }
 
     private void Said(Question question, string text) =>
