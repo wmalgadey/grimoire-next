@@ -246,8 +246,20 @@ public static class HubApplication
         // Which stream a change matters to is decided here and not by the board, which does not know
         // there are two. A submission's change is the list; a question's is the chat. Told the wrong
         // one, a page would sit still while what it shows moved on.
-        var board = new RunBoard(clock, submissions, queued => live.Changed(
-            queued is Question ? LiveUpdates.Chat : LiveUpdates.Submissions));
+        var board = new RunBoard(clock, submissions, queued =>
+        {
+            // A question's change is the chat's, and the chat has to be told *which* question before its
+            // subscribers are woken: they read the change log forward, so a wake with nothing recorded
+            // is a wake with nothing to send.
+            if (queued is Question)
+            {
+                chat.QuestionChanged(queued.Id);
+                live.Changed(LiveUpdates.Chat);
+                return;
+            }
+
+            live.Changed(LiveUpdates.Submissions);
+        });
 
         // The knot the conductor and the queue make, tied here because neither may hold the other
         // whole: a run that ends is what lets the next one start, and starting one is what gives
@@ -264,8 +276,10 @@ public static class HubApplication
             (question, runId) => instructions.AssembleQuestion(chat, question, runId));
 
         var intake = new SubmissionIntake(board, queue);
+        var asking = new ChatIntake(board, chat, queue);
 
         app.MapSubmissions(intake, board, queue, instructions.Read, live);
+        app.MapChat(asking, chat, instructions.Read, live);
         app.MapRunRecord(board, record, live);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to

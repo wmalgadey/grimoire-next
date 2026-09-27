@@ -383,6 +383,8 @@ public sealed class RunConductor(
         switch (moment.Kind)
         {
             case RunMomentKind.AgentSaid:
+                // The chat records what changed and where before the wake below, because its
+                // subscribers read those changes forward (ACCESS-007).
                 chat.AgentSaid(run, moment.Content ?? string.Empty);
                 break;
 

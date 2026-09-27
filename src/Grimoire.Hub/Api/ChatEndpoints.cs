@@ -1,0 +1,314 @@
+using System.Net.ServerSentEvents;
+using System.Text.Json.Serialization;
+using Grimoire.Agent;
+using Grimoire.Runs;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+
+namespace Grimoire.Hub.Api;
+
+/// <summary>One thing the agent did to reach an answer, as the browser is told it (ACCESS-007).</summary>
+public sealed record ChatStepView(
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("tool")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Tool,
+    [property: JsonPropertyName("content")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Content);
+
+/// <summary>
+/// One question in the chat: what was asked, the answer as it stands, the steps under it, and — where
+/// it has a run — what that run has spent (ACCESS-007, ACCESS-008).
+/// </summary>
+/// <param name="State">
+/// Exactly one of <c>waiting</c> · <c>answering</c> · <c>answered</c> · <c>no-answer</c>. Four values
+/// inside one requirement, never one requirement per value (Constitution IV.7).
+/// </param>
+/// <param name="Because">
+/// Why it got no answer, and <b>absent</b> in every other case — a reason on a question that was
+/// answered would be a reason for nothing (QUERY-006).
+/// </param>
+/// <param name="CostSpent">
+/// What its run has spent, in the quantity the cost ceiling counts. <b>Absent where it has no run</b>,
+/// and not a zero: a question waiting its turn has nothing true to say about a run (ACCESS-008).
+/// </param>
+/// <param name="AwaitingAcknowledgement">
+/// Absent unless it got no answer and that failure is still waiting to be seen, and then always true —
+/// so the chat either offers the one control or says nothing about it (ACCESS-003, RUNS-003).
+/// </param>
+public sealed record ChatTurnView(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("askedAt")] DateTimeOffset AskedAt,
+    [property: JsonPropertyName("state")] string State,
+    [property: JsonPropertyName("answer")] string Answer,
+    [property: JsonPropertyName("steps")] IReadOnlyList<ChatStepView> Steps,
+    [property: JsonPropertyName("because")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Because = null,
+    [property: JsonPropertyName("costSpent")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    long? CostSpent = null,
+    [property: JsonPropertyName("awaitingAcknowledgement")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? AwaitingAcknowledgement = null)
+{
+    public static ChatTurnView Of(ChatTurn turn)
+    {
+        ArgumentNullException.ThrowIfNull(turn);
+
+        // One reading of the question's state, its reason, its acknowledgement and its figures, under the
+        // board's one lock. Asked separately, a run ending between two answers would put `answering`
+        // beside a final figure, or beside an offered acknowledgement — pairs that never existed
+        // (ACCESS-007, ACCESS-008).
+        var status = turn.Question.Status;
+
+        return new ChatTurnView(
+            turn.Question.Id.ToString(),
+            turn.Question.Text,
+            turn.Question.AskedAt,
+            WireNameOf(status.State),
+            turn.Answer,
+            [.. turn.Steps.Select(step => new ChatStepView(step.Kind, step.Tool, step.Content))],
+            status.Because is { } because ? ReasonFor(because) : null,
+            status.Run?.CostSpent,
+            status.AwaitingAcknowledgement ? true : null);
+    }
+
+    /// <summary>Exactly one of the four the chat shows (ACCESS-007).</summary>
+    public static string WireNameOf(QuestionState state) => state switch
+    {
+        QuestionState.Waiting => "waiting",
+        QuestionState.Answering => "answering",
+        QuestionState.Answered => "answered",
+        QuestionState.NoAnswer => "no-answer",
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, "not one of the four the chat shows"),
+    };
+
+    /// <summary>
+    /// Why a question got no answer, in the words the chat shows (QUERY-006).
+    /// </summary>
+    /// <remarks>
+    /// The seven reasons a record's tail names, said for a reader of a chat rather than of a record.
+    /// Two of them cannot arise for a question's run — a question is not asked for a log entry — and
+    /// they are answered anyway rather than left to throw: a reason the chat cannot render would put an
+    /// exception where an explanation belongs, on the one path the user is already being told something
+    /// went wrong.
+    /// </remarks>
+    public static string ReasonFor(RunEndedBecause because) => because switch
+    {
+        RunEndedBecause.TimeCeiling => "it ran out of time",
+        RunEndedBecause.CostCeiling => "it reached what a run may spend",
+        RunEndedBecause.ToolsWereNotTheGrant => "it was offered tools it was not granted",
+        RunEndedBecause.AgentProcessDied => "the agent stopped working",
+        RunEndedBecause.GrimoireStopped => "Grimoire was stopped while it was being answered",
+        _ => "the run did not finish",
+    };
+}
+
+/// <summary>
+/// The chat as the browser reads it (QUERY-005, ACCESS-007, ACCESS-008).
+/// </summary>
+/// <param name="Total">
+/// What every question in this chat has spent altogether, a failed one included. <b>No ceiling stands
+/// beside it</b>: each question carries its own, and <c>x / y</c> would invent one that does not exist
+/// (ACCESS-008).
+/// </param>
+/// <param name="CostCeiling">
+/// The ceiling each question's own figure is written against (GUARD-004). On the snapshot and not on
+/// each turn, because it is the hub's value and the same for every run in the chat — the same reason
+/// the submissions list carries it once.
+/// </param>
+public sealed record ChatView(
+    [property: JsonPropertyName("turns")] IReadOnlyList<ChatTurnView> Turns,
+    [property: JsonPropertyName("total")] long Total,
+    [property: JsonPropertyName("costCeiling")] long CostCeiling);
+
+/// <summary>What the browser posts to ask the wiki.</summary>
+public sealed record QuestionRequest([property: JsonPropertyName("text")] string? Text);
+
+/// <summary>
+/// The chat's door into the hub, exactly as <c>contracts/hub-http-api.md</c> specifies it.
+/// </summary>
+public static class ChatEndpoints
+{
+    public static IEndpointRouteBuilder MapChat(
+        this IEndpointRouteBuilder endpoints,
+        ChatIntake intake,
+        Chat chat,
+        SubmissionsEndpoints.StartUpInputsCheck startUpInputs,
+        LiveUpdates live)
+    {
+        ArgumentNullException.ThrowIfNull(endpoints);
+        ArgumentNullException.ThrowIfNull(intake);
+        ArgumentNullException.ThrowIfNull(chat);
+        ArgumentNullException.ThrowIfNull(live);
+
+        endpoints.MapPost("/api/chat/questions", async (QuestionRequest? request) =>
+        {
+            // No request token reaches the run: it outlives the request that asked for it (QUERY-001).
+            var result = await intake.AskAsync(request?.Text ?? string.Empty, startUpInputs())
+                .ConfigureAwait(false);
+
+            // 202 with the turn as the stream's snapshot carries one, and no location: there is no
+            // endpoint for one question, and the browser reads the chat. **No run identifier is in it**
+            // — the chat addresses the question (contracts/hub-http-api.md).
+            return result.Accepted is { } accepted
+                ? Results.Json(TurnFor(chat, accepted), statusCode: StatusCodes.Status202Accepted)
+                : Refused(result.Refused!.Value);
+        });
+
+        // The chat, sent as it changes. It opens with the whole of it and then carries **the one thing
+        // that changed** — one more field would be a mechanism with no consumer (Constitution II.1).
+        endpoints.MapGet("/api/chat/events", (CancellationToken token) =>
+            TypedResults.ServerSentEvents(
+                live.Watch(LiveUpdates.Chat, sent => Opening(chat, sent), sent => Increments(chat, sent), token)));
+
+        return endpoints;
+    }
+
+    /// <summary>
+    /// The snapshot: every turn, the total and the ceiling (ACCESS-007, ACCESS-008).
+    /// </summary>
+    /// <remarks>
+    /// This subscriber is put at the <b>end</b> of what has changed, not the beginning: the snapshot
+    /// already carries all of it, so there is nothing of the past to send and nothing is replayed from
+    /// the change log. That is the whole of ACCESS-007's reconnect clause — a browser that comes back
+    /// reads the chat as it then stands, including what arrived while it was away.
+    /// </remarks>
+    private static IEnumerable<SseItem<object>> Opening(Chat chat, Sent sent)
+    {
+        sent.Generation = chat.Generation;
+        sent.Changes = chat.Changes.Count;
+
+        yield return new SseItem<object>(
+            new ChatView([.. chat.Turns.Select(ChatTurnView.Of)], chat.Total, Ceilings.Fixed.Cost),
+            ChatEvents.Chat);
+    }
+
+    /// <summary>
+    /// What this subscriber has not been told, one event per change (ACCESS-007).
+    /// </summary>
+    /// <remarks>
+    /// A new chat is a fresh snapshot rather than a run of increments: the turns it would refer to are
+    /// gone, and every browser reading the chat is sent the new, empty one (QUERY-005).
+    /// </remarks>
+    private static IEnumerable<SseItem<object>> Increments(Chat chat, Sent sent)
+    {
+        if (chat.Generation != sent.Generation)
+        {
+            foreach (var afresh in Opening(chat, sent))
+            {
+                yield return afresh;
+            }
+
+            yield break;
+        }
+
+        var changes = chat.Changes;
+        var turns = chat.Turns;
+
+        for (var at = sent.Changes; at < changes.Count; at++)
+        {
+            var change = changes[at];
+
+            // The turn the change is about. Gone only if a new chat started between the two readings
+            // above, which the next wake answers with a snapshot.
+            if (turns.FirstOrDefault(turn => turn.Question.Id == change.Question) is not { } turn)
+            {
+                continue;
+            }
+
+            yield return Increment(chat, turn, change);
+        }
+
+        sent.Changes = changes.Count;
+    }
+
+    private static SseItem<object> Increment(Chat chat, ChatTurn turn, ChatChange change)
+    {
+        var id = turn.Question.Id.ToString();
+
+        return change.Event switch
+        {
+            ChatEvents.Asked => new SseItem<object>(
+                new
+                {
+                    id,
+                    text = turn.Question.Text,
+                    askedAt = turn.Question.AskedAt,
+                    state = ChatTurnView.WireNameOf(turn.Question.State),
+                },
+                ChatEvents.Asked),
+
+            // The piece of the answer this change named, read out of the turn that holds it. The slice
+            // is stable because an answer only grows (ChatChange).
+            ChatEvents.Answer => new SseItem<object>(
+                new { id, append = turn.Answer[change.From..change.To] },
+                ChatEvents.Answer),
+
+            ChatEvents.Step => new SseItem<object>(
+                new
+                {
+                    id,
+                    step = new ChatStepView(
+                        turn.Steps[change.Step].Kind,
+                        turn.Steps[change.Step].Tool,
+                        turn.Steps[change.Step].Content),
+                },
+                ChatEvents.Step),
+
+            // The state, the reason and both figures — read as one instant, as the snapshot's turn is.
+            // The total comes with it because a question's spend is what moves it, and a browser told
+            // one without the other would show a total that does not add up to what is above it
+            // (ACCESS-008).
+            _ => new SseItem<object>(QuestionChanged(chat, turn), ChatEvents.Question),
+        };
+    }
+
+    private static object QuestionChanged(Chat chat, ChatTurn turn)
+    {
+        var view = ChatTurnView.Of(turn);
+
+        return new
+        {
+            id = view.Id,
+            state = view.State,
+            because = view.Because,
+            costSpent = view.CostSpent,
+            total = chat.Total,
+        };
+    }
+
+    /// <summary>The accepted question's turn, as the stream's snapshot carries one.</summary>
+    private static ChatTurnView TurnFor(Chat chat, Question accepted) =>
+        chat.Turns.FirstOrDefault(turn => turn.Question.Id == accepted.Id) is { } turn
+            ? ChatTurnView.Of(turn)
+            : throw new InvalidOperationException($"question {accepted.Id} was accepted but is in no chat");
+
+    /// <summary>
+    /// The one reason a question was refused, in the order the contract checks them (QUERY-003).
+    /// </summary>
+    private static IResult Refused(QuestionRefusal refusal)
+    {
+        var (reason, message) = refusal switch
+        {
+            QuestionRefusal.QuestionInstructionMissing => (
+                "question-instruction-missing",
+                "Grimoire's question instruction is missing. No question can be answered without it."),
+            QuestionRefusal.PurposeDescriptionMissing => (
+                "purpose-description-missing",
+                "The purpose description is missing. No question can be answered without it."),
+            QuestionRefusal.TextEmpty => (
+                "question-empty",
+                "There is no question to ask."),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(refusal), refusal, "no such refusal"),
+        };
+
+        return Results.Json(
+            new RefusalView(reason, message), statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
+}

@@ -22,6 +22,53 @@ public sealed record ChatStep(string Kind, string? Tool, string? Content)
 }
 
 /// <summary>
+/// Which of the four things changed about the chat, and where (ACCESS-007).
+/// </summary>
+/// <param name="Question">Whose turn it is about.</param>
+/// <param name="From">For <see cref="Answer"/>: how far into that turn's answer this piece starts.</param>
+/// <param name="To">For <see cref="Answer"/>: where it ends.</param>
+/// <param name="Step">For <see cref="Step"/>: which of that turn's steps it is.</param>
+/// <remarks>
+/// <para>
+/// A <b>descriptor</b> and not a copy: the answer's text and the step's content live in the turn, and
+/// this says which slice of them the change was. So the list of changes a stream reads forward is a
+/// handful of integers per event however large the chat is, and a piece of an answer cannot be held
+/// here saying one thing while the turn says another.
+/// </para>
+/// <para>
+/// Safe because a turn only ever grows: an answer is appended to and a step is added after the last,
+/// so the slice this names means the same thing whenever it is read.
+/// </para>
+/// </remarks>
+public sealed record ChatChange(string Event, Guid Question, int From = 0, int To = 0, int Step = 0);
+
+/// <summary>
+/// The four increments a chat's stream carries, by the names the browser listens for
+/// (contracts/hub-http-api.md).
+/// </summary>
+/// <remarks>
+/// Their own class rather than constants on <see cref="ChatChange"/>, because three of the four are
+/// also the names of that record's own members and a type cannot hold both.
+/// </remarks>
+public static class ChatEvents
+{
+    /// <summary>The snapshot every stream opens with: the whole chat.</summary>
+    public const string Chat = "chat";
+
+    /// <summary>A question joined the chat.</summary>
+    public const string Asked = "asked";
+
+    /// <summary>The agent wrote more of an answer.</summary>
+    public const string Answer = "answer";
+
+    /// <summary>The agent made a call, or one returned.</summary>
+    public const string Step = "step";
+
+    /// <summary>A question's state or figures changed.</summary>
+    public const string Question = "question";
+}
+
+/// <summary>
 /// One question in the chat, with the answer forming under it and the steps the agent took
 /// (QUERY-005, ACCESS-007).
 /// </summary>
@@ -122,7 +169,9 @@ public sealed class ChatTurn(Question question)
 public sealed class Chat
 {
     private readonly Lock gate = new();
+    private readonly List<ChatChange> changes = [];
     private List<ChatTurn> turns = [];
+    private int generation;
 
     /// <summary>In order, oldest first — which is the order a conversation is read in.</summary>
     public IReadOnlyList<ChatTurn> Turns
@@ -148,6 +197,48 @@ public sealed class Chat
     /// </remarks>
     public long Total => Turns.Sum(turn => turn.CostSpent ?? 0);
 
+    /// <summary>
+    /// Which chat this is. Rises when a new one is started, so a stream can tell that the changes it
+    /// was reading forward belong to a conversation that is gone (QUERY-005).
+    /// </summary>
+    public int Generation
+    {
+        get
+        {
+            lock (gate)
+            {
+                return generation;
+            }
+        }
+    }
+
+    /// <summary>
+    /// What has changed in this chat, in the order it changed, for a stream to read forward
+    /// (ACCESS-007).
+    /// </summary>
+    /// <remarks>
+    /// <b>Not a replay buffer.</b> Nothing here is ever sent to a subscriber that was not already
+    /// reading forward from it: a browser that connects — or reconnects — is given the snapshot and
+    /// starts at the <em>end</em> of this list, which is what answers ACCESS-007's reconnect clause with
+    /// nothing replayed. What it is for is the opposite problem: a subscriber that <em>is</em> connected
+    /// has to be told the one thing that changed, and "the one thing" is only knowable against what it
+    /// has already been told.
+    /// <para>
+    /// It holds descriptors rather than content, so it is a handful of integers per event, and it goes
+    /// with the chat when a new one is started.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<ChatChange> Changes
+    {
+        get
+        {
+            lock (gate)
+            {
+                return [.. changes];
+            }
+        }
+    }
+
     /// <summary>A question joined the chat, reading <em>waiting its turn</em> (QUERY-001).</summary>
     public void Ask(Question question)
     {
@@ -159,14 +250,61 @@ public sealed class Chat
             // copying: a reader that has the old list reads a chat that existed, and the one
             // subscribers are given next is the one with this question in it.
             turns = [.. turns, new ChatTurn(question)];
+            changes.Add(new ChatChange(ChatEvents.Asked, question.Id));
         }
     }
 
     /// <summary>A piece of the answer, appended as it arrives (ACCESS-007).</summary>
-    public void AgentSaid(Guid runId, string text) => Answering(runId)?.AgentSaid(text);
+    public void AgentSaid(Guid runId, string text)
+    {
+        lock (gate)
+        {
+            if (Answering(runId) is not { } turn)
+            {
+                return;
+            }
+
+            var from = turn.Answer.Length;
+            turn.AgentSaid(text);
+
+            changes.Add(new ChatChange(ChatEvents.Answer, turn.Question.Id, from, turn.Answer.Length));
+        }
+    }
 
     /// <summary>A tool call, or what one returned (ACCESS-007).</summary>
-    public void StepHappened(Guid runId, ChatStep step) => Answering(runId)?.StepHappened(step);
+    public void StepHappened(Guid runId, ChatStep step)
+    {
+        lock (gate)
+        {
+            if (Answering(runId) is not { } turn)
+            {
+                return;
+            }
+
+            turn.StepHappened(step);
+            changes.Add(new ChatChange(ChatEvents.Step, turn.Question.Id, Step: turn.Steps.Count - 1));
+        }
+    }
+
+    /// <summary>
+    /// A question's state or its figures changed — it was handed a run, its run spent, or its run ended
+    /// (ACCESS-007, ACCESS-008).
+    /// </summary>
+    /// <remarks>
+    /// Said by whoever knows, which is the board through the composition root: the state and the
+    /// figures are read off the question and its run rather than kept here, so this carries no values —
+    /// only that there is something new to read.
+    /// </remarks>
+    public void QuestionChanged(Guid questionId)
+    {
+        lock (gate)
+        {
+            if (turns.Exists(turn => turn.Question.Id == questionId))
+            {
+                changes.Add(new ChatChange(ChatEvents.Question, questionId));
+            }
+        }
+    }
 
     /// <summary>
     /// A new chat: the turns and the total are gone and nothing of them is reachable (QUERY-005).
@@ -183,6 +321,8 @@ public sealed class Chat
         lock (gate)
         {
             turns = [];
+            changes.Clear();
+            generation++;
         }
     }
 
@@ -190,5 +330,6 @@ public sealed class Chat
     /// The turn this run is answering, or null where there is none — a question whose chat has been
     /// put away, or a run that is not a question's at all.
     /// </summary>
-    private ChatTurn? Answering(Guid runId) => Turns.FirstOrDefault(turn => turn.Question.RunId == runId);
+    /// <summary>Assumes the lock, where a caller changes something.</summary>
+    private ChatTurn? Answering(Guid runId) => turns.Find(turn => turn.Question.RunId == runId);
 }
