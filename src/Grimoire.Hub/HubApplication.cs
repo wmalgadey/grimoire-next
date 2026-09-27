@@ -54,8 +54,8 @@ public static class HubApplication
     /// only, and this is the next moment Grimoire has. Without it the record and the submission
     /// would disagree for good — the row reading failed beside a record that never says the run
     /// ended, let alone why (RUNS-007, RUNS-008). It is written <b>before</b> the board is told, for
-    /// the reason the conductor writes it there: the browser reads the row and the record with the
-    /// same poll, so a row that reads ended must not reach one that does not.
+    /// the reason the conductor writes it there: the browser reads the row and the record at once, so
+    /// a row that reads ended must not reach a page whose record does not say the run ended.
     /// </para>
     /// </remarks>
     public static void RestoreAfterAStop(
@@ -201,7 +201,13 @@ public static class HubApplication
         app.UseStaticFiles();
 
         var instructions = new InstructionLoader(options.InstructionPath, options.PurposeDescriptionPath);
-        var board = new SubmissionBoard(clock, submissions);
+
+        // What the browser is sent while it has a page open. Built here and given to everything that
+        // knows something changed, so every suite gets the streams the browser gets (Constitution
+        // III.9) — the wiring itself is not tested; what it wires is (III.8).
+        var live = new LiveUpdates();
+
+        var board = new SubmissionBoard(clock, submissions, () => live.Changed(LiveUpdates.Submissions));
 
         // The knot the conductor and the queue make, tied here because neither may hold the other
         // whole: a run that ends is what lets the next one start, and starting one is what gives
@@ -209,13 +215,13 @@ public static class HubApplication
         // (plan.md, Structure Decision).
         RunQueue? queue = null;
         var conductor = new RunConductor(
-            board, harness, wiki, record, clock, options.Model, () => queue!.PumpAsync());
+            board, harness, wiki, record, live, clock, options.Model, () => queue!.PumpAsync());
         queue = new RunQueue(board, conductor, harness, instructions.Assemble);
 
         var intake = new SubmissionIntake(board, queue);
 
-        app.MapSubmissions(intake, board, queue, instructions.Read);
-        app.MapRunRecord(board, record);
+        app.MapSubmissions(intake, board, queue, instructions.Read, live);
+        app.MapRunRecord(board, record, live);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to
         // its run. Unauthenticated and on loopback, per docs/product.md §2.

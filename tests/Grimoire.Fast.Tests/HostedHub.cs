@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using Grimoire.Hub;
 using Grimoire.Hub.Api;
 using Grimoire.Runs;
@@ -92,6 +94,17 @@ internal sealed class HostedHub : IAsyncDisposable
     public Task<HttpResponseMessage> GetAsync(string path) =>
         client.GetAsync(new Uri(path, UriKind.Relative), TestContext.Current.CancellationToken);
 
+    /// <summary>
+    /// A command the page sends with no body — the acknowledgement is the one there is.
+    /// </summary>
+    public Task<HttpResponseMessage> PostAsync(string path) =>
+        client.PostAsync(new Uri(path, UriKind.Relative), content: null, TestContext.Current.CancellationToken);
+
+    /// <summary>
+    /// One of the hub's streams, opened the way the browser's <c>EventSource</c> opens it.
+    /// </summary>
+    public Task<EventStream> WatchAsync(string path) => EventStream.OpeningAsync(client, path);
+
     public async ValueTask DisposeAsync()
     {
         client.Dispose();
@@ -105,4 +118,103 @@ internal sealed class RunReference(InMemorySubmissionStore store)
 {
     public StoredRun? Of(Guid submissionId) =>
         store.Load().FirstOrDefault(s => s.Id == submissionId)?.Run;
+}
+
+/// <summary>
+/// One <c>text/event-stream</c>, read event by event as a test asks for the next one (ACCESS-005,
+/// ACCESS-006, ACCESS-007).
+/// </summary>
+/// <remarks>
+/// <para>
+/// A reader of its own rather than an assertion on a whole body: a stream never ends, so a test that
+/// read it to completion would wait for ever. This one opens the response as soon as the headers are
+/// there and hands over each event as it arrives, which is also the order a test needs — subscribe,
+/// then make something happen, then read what was sent.
+/// </para>
+/// <para>
+/// That <c>TypedResults.ServerSentEvents</c> frames an event is framework behaviour and is not
+/// tested (Constitution III.8, research.md R-01). What is read here is the event name and its one
+/// line of JSON, because that is what we put on the stream.
+/// </para>
+/// </remarks>
+internal sealed class EventStream(HttpResponseMessage response, StreamReader lines) : IAsyncDisposable
+{
+    /// <summary>
+    /// How long a test waits for an event that should already be on its way. Generous enough not to
+    /// be flaky on a loaded machine and far inside the suite's own 15 s (Constitution III.7): a test
+    /// that reaches it has found a stream that sends nothing, which is a failure and not a slow pass.
+    /// </summary>
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(5);
+
+    public static async Task<EventStream> OpeningAsync(HttpClient client, string path)
+    {
+        var response = await client.GetAsync(
+            new Uri(path, UriKind.Relative),
+            HttpCompletionOption.ResponseHeadersRead,
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var stream = await response.Content
+            .ReadAsStreamAsync(TestContext.Current.CancellationToken).ConfigureAwait(false);
+
+        return new EventStream(response, new StreamReader(stream, Encoding.UTF8));
+    }
+
+    /// <summary>The next event: its name, and its <c>data</c> as the one line of JSON it is.</summary>
+    public async Task<(string Event, string Data)> NextAsync()
+    {
+        using var patience = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+
+        patience.CancelAfter(Patience);
+
+        var name = string.Empty;
+        var data = new StringBuilder();
+
+        while (await lines.ReadLineAsync(patience.Token).ConfigureAwait(false) is { } line)
+        {
+            // A blank line ends the event, which is the whole of the framing this reader knows.
+            if (line.Length == 0)
+            {
+                if (data.Length > 0)
+                {
+                    return (name, data.ToString());
+                }
+
+                continue;
+            }
+
+            if (line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                name = line["event:".Length..].Trim();
+            }
+            else if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                // One line of JSON per event, by this API's own rule, so several `data:` lines would
+                // be a shape the contract does not promise — joined with the newline SSE would put
+                // back, so a test that met one would see it rather than a silently mangled body.
+                data.Append(data.Length > 0 ? "\n" : string.Empty).Append(line["data:".Length..].TrimStart());
+            }
+        }
+
+        throw new InvalidOperationException("the stream ended without another event");
+    }
+
+    /// <summary>The next event's <c>data</c>, read as the shape the contract promises.</summary>
+    public async Task<T> NextAsync<T>(string expected)
+    {
+        var (name, data) = await NextAsync().ConfigureAwait(false);
+
+        Assert.Equal(expected, name);
+
+        return JsonSerializer.Deserialize<T>(data)!;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        lines.Dispose();
+        response.Dispose();
+        await Task.CompletedTask.ConfigureAwait(false);
+    }
 }

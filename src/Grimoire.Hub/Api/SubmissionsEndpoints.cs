@@ -144,10 +144,12 @@ public static class SubmissionsEndpoints
         SubmissionIntake intake,
         SubmissionBoard board,
         RunQueue queue,
-        StartUpInputsCheck startUpInputs)
+        StartUpInputsCheck startUpInputs,
+        LiveUpdates live)
     {
         ArgumentNullException.ThrowIfNull(board);
         ArgumentNullException.ThrowIfNull(queue);
+        ArgumentNullException.ThrowIfNull(live);
 
         endpoints.MapPost("/api/submissions", async (SubmissionRequest? request) =>
         {
@@ -163,12 +165,31 @@ public static class SubmissionsEndpoints
                 : Refused(result.Refused!.Value);
         });
 
-        // The browser polls this; there is no push channel. Nothing is exposed here beyond the
-        // fields of a SubmissionView — one more would be a mechanism with no consumer
-        // (Constitution II.1). What a run *did* is the record, served as the file it is by
-        // RunRecordEndpoint, and not a second machine-shaped view of a run (ACCESS-006).
-        endpoints.MapGet("/api/submissions", () =>
-            new SubmissionListView([.. board.All.Select(SubmissionView.Of)], Ceilings.Fixed.Cost));
+        // Nothing is exposed here beyond the fields of a SubmissionView — one more would be a
+        // mechanism with no consumer (Constitution II.1). What a run *did* is the record, served as
+        // the file it is by RunRecordEndpoint, and not a second machine-shaped view of a run
+        // (ACCESS-006).
+        //
+        // It stands **beside** the stream below rather than being replaced by it: the snapshot the
+        // stream opens with is this same body, and a second way of reading it is one place the shape
+        // is written down (contracts/hub-http-api.md).
+        endpoints.MapGet("/api/submissions", () => List(board));
+
+        // The same list, sent rather than asked for — and **the whole list each time, never a
+        // delta**, because it is read as one instant under the board's one lock and a delta would
+        // break exactly that (ACCESS-005, research.md R-05).
+        //
+        // An event goes out whenever anything about a submission changed: a state, a figure, an
+        // acknowledgement. Which of those it was is not said and does not have to be — the page
+        // updates its rows in place from the list it is given, keyed by the submission's id.
+        endpoints.MapGet("/api/submissions/events", (CancellationToken token) =>
+            TypedResults.ServerSentEvents(
+                live.Watch<SubmissionListView>(
+                    LiveUpdates.Submissions,
+                    _ => [List(board)],
+                    _ => [List(board)],
+                    token),
+                eventType: "submissions"));
 
         // The acknowledgement addresses a submission, which has exactly one run (INGEST-002), so
         // naming it names its failed run — and no run identifier has to reach the browser for the
@@ -190,6 +211,12 @@ public static class SubmissionsEndpoints
 
         return endpoints;
     }
+
+    /// <summary>
+    /// The list as both the endpoint and the stream answer with it, so the two cannot drift apart.
+    /// </summary>
+    private static SubmissionListView List(SubmissionBoard board) =>
+        new([.. board.All.Select(SubmissionView.Of)], Ceilings.Fixed.Cost);
 
     private static IResult Refused(Refusal refusal)
     {

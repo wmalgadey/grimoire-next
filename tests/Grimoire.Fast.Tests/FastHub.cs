@@ -41,12 +41,18 @@ internal sealed class FastHub
         Record = record;
         Harness = new InMemoryAgentHarness(journal);
         Clock = FastSuite.Clock();
-        Board = new SubmissionBoard(Clock, store);
+
+        // The same one the composition root builds, so a test reads the streams the browser reads —
+        // in process, as an IAsyncEnumerable, with no socket anywhere (research.md R-11).
+        Live = new LiveUpdates();
+
+        Board = new SubmissionBoard(Clock, store, () => Live.Changed(LiveUpdates.Submissions));
 
         // The same knot the composition root ties: a run that ends lets the next one start
         // (HubApplication.Build).
         RunQueue? queue = null;
-        Conductor = new RunConductor(Board, Harness, Wiki, Record, Clock, Model, () => queue!.PumpAsync());
+        Conductor = new RunConductor(
+            Board, Harness, Wiki, Record, Live, Clock, Model, () => queue!.PumpAsync());
         queue = new RunQueue(Board, Conductor, Harness, Prompt);
         Queue = queue;
         Intake = new SubmissionIntake(Board, Queue);
@@ -88,6 +94,9 @@ internal sealed class FastHub
 
     /// <summary>Where this hub's runs leave their records (RUNS-007).</summary>
     public InMemoryRunRecord Record { get; }
+
+    /// <summary>What the browser would be sent (ACCESS-005, ACCESS-006).</summary>
+    public LiveUpdates Live { get; }
 
     public SubmissionBoard Board { get; }
 

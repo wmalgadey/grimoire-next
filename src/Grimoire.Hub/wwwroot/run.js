@@ -21,17 +21,14 @@ const submission = new URLSearchParams(window.location.search).get("submission")
 // page would show it only after a reload (ACCESS-006: lines must arrive as they are appended).
 const shown = [];
 
-// Two polls can be in flight at once, and they can answer out of order. The newest request's answer is
-// the current one: an older answer arriving after it would put `shown` back to a smaller number, and
-// the next poll would append segments that are already on the page. `app.js` has guarded exactly this
-// since `001-first-ingest`, and the record only grows, so the risk is real rather than theoretical —
-// a large record's fetch takes longer than the second between polls.
-let newestRequest = 0;
-
-// And its own counter for the list, which is a second poll with a second answer that can arrive out of
-// order. Shared with the record's, a slow record answer would silence a fresh warning — and the warning
-// is the one thing on this page that says the record is incomplete (RUNS-007).
-let newestMissingRequest = 0;
+// The record as far as it has been sent. The stream opens with the whole of it and every later event
+// carries only the bytes appended since, so this is where they are joined back into the one text the
+// splitting below reads (contracts/hub-http-api.md).
+//
+// There is no ordering to guard any more. Two polls could answer out of order, which is what the
+// counters here used to be for; one stream delivers its events in the order they were put on it, and
+// a reconnection opens with a fresh snapshot rather than a later piece of an older text.
+let sent = "";
 
 // The five first lines a segment can have, after the time — plus the one a record gets when entries
 // could not be written. A `## ` line that matches none of them is not a boundary: the agent's own
@@ -466,42 +463,10 @@ function sections(body, level) {
   return { lead, inside };
 }
 
-async function refresh() {
-  const request = ++newestRequest;
-
-  let response;
-  try {
-    // no-store, because a polled record answered from the browser's cache is a run that has stopped
-    // growing on the screen and not in fact (contracts/hub-http-api.md).
-    response = await fetch(`/api/submissions/${submission}/record`, { cache: "no-store" });
-  } catch {
-    // Grimoire could not be reached. What is on the screen stays: a record that has not been
-    // contradicted is still the last one known.
-    return;
-  }
-
-  if (response.status === 404) {
-    // A run whose record is not there yet — or was never written at all. Said, and then asked again on
-    // the next poll: the head is written as the run begins, so a page opened in that instant recovers
-    // by itself (RUNS-007).
-    if (request === newestRequest) {
-      message.textContent = "There is no record for this run.";
-    }
-
-    return;
-  }
-
-  if (!response.ok) {
-    return;
-  }
-
-  const text = await response.text();
-
-  // An older answer than one already rendered says nothing true about the record now.
-  if (request !== newestRequest) {
-    return;
-  }
-
+// The record as it now stands, drawn. It appends exactly what it appended before: the segmentation
+// rule is the record's own (specs/003-live-run-record/contracts/run-record.md) and has not changed —
+// what changed is only that the text arrives in pieces instead of being fetched whole.
+function drawn(text) {
   const { frame: head, segments } = split(text);
 
   // The frame is replaced rather than appended to, because it is the one part that grows in place:
@@ -527,8 +492,6 @@ async function refresh() {
   message.textContent = "";
 }
 
-// How many entries of this run's record could not be written. It comes off the list, which is where
-// the count lives: the figures are state and the record is prose (research.md R-06).
 // How much of a segment is written: the sections inside it, and the sections inside each of those.
 function countsIn(segment) {
   const { inside } = sections(segment.body, 3);
@@ -606,47 +569,59 @@ function foldFor(item) {
   return made;
 }
 
-async function refreshMissing() {
-  const request = ++newestMissingRequest;
-
-  let response;
-  try {
-    response = await fetch("/api/submissions", { cache: "no-store" });
-  } catch {
-    return;
-  }
-
-  if (!response.ok) {
-    return;
-  }
-
-  const body = await response.json().catch(() => null);
-
-  // An older answer than one already shown would put back a count that has since risen — hiding a
-  // warning the newest state still calls for.
-  if (request !== newestMissingRequest) {
-    return;
-  }
-
-  const mine = body?.submissions?.find((s) => s.id === submission);
-
-  // Said only where lines are actually missing. The run went on; a gap that passed for an agent doing
-  // nothing would be worse than the gap (RUNS-007).
-  missing.textContent = mine?.entriesLost
-    ? `${mine.entriesLost} entries of this run could not be written, and are missing below.`
+// How many entries of this run's record could not be written. It comes on the record's own stream now
+// rather than off the list, because it is a fact about this record and the page that shows the record
+// is the page that says so (RUNS-007, contracts/hub-http-api.md).
+//
+// Said only where lines are actually missing. The run went on; a gap that passed for an agent doing
+// nothing would be worse than the gap.
+function lost(count) {
+  missing.textContent = count
+    ? `${count} entries of this run could not be written, and are missing below.`
     : "";
 }
 
-// Once a second, the same interval the list uses: there is no push channel, and a run takes minutes,
-// so a second is soon enough to feel live and rare enough to be nothing. Every poll appends only the
-// segments that are not already on the page and never replaces one that is — which is what keeps the
-// scroll where the user put it and a result they have opened open (ACCESS-006, research.md R-08).
-const pollEveryMs = 1000;
+// **Nothing polls.** The record arrives as it is appended to: the stream opens with the whole of it and
+// every later event carries only what was written since, joined back here into the one text
+// (ACCESS-006, research.md R-01, R-05). Every draw appends only the segments that are not already on
+// the page and never replaces one that is — which is what keeps the scroll where the user put it and a
+// result they have opened open (research.md R-08).
+//
+// A dropped connection is `EventSource`'s own to make again, and it opens with a fresh snapshot — the
+// whole record, which is what the first event of every stream carries.
+function watch() {
+  const events = new EventSource(`/api/submissions/${submission}/record/events`);
 
-function poll() {
-  refresh();
-  refreshMissing();
+  // Whether the next `record` event is this connection's opening one. The first event of every stream
+  // carries the whole of the record, so on a connection made again it replaces what is held rather
+  // than being added to it — added, a reconnection would hold the record twice. What is already on the
+  // page is untouched either way: `drawn` appends only the segments past those it has drawn.
+  let opened = false;
+
+  events.addEventListener("record", (event) => {
+    const { append } = JSON.parse(event.data);
+
+    sent = opened ? sent + append : append;
+    opened = true;
+
+    drawn(sent);
+  });
+
+  events.addEventListener("missing", (event) => lost(JSON.parse(event.data).entriesLost));
+
+  events.addEventListener("error", () => {
+    // `EventSource` makes a dropped connection again by itself and this is not that case: it gives up
+    // only where the endpoint answered something other than a stream, which here means the one answer
+    // it has — there is no such run, or its record is not there yet. The head is written as the run
+    // begins, so a page opened in that instant recovers by asking once more; anything else and the
+    // message stands (RUNS-007).
+    if (events.readyState !== EventSource.CLOSED) {
+      return;
+    }
+
+    message.textContent = "There is no record for this run.";
+    setTimeout(watch, 1000);
+  });
 }
 
-setInterval(poll, pollEveryMs);
-poll();
+watch();

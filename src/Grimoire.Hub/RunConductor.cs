@@ -15,6 +15,7 @@ public sealed class RunConductor(
     IAgentHarness harness,
     IWikiStore wiki,
     IRunRecord record,
+    LiveUpdates live,
     TimeProvider clock,
     string model,
     RunConductor.NextRunMayStart nextRunMayStart)
@@ -136,6 +137,12 @@ public sealed class RunConductor(
             run.Grant.RecordedAt,
             run.Ceilings,
             run.StartedAt));
+
+        // Published after the call that wrote it, at the place that already knows the record grew —
+        // here, that is the head, which is what a page opened in this same instant reads (ACCESS-006,
+        // research.md R-05). A subscriber that is not there yet is told nothing and needs to be:
+        // its stream opens with the record so far.
+        live.Changed(LiveUpdates.RecordOf(run.Id));
 
         // GUARD-004's elapsed ceiling has to be able to fire while the agent says nothing at all —
         // a model call that hangs, or a tool call that never comes back, is exactly the run the
@@ -282,6 +289,7 @@ public sealed class RunConductor(
             };
 
             record.Append(RunMoment.Of(watched.Run.Id, clock.GetUtcNow(), moment, depth));
+            live.Changed(LiveUpdates.RecordOf(watched.Run.Id));
 
             if (moment.Kind == RunMomentKind.ToolCalled)
             {
@@ -379,6 +387,7 @@ public sealed class RunConductor(
                 // then fails ends the run, and the tail says so.
                 record.Append(RunMoment.GrimoireSaid(
                     watched.Run.Id, clock.GetUtcNow(), IAgentHarness.LogEntryMissing));
+                live.Changed(LiveUpdates.RecordOf(watched.Run.Id));
 
                 // The nudge closes the turn rather than opening one. What the agent does next is the
                 // agent's, and writing it inside a section headed "Grimoire" would read as though
@@ -475,7 +484,7 @@ public sealed class RunConductor(
 
         // The tail where the verdict is taken, and with the final figures beside it. Written before
         // the board is told, so that a record is complete by the time the browser can read the row as
-        // ended — the two are read by the same poll (RUNS-007, RUNS-008).
+        // ended — the two views are fed from the same two writes, in this order (RUNS-007, RUNS-008).
         record.Ended(new RunFrameTail(
             run.Id,
             clock.GetUtcNow(),
@@ -487,9 +496,14 @@ public sealed class RunConductor(
             run.Ceilings,
             run.TokensPerModel));
 
-        // The terminal state and the final figures in one pass of the board's lock. Told separately, a
-        // poll landing between them would read `running` beside a final figure — and a tail whose write
-        // just failed would raise the count of lost entries on a row still reading `running`
+        // The tail, before the board is told — the same order the record and the row are written in,
+        // and now the same order the browser is sent them in: a row that reads ended must not reach a
+        // page whose record does not say the run ended (RUNS-007, RUNS-008).
+        live.Changed(LiveUpdates.RecordOf(run.Id));
+
+        // The terminal state and the final figures in one pass of the board's lock. Told separately, an
+        // event going out between them would carry `running` beside a final figure — and a tail whose
+        // write just failed would raise the count of lost entries on a row still reading `running`
         // (ACCESS-005).
         board.Ended(
             run.SubmissionId,

@@ -74,61 +74,61 @@ ACCESS-006 are proven again across the stream, their wording unchanged. **DEC-03
 
 > Written first and seen failing before the implementation below.
 
-- [ ] T001 [P] `LiveUpdatesTests` in `tests/Grimoire.Fast.Tests/`: a subscriber is given a snapshot
+- [X] T001 [P] `LiveUpdatesTests` in `tests/Grimoire.Fast.Tests/`: a subscriber is given a snapshot
       as its first event and increments after it; a second subscriber gets a snapshot of its own; what
       is published while nobody is subscribed is not replayed to the next subscriber, because the
       snapshot is what answers a reconnect (research.md R-01) — **Req:** ACCESS-005, ACCESS-006 | **Level:** Fast — **Why not lower:** there is no lower level; the stream is read as an `IAsyncEnumerable` in-process, never over a socket
-- [ ] T002 [P] `LiveUpdatesTests`: nothing is kept per subscriber but how far through a record it has
+- [X] T002 [P] `LiveUpdatesTests`: nothing is kept per subscriber but how far through a record it has
       been sent, and two subscribers at different offsets are each sent only what is past their own —
       **Req:** ACCESS-006 | **Level:** Fast — **Why not lower:** the offset is our own bookkeeping and touches no disk
-- [ ] T003 [P] `SubmissionStreamTests` in `tests/Grimoire.Fast.Tests/`: the stream's opening event
+- [X] T003 [P] `SubmissionStreamTests` in `tests/Grimoire.Fast.Tests/`: the stream's opening event
       carries exactly the body `GET /api/submissions` answers, including the cost ceiling; every later
       event carries **the whole list again, never a delta**, because the list is read as one instant
       under the board's one lock — **Req:** ACCESS-005 | **Level:** Fast — **Why not lower:** the endpoint is reachable in-process through `HubApplication.Build`
-- [ ] T004 [P] `SubmissionStreamTests`: an event is sent when a state, a figure or an acknowledgement
+- [X] T004 [P] `SubmissionStreamTests`: an event is sent when a state, a figure or an acknowledgement
       changed, and the figures in it are the same one reading of `SubmissionStatus` the list already
       answers with — **Req:** ACCESS-005, RUNS-010 | **Level:** Fast — **Why not lower:** the board's changes are driven in-process with the in-memory store
-- [ ] T005 [P] `RecordStreamTests` in `tests/Grimoire.Fast.Tests/`: the opening `record` event carries
+- [X] T005 [P] `RecordStreamTests` in `tests/Grimoire.Fast.Tests/`: the opening `record` event carries
       the record so far byte for byte; each later one carries only the bytes appended since **this**
       subscriber's last event; a `missing` event carries `entriesLost` on connect and again when the
       count rises — **Req:** ACCESS-006, RUNS-007 | **Level:** Fast — **Why not lower:** the in-memory record adapter is what can be made to grow and to lose an entry on demand
-- [ ] T006 [P] `RecordStreamTests`: `404` where there is no such submission, where it has no run yet,
+- [X] T006 [P] `RecordStreamTests`: `404` where there is no such submission, where it has no run yet,
       and where its record was never written — the same three cases and the same one answer as the
       endpoint beside it — **Req:** ACCESS-006 | **Level:** Fast — **Why not lower:** in-process through `HubApplication.Build`, as the record endpoint's own tests already are
 
 ### Implementation for the foundation
 
-- [ ] T007 `src/Grimoire.Hub/LiveUpdates.cs`: a plain class — **no port and no interface**, because
+- [X] T007 `src/Grimoire.Hub/LiveUpdates.cs`: a plain class — **no port and no interface**, because
       nothing is outside the process and no second implementation exists (Constitution II.4). One
       unbounded `System.Threading.Channels.Channel` per subscriber, drained by the endpoint serving its
       stream, and a per-subscriber offset for the record (research.md R-05) — **Req:** ACCESS-005, ACCESS-006
-- [ ] T008 `src/Grimoire.Runs/SubmissionBoard.cs`: one `Changed` delegate the composition root
+- [X] T008 `src/Grimoire.Runs/SubmissionBoard.cs`: one `Changed` delegate the composition root
       supplies, raised where the board already changes something under its lock. A delegate rather
       than an event or an observer, following `RunConductor.NextRunMayStart` — one precedent, not a
       second mechanism beside it (Constitution II.1). **The class is renamed to `RunBoard` in phase
       3**, not here — **Req:** ACCESS-005
-- [ ] T009 `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs`: `GET /api/submissions/events`, served with
+- [X] T009 `src/Grimoire.Hub/Api/SubmissionsEndpoints.cs`: `GET /api/submissions/events`, served with
       `TypedResults.ServerSentEvents`, `event: submissions`, `data` one line of JSON — the same body
       the list endpoint answers. The stream is **beside** `GET /api/submissions`, not instead of it
       (contracts/hub-http-api.md) — **Req:** ACCESS-005
-- [ ] T010 [P] `src/Grimoire.Hub/Api/RunRecordEndpoint.cs`:
+- [X] T010 [P] `src/Grimoire.Hub/Api/RunRecordEndpoint.cs`:
       `GET /api/submissions/{id}/record/events`, `event: record` with `{"append": …}` read through
       `IRunRecord.Read`, and `event: missing` with `{"entriesLost": n}`. The bytes are read through the
       port so that `MarkdownRunRecord` stays the only thing that renders a record — two renderers of
       one record can disagree, which is the seam DEC-030 named (research.md R-05) — **Req:** ACCESS-006
-- [ ] T011 `src/Grimoire.Hub/RunConductor.cs`: publishes a record's growth after each `IRunRecord`
+- [X] T011 `src/Grimoire.Hub/RunConductor.cs`: publishes a record's growth after each `IRunRecord`
       call, at the place that already knows — **Req:** ACCESS-006
-- [ ] T012 `src/Grimoire.Hub/HubApplication.cs`: `LiveUpdates` built and the board's `Changed`
+- [X] T012 `src/Grimoire.Hub/HubApplication.cs`: `LiveUpdates` built and the board's `Changed`
       supplied, so every suite gets the streams the browser gets (Constitution III.9). Wiring is not
       tested (III.8); what it wires is — **Req:** Principle V.2
-- [ ] T013 `src/Grimoire.Hub/wwwroot/app.js`: the list drawn from `GET /api/submissions/events` with
+- [X] T013 `src/Grimoire.Hub/wwwroot/app.js`: the list drawn from `GET /api/submissions/events` with
       `EventSource`; **the one-second poll is deleted**. Rows are still updated in place, keyed by the
       submission's id, so a rising figure and the Acknowledge control are untouched (ACCESS-005) — **Req:** ACCESS-005
-- [ ] T014 [P] `src/Grimoire.Hub/wwwroot/run.js`: the record drawn from
+- [X] T014 [P] `src/Grimoire.Hub/wwwroot/run.js`: the record drawn from
       `GET /api/submissions/{id}/record/events` with `EventSource`; **the poll is deleted**. It appends
       exactly what it appended before — the segmentation rule is the record's own
       (`specs/003-live-run-record/contracts/run-record.md`) and has not changed — **Req:** ACCESS-006
-- [ ] T015 `tests/Grimoire.E2E.Tests/SubmissionStatesTests.cs` and `RunRecordViewTests.cs`: the two
+- [X] T015 `tests/Grimoire.E2E.Tests/SubmissionStatesTests.cs` and `RunRecordViewTests.cs`: the two
       suites keep their requirement IDs and their assertions, and stop waiting for a poll interval.
       **ACCESS-005 and ACCESS-006 are re-proven, not reworded** — a figure rising must still move no
       row, and a moment arriving must still appear below what is there with the scroll and an opened
