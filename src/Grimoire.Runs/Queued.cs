@@ -136,6 +136,16 @@ public abstract class Queued
     /// </summary>
     internal void Ended(RunOutcome outcome, RunEndedBecause? reason = null)
     {
+        // A run ends done or failed, and nothing else reaches this. Refused rather than read around:
+        // `StateNow` treats a value it does not know as not yet terminal while the board would write it
+        // down as failed, so the board and the store would disagree and the queue would stay blocked on
+        // something that reads as still running. What cannot be read is refused, as a `tools` array
+        // that is not names already is (GUARD-001's precedent).
+        if (outcome is not (RunOutcome.Done or RunOutcome.Failed))
+        {
+            throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "a run ends done or failed");
+        }
+
         // Guard and write under the one lock: read separately, a report and an ending racing would
         // both pass, and the later write could put a terminal one back.
         if (terminal is { } already)

@@ -42,7 +42,6 @@ public sealed class ChatTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-007")]
     public async Task Chat_HoldsTheStepsUnderTheAnswer_InTheOrderTheyHappened()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -68,7 +67,6 @@ public sealed class ChatTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-007")]
     public async Task Chat_HoldsWhatCameBackWhole()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -95,7 +93,6 @@ public sealed class ChatTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-008")]
     public async Task Chat_CarriesNoCostForAQuestionWaitingItsTurn()
     {
         await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -109,7 +106,6 @@ public sealed class ChatTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-008")]
     [Trait("req", "RUNS-010")]
     public async Task Chat_CarriesTheCostItsRunSpent()
     {
