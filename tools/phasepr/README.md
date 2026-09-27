@@ -21,8 +21,9 @@ per phase N  branch <NNN-slug>-phase-N[-slug]   off the feature branch
                                                 until every task of N is checked, the tree is clean
                                                 and gates.sh is green — run by phasepr, not the agent
              PR phase -> feature                not a draft; Copilot reviews it on opening
-             review loop (≤ 3 rounds)           wait for the review of the head, triage iteration,
-                                                push + re-request when the triage committed
+             review loop (≤ 3 rounds)           wait for the review of the head, triage iteration;
+                                                when it committed: push, and re-request a review
+                                                only if the agent decided on a further round (I.11)
              merge                              CI green, no conflict, owner approval where I.11 wants it;
                                                 `gh pr merge --merge --delete-branch`; tick the checklist
 at the end   scripts/mutation.sh                its table into specs/<NNN-slug>/mutation.md, committed
@@ -215,7 +216,7 @@ owner has to make. Rerun it once that is decided.
 | Halt | When | The owner |
 | --- | --- | --- |
 | `review-timeout` | no review of the head within `review_timeout` | checks Copilot review is on and has quota; the rerun re-requests it |
-| `review-rounds` | the last allowed round changed code again, or threads are open after it | answers and resolves the threads; the rerun merges once a review of the head leaves none |
+| `review-rounds` | the agent asks for a further round after the last allowed one, or threads are open after it | answers and resolves the threads; the rerun merges once a review of the head leaves none |
 | `gates-red` | the same gate failed twice in a row for the same reason (error lines, digits stripped) | fixes it, or leaves a hint in `memory.md` |
 | `agent-halt` | an agent ended with `{"halt": "…"}` — owner tasks, instructions, decisions, a blocking rule, unchecked checklists, spec and tasks disagreeing | decides what it names |
 | `merge-conflict` | the phase PR conflicts with the feature branch | merges the feature branch in (no rebase) |
@@ -253,9 +254,16 @@ commits them:
 `prompts/` holds everything the agents are told; the script carries no instruction text. The
 prompts point at `.specify/memory/constitution.md` and `docs/review-checklist.md` instead of
 restating them. Each ends in a one-line JSON contract: `{"halt": …}` for implement,
-`{"changed": …, "halt": …}` for triage. The triage agent replies to and resolves threads itself
-through `gh-review.sh`, and records the round decision in one sentence on the PR (I.11, checklist
-item 4).
+`{"changed": …, "another_round": …, "halt": …}` for triage. The triage agent replies to and
+resolves threads itself through `gh-review.sh`, and records the round decision in one sentence on
+the PR (I.11, checklist item 4).
+
+The round decision is the agent's, as I.11 has it: after a push it says whether a further round is
+needed, by the size and complexity of its change and whether the findings altered the design.
+phasepr carries the decision out — it re-requests the review only on `another_round: true` — and
+holds the cap: a round is a push after findings, three at most; asking for a fourth hands the PR to
+the owner. A review closed without a further round stays closed across a rerun: phasepr remembers
+the head it was closed on and merges it without waiting for another review.
 
 ## Tests
 

@@ -236,6 +236,7 @@ S_GATE_SIG=""
 S_GREEN_HEAD=""
 S_MUTATION=""
 S_OWNER_ASKED=""
+S_REVIEW_CLOSED=""
 S_HALT="none"
 S_HALT_SUMMARY="none"
 REREQUEST_ON_RESUME=false
@@ -263,6 +264,7 @@ state_load() {
     S_GREEN_HEAD=$(state_value green_head)
     S_MUTATION=$(state_value mutation)
     S_OWNER_ASKED=$(state_value owner_review_asked)
+    S_REVIEW_CLOSED=$(state_value review_closed_on)
     S_HALT=$(state_value halt); S_HALT=${S_HALT:-none}
 }
 
@@ -287,8 +289,8 @@ state_write() {
         "MUTATION=${S_MUTATION:-$d}" "HALT=$S_HALT" "UPDATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         "PHASES_TABLE=$(phases_table)" "HALT_SUMMARY=$S_HALT_SUMMARY" > "$STATE.tmp"
     # Two keys the template does not show a reader, kept below the table.
-    printf '\n<!-- machine -->\n- phase_prs: %s\n- owner_review_asked: %s\n' \
-        "${S_PHASE_PRS:-$d}" "${S_OWNER_ASKED:-$d}" >> "$STATE.tmp"
+    printf '\n<!-- machine -->\n- phase_prs: %s\n- owner_review_asked: %s\n- review_closed_on: %s\n' \
+        "${S_PHASE_PRS:-$d}" "${S_OWNER_ASKED:-$d}" "${S_REVIEW_CLOSED:-$d}" >> "$STATE.tmp"
     mv "$STATE.tmp" "$STATE"
 }
 
@@ -476,7 +478,7 @@ invoke_claude() {
         printf '[dry-run] claude -p "$(cat %q)"' "$base.prompt.md" >&2
         printf ' %q' "${cmd[@]:3}" >&2
         printf '\n' >&2
-        AGENT_RESULT='{"changed": false, "halt": null}'
+        AGENT_RESULT='{"changed": false, "another_round": false, "halt": null}'
         AGENT_RC=0
         AGENT_DENIED=""
         return 0
@@ -687,6 +689,7 @@ open_phase_pr() {
 
 triage_round() {
     local n=$1 threads=$2 before branches others prompt json halt_reason changed_json changed_git remaining
+    local another
     S_STEP=triage
     state_write
     before=$(git rev-parse HEAD)
@@ -710,8 +713,8 @@ triage_round() {
     check_denials triage
     check_commit_subjects "$before"
     json=$(json_tail "$AGENT_RESULT")
-    if [[ -z "$json" ]] || ! jq -e 'has("changed")' <<< "$json" >/dev/null; then
-        record_progress false "triage (no {\"changed\", \"halt\"} line)"
+    if [[ -z "$json" ]] || ! jq -e 'has("changed") and has("another_round")' <<< "$json" >/dev/null; then
+        record_progress false "triage (no {\"changed\", \"another_round\", \"halt\"} line)"
         return 0
     fi
     halt_reason=$(jq -r '.halt // empty' <<< "$json")
@@ -727,15 +730,25 @@ triage_round() {
         return 0
     fi
 
+    # I.11: whether a further round follows a push is the agent's decision, by the size of its
+    # change; phasepr carries it out and holds the cap. A round counts where findings led to a push.
+    another=$(jq -r '.another_round' <<< "$json")
     if [[ "$changed_git" == "true" ]]; then
         record_progress true triage
         ensure_green "$n"
         push_branch "$S_PHASE_BRANCH"
         S_REVIEW_ROUND=$((S_REVIEW_ROUND + 1))
         state_write
+        if [[ "$another" != "true" ]]; then
+            log "phase $n: round $S_REVIEW_ROUND closes the review (the agent asked for no further round)"
+            S_REVIEW_CLOSED=$(git rev-parse HEAD)
+            state_write
+            TRIAGE_DONE=true
+            return 0
+        fi
         "$GH_REVIEW" rerequest "$S_PHASE_PR"
         if (( S_REVIEW_ROUND >= CFG_MAX_ROUNDS )); then
-            halt review-rounds "Round $S_REVIEW_ROUND of $CFG_MAX_ROUNDS changed code again, so the review is not closed (I.11). Read the new review on PR #$S_PHASE_PR; resolve or answer what is left, then rerun — phasepr merges once a review of the head leaves no open thread."
+            halt review-rounds "Round $S_REVIEW_ROUND of $CFG_MAX_ROUNDS changed code, and the agent asks for a further round (I.11) — the owner reviews from here, with the reviewer's review of this push. Read PR #$S_PHASE_PR; resolve or answer what is left, then rerun — phasepr merges once a review of the head leaves no open thread."
         fi
         return 0
     fi
@@ -767,6 +780,11 @@ review_loop() {
     owner=$("$GH_REVIEW" owner)
     while :; do
         head=$(git rev-parse HEAD)
+        # The last triage closed the review on this very head (I.11); nothing is left to wait for.
+        if [[ -n "$S_REVIEW_CLOSED" && "$S_REVIEW_CLOSED" == "$head" ]]; then
+            ensure_pr_head "$head"
+            return 0
+        fi
         S_STEP=review
         state_write
         if [[ "$REREQUEST_ON_RESUME" == "true" ]]; then
@@ -846,6 +864,7 @@ merge_phase() {
     S_PHASE_PRS="${S_PHASE_PRS:+$S_PHASE_PRS }$n=$S_PHASE_PR"
     S_PHASE_PR=""
     S_REVIEW_ROUND=0
+    S_REVIEW_CLOSED=""
     S_ITER=0
     S_NO_PROGRESS=0
     S_GATE_SIG=""
@@ -882,6 +901,7 @@ run_phase() {
         S_PHASE=$n
         S_PHASE_PR=""
         S_REVIEW_ROUND=0
+        S_REVIEW_CLOSED=""
         S_ITER=0
         S_GATE_SIG=""
         S_GREEN_HEAD=""

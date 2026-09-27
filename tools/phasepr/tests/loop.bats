@@ -170,7 +170,7 @@ setup() {
         gh_review=$(grep -oE "bash [^ ]+/gh-review.sh" <<< "$PROMPT" | head -n1 | cut -d" " -f2)
         "$gh_review" reply 102 101 "Fixed in $(git rev-parse --short HEAD): renamed."
         "$gh_review" resolve T_1_1
-        echo "{\"changed\": true, \"halt\": null}"'
+        echo "{\"changed\": true, \"another_round\": true, \"halt\": null}"'
     run phasepr --phase 2
     echo "$output"
     [ "$status" -eq 0 ]
@@ -181,6 +181,55 @@ setup() {
     git log --format=%s origin/042-demo | grep -qx 'fix(042): rename the thing'
     # The gates ran again before the fix was pushed.
     [ "$(count_calls '^dotnet test')" -eq 2 ]
+}
+
+@test "a triage that decides no further round closes the review with its push, and the phase merges" {
+    threads_for_review 1 1
+    scenario triage-review.sh '
+        echo "fix" >> src-phase-2.txt
+        git commit -qam "fix(042): the one-line fix the reviewer named"
+        gh_review=$(grep -oE "bash [^ ]+/gh-review.sh" <<< "$PROMPT" | head -n1 | cut -d" " -f2)
+        "$gh_review" reply 102 101 "Fixed in $(git rev-parse --short HEAD)."
+        "$gh_review" resolve T_1_1
+        echo "{\"changed\": true, \"another_round\": false, \"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ "$(count_calls 'requested_reviewers')" -eq 0 ]
+    git fetch -q origin
+    git log --format=%s origin/042-demo | grep -qx 'fix(042): the one-line fix the reviewer named'
+    pr_json 102 | jq -e '.merged_at != null'
+}
+
+@test "after a halt between the closing push and the merge, a rerun merges without waiting for a review" {
+    threads_for_review 1 1
+    scenario triage-review.sh '
+        echo "fix" >> src-phase-2.txt
+        git commit -qam "fix(042): the fix"
+        gh_review=$(grep -oE "bash [^ ]+/gh-review.sh" <<< "$PROMPT" | head -n1 | cut -d" " -f2)
+        "$gh_review" resolve T_1_1
+        echo "{\"changed\": true, \"another_round\": false, \"halt\": null}"'
+    export FAKE_CHECKS_RC=1
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: ci-red"* ]]
+    export FAKE_CHECKS_RC=0
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ "$(count_calls 'requested_reviewers')" -eq 0 ]
+    [ "$(count_calls '^claude triage-review')" -eq 1 ]
+    pr_json 102 | jq -e '.merged_at != null'
+}
+
+@test "a triage without its round decision counts as no progress" {
+    threads_for_review 1 1
+    scenario triage-review.sh 'echo "{\"changed\": false, \"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: circuit-breaker"* ]]
+    [ "$(count_calls '^claude triage-review')" -eq 3 ]
 }
 
 @test "declined findings are answered and resolved without a push" {
@@ -200,7 +249,7 @@ setup() {
     scenario triage-review.sh '
         echo "fix $CALL" >> src-phase-2.txt
         git commit -qam "fix(042): round $CALL"
-        echo "{\"changed\": true, \"halt\": null}"'
+        echo "{\"changed\": true, \"another_round\": true, \"halt\": null}"'
     run phasepr --phase 2
     echo "$output"
     [ "$status" -eq 1 ]
@@ -221,7 +270,7 @@ setup() {
     scenario triage-review.sh '
         echo "fix $CALL" >> src-phase-2.txt
         git commit -qam "fix(042): round $CALL"
-        echo "{\"changed\": true, \"halt\": null}"'
+        echo "{\"changed\": true, \"another_round\": true, \"halt\": null}"'
     run phasepr --phase 2
     [ "$status" -eq 1 ]
     jq 'map(.isResolved = true)' "$FAKE_GH/threads/102.json" > "$FAKE_GH/t" && mv "$FAKE_GH/t" "$FAKE_GH/threads/102.json"
@@ -248,7 +297,7 @@ setup() {
 
 @test "a triage that claims a change it did not commit halts" {
     threads_for_review 1 1
-    scenario triage-review.sh 'echo "{\"changed\": true, \"halt\": null}"'
+    scenario triage-review.sh 'echo "{\"changed\": true, \"another_round\": false, \"halt\": null}"'
     run phasepr --phase 2
     [ "$status" -eq 1 ]
     [[ "$output" == *"phasepr halted: triage-mismatch"* ]]
@@ -487,7 +536,7 @@ setup() {
         ! "$gh_review" resolve T_other 2>/dev/null
         "$gh_review" reply 102 101 "Declined: a style preference."
         "$gh_review" resolve T_1_1
-        echo "{\"changed\": false, \"halt\": null}"'
+        echo "{\"changed\": false, \"another_round\": false, \"halt\": null}"'
     run phasepr --phase 2
     echo "$output"
     [ "$status" -eq 0 ]

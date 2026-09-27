@@ -50,7 +50,7 @@ default_triage() {
         "$gh_review" reply "$pr" "$c" "Declined: a style preference with no rule behind it."
         "$gh_review" resolve "$t"
     done
-    printf '{"changed": false, "halt": null}\n'
+    printf '{"changed": false, "another_round": false, "halt": null}\n'
 }
 
 set +e

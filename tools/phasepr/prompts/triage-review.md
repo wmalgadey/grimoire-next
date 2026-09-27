@@ -49,8 +49,12 @@ Then:
 
        bash {{GH_REVIEW}} resolve <thread_id>
 
-4. Record the round decision in one sentence on the PR (I.11): whether a further review round is
-   needed and why — phasepr requests one whenever you committed:
+4. Decide whether a further review round is needed (I.11) — only when you committed: by the size
+   and complexity of your change and whether the findings altered the design. A one-line fix of a
+   finding the reviewer named precisely needs none; a change that touches behaviour elsewhere, adds
+   a test for a gap, or reshapes a design does. This round is {{ROUND}} of at most {{MAX_ROUNDS}}:
+   asking for a further round after the last one hands the PR to the owner. Record the decision in
+   one sentence on the PR:
 
        bash {{GH_REVIEW}} comment {{PR}} "Review round {{ROUND}}: <one sentence>"
 
@@ -63,7 +67,9 @@ know something; never commit that file.
 
 End your reply with exactly one line of JSON and nothing after it:
 
-{"changed": true, "halt": null}
+{"changed": true, "another_round": false, "halt": null}
 
-`changed` is `true` exactly when you created at least one commit. `halt` is `null`, or one
-sentence naming the decision the owner has to make and the thread it concerns.
+`changed` is `true` exactly when you created at least one commit. `another_round` is your round
+decision from step 4: `true` has phasepr request a new review of what it pushes, `false` closes the
+review with this round; without a commit it is `false`. `halt` is `null`, or one sentence naming
+the decision the owner has to make and the thread it concerns.
