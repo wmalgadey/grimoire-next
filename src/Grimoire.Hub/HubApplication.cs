@@ -21,12 +21,29 @@ namespace Grimoire.Hub;
 /// Grimoire's own question instruction, versioned in this repository. Changing it is an owner decision
 /// named in the PR, exactly as changing the ingest one is (QUERY-004, Constitution V.1).
 /// </param>
+/// <param name="VaultName">
+/// The Obsidian vault the wiki is read in, or null where the owner has not said. Optional, and its
+/// absence refuses nothing: the answer still arrives and the page's name is still readable in it
+/// (ACCESS-009).
+/// </param>
+/// <param name="WikiPathInVault">
+/// The wiki's own path <b>inside</b> that vault — <c>wiki</c>, not <c>~/Vault/wiki</c> — which is what
+/// a reference's target hangs off: the browser joins this to the target to reach the page.
+/// <para>
+/// It is <em>derived</em> from what the owner gives. They pass <c>--vault-root</c>, the directory they
+/// actually have open in Obsidian, and the entry point works out where the wiki sits inside it — see
+/// <c>StartUp.Read</c>. Carrying the owner's directory here instead would put an absolute filesystem
+/// path into a link that addresses a place inside a vault, which is a different thing entirely.
+/// </para>
+/// </param>
 public sealed record HubOptions(
     string InstructionPath,
     string QuestionInstructionPath,
     string PurposeDescriptionPath,
     string WikiRoot,
-    string Model);
+    string Model,
+    string? VaultName = null,
+    string? WikiPathInVault = null);
 
 /// <summary>
 /// The composition root: the one place that knows every context (plan.md, Structure Decision).
@@ -297,7 +314,7 @@ public static class HubApplication
         var asking = new ChatIntake(board, queue);
 
         app.MapSubmissions(intake, board, queue, instructions.Read, live);
-        app.MapChat(asking, chat, instructions.Read, live);
+        app.MapChat(asking, chat, instructions.Read, live, VaultView.FromStartUp(options.VaultName, options.WikiPathInVault));
         app.MapRunRecord(board, record, live);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to

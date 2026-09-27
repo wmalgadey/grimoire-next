@@ -32,7 +32,22 @@ internal sealed class HostedHub : IAsyncDisposable
     private readonly HttpClient client;
     private readonly string directory;
 
-    public HostedHub(bool recordEverythingFails = false)
+    /// <summary>
+    /// A hub as a running server, optionally one that was <b>told the vault settings</b>.
+    /// </summary>
+    /// <param name="recordEverythingFails">Whether writing a run's record fails (ACCESS-006).</param>
+    /// <param name="vaultName">
+    /// The Obsidian vault the wiki is read in, or null where this hub was not told. A start-up input
+    /// like the instruction paths, so it is given here and not by a request: ACCESS-009 is about what
+    /// the browser is told when the two settings are there and when either is missing.
+    /// </param>
+    /// <param name="wikiPathInVault">
+    /// The wiki's own path <b>inside</b> that vault — <c>wiki</c>, not a filesystem path. The entry
+    /// point derives it from <c>--vault-root</c>; a test gives it directly, because what the browser
+    /// is told is what ACCESS-009 is about.
+    /// </param>
+    public HostedHub(
+        bool recordEverythingFails = false, string? vaultName = null, string? wikiPathInVault = null)
     {
         directory = Directory.CreateTempSubdirectory("grimoire-fast-hub-").FullName;
 
@@ -47,7 +62,14 @@ internal sealed class HostedHub : IAsyncDisposable
 
         app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, questionInstruction, purpose, WikiRoot: directory, Model: FastHub.Model),
+            new HubOptions(
+                instruction,
+                questionInstruction,
+                purpose,
+                WikiRoot: directory,
+                Model: FastHub.Model,
+                VaultName: vaultName,
+                WikiPathInVault: wikiPathInVault),
             Agent,
             Wiki,
             Store,

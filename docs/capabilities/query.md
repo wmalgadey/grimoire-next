@@ -20,6 +20,7 @@ grant recorded and its figures kept (RUNS-002, RUNS-003, RUNS-006, RUNS-010, GUA
 | QUERY-001 | Users MUST be able to ask the wiki a question, and the question MUST be accepted without the user waiting for its answer. | test |
 | QUERY-002 | An accepted question MUST cause a run that is given the question, the purpose description, the question instruction, the run's identifier, and what has been asked and answered in the same chat before it, so that a follow-up is answered in the light of what came before; the run MUST run on the model Grimoire was started with. | test |
 | QUERY-003 | A question MUST be refused when its text is empty or only whitespace, when the question instruction is missing, or when the purpose description is missing; no run MUST start, the refused question MUST NOT be stored and MUST carry no state, and the user MUST be told which of the three it was. | test |
+| QUERY-004 | The question instruction MUST state that the answer is written for the user to read, rests on what the wiki's pages say, names every page it rests on inside its prose as a link to that page in the link form the wiki uses (WIKI-001), and that nothing in the wiki is to be written, changed or appended. | review |
 | QUERY-005 | A chat MUST hold the questions asked in it, their answers and what the agent did, for as long as Grimoire runs and whether or not a browser is connected to it, and MUST NOT survive Grimoire stopping and starting again. | test |
 
 QUERY-001 is INGEST-001's counterpart, and "without the user waiting" means the same thing it means
@@ -33,6 +34,24 @@ then the text — so each refusal names **exactly one** thing and a start with n
 one thing rather than three. A submission is refused on the *ingest* instruction and a question on the
 *question* instruction; the purpose description refuses both (INGEST-003). A refused question becomes
 nothing: it is stored nowhere, carries no state, and there is no run to have failed.
+
+**QUERY-004 is proven by `review`**, and it is the only requirement of this feature that is. It is a
+requirement about **what a text says**, and a test could only match its wording — static content the
+constitution does not test (III.8). An eval cannot prove it either: an eval judges whether the agent
+*followed* the instruction, which is a different claim and belongs to checking the wiki, not to
+whether the instruction states the shape at all. What proves it is the review-checklist item that asks
+of **each** instruction a run receives whether it states the shape its requirement lists, in full
+(`docs/review-checklist.md` item 3).
+
+Where the wiki holds nothing about the question, the instruction has the agent say so plainly, name
+what it looked at, and stop. That is an acceptance criterion of "rests on what the wiki's pages say" —
+where the pages say nothing, resting on them *is* saying so — and a clarification refines rather than
+extends, so it adds no id of its own (Constitution IV.8). Answering from what the model itself knows,
+marked as not from the wiki, was declined: the answer would then not rest on the wiki, and a marked
+sentence is a source with no page behind it.
+
+The instruction is **Grimoire's own**, versioned in this repository at `instructions/question.md`.
+Changing it is an owner decision named in the PR (Constitution I.11, V.1).
 
 QUERY-002 is INGEST-002's counterpart and differs from it in one thing: what the chat has already
 said is handed to the run at dispatch, the way the purpose description is. A chat is therefore a

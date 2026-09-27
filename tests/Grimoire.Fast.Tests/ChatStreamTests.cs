@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Grimoire.Agent;
@@ -304,8 +305,187 @@ public sealed class ChatStreamTests
         Assert.Contains(AboutAda, data, StringComparison.Ordinal);
     }
 
+    [Fact]
+    [Trait("req", "ACCESS-009")]
+    public async Task Stream_OpensWithTheVaultTheWikiIsReadIn_WhenGrimoireWasToldBoth()
+    {
+        await using var hub = new HostedHub(vaultName: "Notes", wikiPathInVault: "wiki");
+
+        var opening = await SnapshotAsync(hub);
+
+        // Both settings as the owner gave them, so that the browser can build the link itself: the
+        // vault to open, and the wiki's own path inside it, which a reference's target hangs off
+        // (ACCESS-009).
+        Assert.Equal(new VaultView("Notes", "wiki"), opening.Vault);
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-009")]
+    public async Task Stream_OpensWithNoVault_WhereGrimoireWasNotToldBoth()
+    {
+        await using var hub = new HostedHub();
+
+        // The field is **absent**, not null: the browser then shows a page's name as plain text and
+        // says opening is not set up, and a key that was there holding nothing would be a setting it
+        // had to interpret (ACCESS-009).
+        Assert.DoesNotContain("vault", await SnapshotFieldsAsync(hub));
+    }
+
+    [Theory]
+    [Trait("req", "ACCESS-009")]
+    [InlineData("/home/me/Vault", "/home/me/Vault/wiki", "wiki")]
+    [InlineData("/home/me/Vault", "/home/me/Vault/notes/wiki", "notes/wiki")]
+    [InlineData("/home/me/Vault", "/home/me/Vault", "")]
+    [InlineData("/home/me/Vault/", "/home/me/Vault/wiki/", "wiki")]
+    public void Vault_CarriesWhereTheWikiSitsInsideIt(string vaultRoot, string wiki, string inside)
+    {
+        // What the owner gives is the directory they have open in Obsidian; what a link needs is the
+        // wiki's path **within** it. Passed straight through, an absolute filesystem path went into a
+        // link that addresses a place inside a vault, and every reference pointed at nothing
+        // (ACCESS-009, quickstart.md).
+        Assert.Equal(inside, VaultView.InVaultPathOf(vaultRoot, wiki));
+    }
+
+    [Theory]
+    [Trait("req", "ACCESS-009")]
+    [InlineData("/home/me/Vault", "/home/me/elsewhere/wiki")]
+    [InlineData("/home/me/Vault/wiki", "/home/me/Vault")]
+    [InlineData("/home/me/Vault", "/etc/wiki")]
+    public void Vault_IsNothing_WhereTheWikiIsNotInsideIt(string vaultRoot, string wiki)
+    {
+        // A wiki outside the vault has no path inside it, so there is nothing to build a link from.
+        // The entry point refuses such a start rather than drawing links that address a place that is
+        // not there — silently drawing none would leave the owner wondering why a setting they gave
+        // does nothing.
+        Assert.Null(VaultView.InVaultPathOf(vaultRoot, wiki));
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-009")]
+    public void Vault_IsCarried_WhereTheWikiIsTheVaultItself()
+    {
+        // An empty path is a **value**, not a missing one: it is what the wiki being the vault makes,
+        // and a reference's target then stands alone. Read as blank, that ordinary setup would draw no
+        // links and say opening was not set up (ACCESS-009).
+        Assert.Equal(new VaultView("Notes", string.Empty), VaultView.FromStartUp("Notes", string.Empty));
+    }
+
+    [Theory]
+    [Trait("req", "ACCESS-009")]
+    [InlineData("Notes", null)]
+    [InlineData(null, "wiki")]
+    [InlineData(null, null)]
+    [InlineData("  ", "wiki")]
+    public void Vault_IsNothing_WhereOnlyOneOfTheTwoWasGiven(string? name, string? wikiPath)
+    {
+        // **Both or neither.** Half the setting is the same as none of it: a vault with no path inside
+        // it addresses the wrong place, and a path inside a vault nobody named addresses nothing.
+        //
+        // Read without a server, because this is which inputs make a vault at all — a decision of ours.
+        // That what it decides then reaches the browser, present or absent, is the two tests above it,
+        // and that is the boundary (Constitution III.6).
+        Assert.Null(VaultView.FromStartUp(name, wikiPath));
+    }
+
+    [Fact]
+    public async Task Stream_CarriesOneStepForEachThingTheAgentDid()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+        await stream.NextAsync<ChatView>("chat");
+
+        hub.Agent.Called(question, "read_page", """{"path":"people/ada-lovelace.md"}""");
+        Returned(hub, question, "read_page", "# Ada Lovelace");
+        hub.Agent.Called(question, "list_pages", "{}");
+
+        // One event per call and one per result, in the order they happened: the user checking an
+        // answer reads what the agent did as a sequence, and a pair folded into one entry — or a result
+        // arriving before the call it belongs to — would not be what happened (ACCESS-007).
+        Assert.Equal(
+            [
+                (ChatStep.Called, "read_page", """{"path":"people/ada-lovelace.md"}"""),
+                (ChatStep.Returned, "read_page", "# Ada Lovelace"),
+                (ChatStep.Called, "list_pages", "{}"),
+            ],
+            [await NextStepAsync(stream), await NextStepAsync(stream), await NextStepAsync(stream)]);
+    }
+
+    [Fact]
+    public async Task Stream_CarriesWhatCameBackWhole()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+        await stream.NextAsync<ChatView>("chat");
+
+        var page = APageOfSomeLength();
+
+        Returned(hub, question, "read_page", page);
+
+        // Exactly what came back, to the character: a wiki page of some length, with its blank lines,
+        // a fenced block and a name that is not ASCII. Never cut to a first line, never a count of
+        // lines, never a sentence about it — the user checking an answer is checking this very text
+        // against the page it came from (ACCESS-007).
+        Assert.Equal((ChatStep.Returned, "read_page", page), await NextStepAsync(stream));
+    }
+
+    /// <summary>
+    /// A page long enough that any cutting shows, and made of the things a wiki page is made of: blank
+    /// lines, a fenced block and a non-ASCII name.
+    /// </summary>
+    private static string APageOfSomeLength()
+    {
+        var page = new StringBuilder("---\ntitle: Ada Lovelace\n---\n\n# Ada Lovelace\n\n");
+
+        page.Append("Countess of Lovelace, née Byron — she wrote the first program.\n\n");
+        page.Append("```\nBEGIN\n  note G\nEND\n```\n");
+
+        while (page.Length < 4000)
+        {
+            page.Append("\nShe worked on the Analytical Engine, and on note G in particular.\n");
+        }
+
+        return page.ToString();
+    }
+
     private static void Said(HostedHub hub, Guid question, string text) =>
         hub.Agent.Did(question, new TranscriptMoment(RunMomentKind.AgentSaid, null, text));
+
+    /// <summary>What a tool call came back with, which is the other half of the pair a run makes.</summary>
+    private static void Returned(HostedHub hub, Guid question, string tool, string content) =>
+        hub.Agent.Did(question, new TranscriptMoment(RunMomentKind.ToolReturned, tool, content));
+
+    /// <summary>The next <c>step</c> event, as the three things one step is (ACCESS-007).</summary>
+    private static async Task<(string Kind, string? Tool, string? Content)> NextStepAsync(EventStream stream)
+    {
+        var sent = await NextNewsAsync(stream);
+
+        Assert.Equal(ChatEvents.Step, sent.Event);
+
+        var step = Read<StepSent>(sent.Data).Step;
+
+        return (step.Kind, step.Tool, step.Content);
+    }
+
+    /// <summary>
+    /// Which fields the snapshot carries, read off the JSON itself: <c>vault</c> is written only when
+    /// there is one, and a deserialised null cannot tell a field that is absent from one sent as null.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> SnapshotFieldsAsync(HostedHub hub)
+    {
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+
+        var (name, data) = await stream.NextAsync();
+
+        Assert.Equal(ChatEvents.Chat, name);
+
+        return FieldsOf(data);
+    }
 
     /// <summary>
     /// The chat as it now stands, read the one way a browser reads it — by opening the stream and

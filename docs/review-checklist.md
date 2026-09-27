@@ -15,11 +15,14 @@ requires an amendment that retires one.
 - [ ] **2. Slice shape** — The feature is one vertical slice with a user-observable result and adds
       exactly one of: a new operation, a new user interaction, a new external system. *(I.6)*
 
-- [ ] **3. Standard scope and the instruction** — Where an external standard applies, only the
+- [ ] **3. Standard scope and the instructions** — Where an external standard applies, only the
       parts the capability requirements name are built, against the version pinned in
       `docs/product.md`. And where a capability requirement places the shape of an artifact on the
-      agent rather than on our code, does the instruction every run receives state that shape, in
-      full, as the requirement lists it? *(I.8)*
+      agent rather than on our code, does **each** instruction a run receives state that shape, in
+      full, as the requirement lists it? Asked of every one of them separately — today
+      `instructions/ingest.md` against INGEST's requirements and `instructions/question.md` against
+      QUERY-004 — because a run receives one of them and not the others, and an instruction that
+      states nothing is not corrected by a sibling that states everything. *(I.8)*
 
 - [ ] **4. Phase PRs and their review** — Was every phase PR merged into the feature branch before
       the next phase started, only once green and its review closed, and was no PR based on another

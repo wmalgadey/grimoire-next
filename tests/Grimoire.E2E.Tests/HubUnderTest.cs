@@ -152,7 +152,27 @@ internal sealed class HubUnderTest : IAsyncDisposable
     public DrivableHarness Agent { get; }
 
     public static Task<HubUnderTest> StartAsync(CancellationToken cancellationToken) =>
-        StartAsync(Directory.CreateTempSubdirectory("grimoire-e2e-").FullName, ownsTheDirectory: true, cancellationToken);
+        StartAsync(
+            Directory.CreateTempSubdirectory("grimoire-e2e-").FullName,
+            ownsTheDirectory: true,
+            cancellationToken);
+
+    /// <summary>
+    /// A hub told where the wiki is read, so that a page an answer names can be opened from it
+    /// (ACCESS-009).
+    /// </summary>
+    /// <remarks>
+    /// They are start-up inputs and both optional, and what the browser does with them present and
+    /// absent is the whole of ACCESS-009 — so a test needs a hub of each kind.
+    /// </remarks>
+    public static Task<HubUnderTest> StartAsync(
+        string vaultName, string wikiPathInVault, CancellationToken cancellationToken) =>
+        StartAsync(
+            Directory.CreateTempSubdirectory("grimoire-e2e-").FullName,
+            ownsTheDirectory: true,
+            cancellationToken,
+            vaultName,
+            wikiPathInVault);
 
     /// <summary>
     /// Grimoire stopped and started again over the same state, which is what a restart is — a
@@ -165,14 +185,19 @@ internal sealed class HubUnderTest : IAsyncDisposable
 
         await stopped.StopAsync(cancellationToken).ConfigureAwait(false);
 
-        return await StartAsync(stopped.directory, ownsTheDirectory: false, cancellationToken).ConfigureAwait(false);
+        return await StartAsync(stopped.directory, ownsTheDirectory: false, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>The hub goes down, and its directory stays where it is.</summary>
     public Task StopAsync(CancellationToken cancellationToken) => app.StopAsync(cancellationToken);
 
     private static async Task<HubUnderTest> StartAsync(
-        string directory, bool ownsTheDirectory, CancellationToken cancellationToken)
+        string directory,
+        bool ownsTheDirectory,
+        CancellationToken cancellationToken,
+        string? vaultName = null,
+        string? wikiPathInVault = null)
     {
         // Both texts every run receives (V.1). Their content does not matter here — the browser
         // door is ACCESS-001, ACCESS-005 and ACCESS-006; what a run is given is INGEST-002, proven a
@@ -196,7 +221,14 @@ internal sealed class HubUnderTest : IAsyncDisposable
 
         var app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, questionInstruction, purpose, WikiRoot: wiki, Model: "claude-opus-4-5-20251101"),
+            new HubOptions(
+                instruction,
+                questionInstruction,
+                purpose,
+                WikiRoot: wiki,
+                Model: "claude-opus-4-5-20251101",
+                VaultName: vaultName,
+                WikiPathInVault: wikiPathInVault),
             agent,
             new FileSystemWikiStore(wiki),
             new SqliteSubmissionStore(state),

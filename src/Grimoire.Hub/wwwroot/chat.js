@@ -18,6 +18,12 @@ const total = document.getElementById("total");
 // revises it in `Ceilings.Fixed` (GUARD-004).
 let costCeiling = 0;
 
+// Where a page an answer names can be opened, as the last snapshot said it — the vault's name and the
+// wiki's own path inside it. Null until a snapshot says otherwise, and null for good where Grimoire
+// was not told both: the answer still arrives and the page's name is still readable, as plain text
+// (ACCESS-009).
+let vault = null;
+
 // What the four states read as. The wire names are the contract's; these are what a person reads
 // (ACCESS-007, contracts/hub-http-api.md).
 const states = {
@@ -132,6 +138,87 @@ function turnFor(turn) {
 // which replaces the node and takes the user's selection and the reader's place with it (ACCESS-007).
 function answerGrew(item, append) {
   item.querySelector(".answer").firstChild.appendData(append);
+  referencesIn(item);
+}
+
+// A Markdown link, as the wiki's own pages write one and as the question instruction asks the answer
+// to (WIKI-001, OKF §6.1, QUERY-004). The target is the page's path relative to the wiki's root, which
+// is the one anchor an answer has — an answer sits on no page.
+//
+// Deliberately narrow: a target with a scheme, a protocol-relative one, or one starting at a root are
+// none of them a page of this wiki, and are left as they are rather than joined to the vault's path
+// and pointed somewhere that does not exist.
+const reference = /\[([^\]\n]+)\]\((?!\w+:|\/\/|\/)([^)\s]+)\)/g;
+
+// Whether a target is a page **of this wiki**. Its path is relative to the wiki's root, which is the
+// one anchor an answer has — so a segment that climbs out of it names something this link has no
+// business addressing, however the answer came by it. Such a target keeps its place in the prose as
+// plain text and gets no link.
+//
+// This is not a check on whether the page exists: Grimoire checks no link, and OKF requires readers
+// to tolerate a broken one. It is a check on what the target *is*, which the contract fixes
+// (`FileSystemWikiStore` refuses a path that leaves the wiki for the same reason, one layer down).
+function insideTheWiki(target) {
+  // Both separators, because both are ones: a backslash is a path separator where the owner's Obsidian
+  // may be running, so `..\outside.md` climbs out exactly as `../outside.md` does. `FileSystemWikiStore`
+  // treats the two alike one layer down, and a check that knew only one would be a door left open on
+  // the platform it was not written on.
+  return target
+    .split(/[/\\]/)
+    .every((segment) => segment !== ".." && segment !== "" && segment !== ".");
+}
+
+// `obsidian://open?vault=<name>&file=<the wiki's path in the vault>/<the page>`, which addresses that
+// page in the user's **own** wiki (ACCESS-009). The link form lives in this one place and nothing of
+// it goes into a wiki page.
+//
+// Grimoire checks no link: OKF requires readers to tolerate a broken one, and nothing here knows what
+// the wiki holds — the editor does what it does with a missing file.
+function opens(target) {
+  const wikiPath = vault.wikiPath.replace(/^\/+|\/+$/g, "");
+
+  // Empty where the wiki *is* the vault, and then the target stands alone.
+  const inVault = wikiPath === "" ? target : `${wikiPath}/${target}`;
+
+  return `obsidian://open?vault=${encodeURIComponent(vault.name)}&file=${encodeURIComponent(inVault)}`;
+}
+
+// The references in an answer, made followable. The answer's text node is left exactly as the agent
+// wrote it and the links are drawn **beside** it, because rewriting the node would replace what the
+// user is reading — which is the one thing this page never does (ACCESS-007).
+//
+// Nothing is drawn where Grimoire was not told both values: the page's name stays readable in the
+// prose as plain text, and the one line below says why (ACCESS-009).
+function referencesIn(item) {
+  if (vault === null) {
+    return;
+  }
+
+  const answer = item.querySelector(".answer");
+  const prose = answer.firstChild.data;
+
+  let links = item.querySelector(":scope > .references");
+  // Only the ones that name a page of this wiki. The rest stay as the agent wrote them.
+  const named = [...prose.matchAll(reference)].filter(([, , target]) => insideTheWiki(target));
+
+  if (named.length === 0) {
+    return;
+  }
+
+  if (!links) {
+    links = document.createElement("p");
+    links.className = "references";
+    answer.after(links);
+  }
+
+  // Appended, never rebuilt: a reference the user has already seen keeps its place, and one arriving
+  // as the answer grows joins the end (ACCESS-007).
+  for (const [, words, target] of named.slice(links.childElementCount)) {
+    const open = document.createElement("a");
+    open.href = opens(target);
+    open.textContent = words;
+    links.append(open);
+  }
 }
 
 // The steps, in the shape a run's record is read in: shut by default, one openable at a time, and the
@@ -216,6 +303,11 @@ function spent(figures) {
 function drawn(body) {
   costCeiling = body.costCeiling;
 
+  // Where a page can be opened, or nothing. Read before any answer is drawn, so the first one drawn
+  // already knows whether its references can be followed.
+  vault = body.vault ?? null;
+  openingIsSetUp();
+
   for (const turn of body.turns) {
     const item = turnFor(turn);
 
@@ -236,10 +328,23 @@ function drawn(body) {
       stepHappened(item, step);
     }
 
+    referencesIn(item);
     questionChanged(item, turn);
   }
 
   spent(body.total);
+}
+
+// Said **once**, and only where Grimoire was not told what opening a page needs — so a reader can tell
+// a setting that is absent from a page that is simply not linkable (ACCESS-009). It is not a refusal:
+// the question was answered, and this is the one thing the answer cannot do.
+function openingIsSetUp() {
+  const said = document.getElementById("opening");
+
+  said.textContent =
+    vault === null
+      ? "Opening a page in your editor is not set up. Start Grimoire with --vault and --vault-root."
+      : "";
 }
 
 // **Nothing polls.** The chat arrives as it changes: the stream opens with the whole of it and then
