@@ -471,7 +471,9 @@ invoke_claude() {
     fi
     log "agent: $kind (log $base.json)"
     set +e
-    "${cmd[@]}" > "$base.json" 2> "$base.err" < /dev/null
+    # The CLI's own OAuth sign-in, never an API key that happens to be exported: with one, every
+    # iteration would be billed per token instead.
+    env -u ANTHROPIC_API_KEY "${cmd[@]}" > "$base.json" 2> "$base.err" < /dev/null
     AGENT_RC=$?
     set -e
     AGENT_RESULT=$(jq -r '.result // empty' "$base.json" 2>/dev/null || true)
@@ -765,9 +767,11 @@ review_loop() {
             halt review-rounds "$count thread(s) are open after the last of $CFG_MAX_ROUNDS review rounds (I.11). Answer and resolve them on PR #$S_PHASE_PR, then rerun."
         fi
         # What a thread says goes into the agent's prompt, and the agent can commit and reply. Only
-        # the reviewer's and the owner's threads get there; anyone else's the owner answers first.
+        # threads whose every comment is the reviewer's or the owner's get there; the owner answers
+        # anything else first.
         strangers=$(jq -r --arg owner "$owner" --argjson trusted "$TRUSTED_REVIEW_AUTHORS" \
-            '[.[] | select(.author as $a | ($trusted + [$owner]) | index($a) | not) | .author] | unique | join(", ")' \
+            '[.[] | .author, .replies[].author] | map(select(. as $a | ($trusted + [$owner]) | index($a) | not))
+             | unique | join(", ")' \
             <<< "$threads")
         if [[ -n "$strangers" ]]; then
             halt untrusted-review "PR #$S_PHASE_PR has open threads by $strangers. phasepr hands an agent only the reviewer's and the owner's threads; answer and resolve those yourself, then rerun."

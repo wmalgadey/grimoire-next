@@ -24,6 +24,7 @@ kind=$(grep -oE 'phasepr prompt: [a-z-]+' <<< "$prompt" | head -n1 | sed 's/.*: 
 count=$(( $(cat "$FAKE_GH/claude-$kind.count" 2>/dev/null || echo 0) + 1 ))
 printf '%s\n' "$count" > "$FAKE_GH/claude-$kind.count"
 printf 'claude %s #%s %s\n' "$kind" "$count" "${args[*]:2}" >> "$FAKE_GH/calls.log"
+[[ -z "${ANTHROPIC_API_KEY+set}" ]] || printf 'claude saw ANTHROPIC_API_KEY\n' >> "$FAKE_GH/calls.log"
 export PROMPT=$prompt CALL=$count
 
 TASKS_SH="$(git rev-parse --show-toplevel)/tools/phasepr/scripts/bash/tasks.sh"

@@ -61,7 +61,7 @@ started) and `/speckit.phasepr.status`. That installation has **not** been tried
   is REST. A Claude Code cloud session blocks GraphQL at its proxy, so phasepr does not run there as
   it stands; run it on a machine with a normal `gh` login.
 - `claude`, signed in through its own OAuth login. No `ANTHROPIC_API_KEY`: every iteration uses the
-  CLI's existing sign-in.
+  CLI's existing sign-in; phasepr removes `ANTHROPIC_API_KEY` from each agent's environment.
 - `dotnet` for the gates, and whatever `scripts/mutation.sh` needs.
 
 Every agent iteration is
@@ -200,7 +200,7 @@ owner has to make. Rerun it once that is decided.
 | `circuit-breaker` | three agent iterations in a row without progress | reads the logs and the handoff |
 | `protocol-violation` | history rewritten, branch switched, another branch moved, a merge commit, another phase's checkbox moved | repairs by hand; nothing was reset |
 | `owner-review` | the phase changes `instructions/`, `docs/decisions.md`, the constitution (I.11) or `docs/product.md` (I.1) | approves the PR's current head as the owner (the repository owner, or `PHASEPR_OWNER_LOGIN`) — another person's or an older head's approval does not count — or merges it |
-| `untrusted-review` | an open thread is by someone other than Copilot or the owner: its text would reach an agent that can commit and reply | answers and resolves it |
+| `untrusted-review` | an open thread has a comment — its first or a reply — by someone other than Copilot or the owner: its text would reach an agent that can commit and reply | answers and resolves it |
 | `commit-subject` | an agent commit is not `type(scope): subject` with the feature's number or a requirement ID as scope | rewords it on the branch, or reruns to accept it |
 | `ci-red` | the PR's checks are red although `gates.sh` was green | looks at the check |
 | `permission-denied` | the permission mode refused an agent something it needed | allows it in `.claude/settings.json`, changes model or mode, or takes it out of the task |
