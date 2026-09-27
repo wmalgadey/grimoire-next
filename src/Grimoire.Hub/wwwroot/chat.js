@@ -159,8 +159,12 @@ const reference = /\[([^\]\n]+)\]\((?!\w+:|\/\/|\/)([^)\s]+)\)/g;
 // to tolerate a broken one. It is a check on what the target *is*, which the contract fixes
 // (`FileSystemWikiStore` refuses a path that leaves the wiki for the same reason, one layer down).
 function insideTheWiki(target) {
+  // Both separators, because both are ones: a backslash is a path separator where the owner's Obsidian
+  // may be running, so `..\outside.md` climbs out exactly as `../outside.md` does. `FileSystemWikiStore`
+  // treats the two alike one layer down, and a check that knew only one would be a door left open on
+  // the platform it was not written on.
   return target
-    .split("/")
+    .split(/[/\\]/)
     .every((segment) => segment !== ".." && segment !== "" && segment !== ".");
 }
 

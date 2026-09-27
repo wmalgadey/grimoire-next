@@ -172,7 +172,8 @@ public sealed class AnswerReferencesTests : PageTest
         // down (ACCESS-009, GUARD-005's neighbourhood).
         hub.Agent.Said(
             question,
-            "See ([../outside.md](../outside.md)) and ([people/ada-lovelace.md](people/ada-lovelace.md)).");
+            "See ([../outside.md](../outside.md)), ([..\\outside.md](..\\outside.md)) "
+            + "and ([people/ada-lovelace.md](people/ada-lovelace.md)).");
 
         // The page of this wiki is linked; the one that climbs out is not, and keeps its place in the
         // prose as plain text. Both are still readable — nothing of the agent's words is removed.
@@ -181,6 +182,40 @@ public sealed class AnswerReferencesTests : PageTest
         await Expect(references).ToHaveCountAsync(1);
         await Expect(references.First).ToHaveTextAsync("people/ada-lovelace.md");
         await Expect(Turn(question).Locator(".answer")).ToContainTextAsync("../outside.md");
+
+        // A backslash is a path separator too, where the owner's Obsidian may be running — so a check
+        // that knew only one would be a door left open on the platform it was not written on.
+        await Expect(Turn(question).Locator(".answer")).ToContainTextAsync("..\\outside.md");
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-009")]
+    public async Task Reference_OpensThatPage_WhereTheWikiIsTheVault()
+    {
+        var token = TestContext.Current.CancellationToken;
+
+        // The owner opens the wiki directly in Obsidian, so it has no path *inside* the vault — it is
+        // the vault. An ordinary setup, and one an empty path is the honest answer for.
+        await using var hub = await HubUnderTest.StartAsync(Vault, string.Empty, token);
+
+        var question = await hub.AskAsync(AboutAda, token);
+
+        await Page.GotoAsync($"{hub.Address}/chat.html");
+        await Expect(Turn(question)).ToBeVisibleAsync();
+
+        hub.Agent.Said(question, "She wrote it ([people/ada-lovelace.md](people/ada-lovelace.md)).");
+
+        var reference = Turn(question).Locator(".references a").First;
+        await Expect(reference).ToBeVisibleAsync();
+
+        // The target stands alone: nothing is prefixed, and no empty segment is invented in front of
+        // it. Treated as "not given", this setup would have drawn no link at all and said opening was
+        // not set up (ACCESS-009).
+        Assert.Equal(
+            $"obsidian://open?vault={Vault}&file=people%2Fada-lovelace.md",
+            await reference.GetAttributeAsync("href"));
+
+        await Expect(Page.Locator("#opening")).ToHaveTextAsync(string.Empty);
     }
 
     [Fact]

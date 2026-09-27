@@ -360,12 +360,21 @@ public sealed class ChatStreamTests
         Assert.Null(VaultView.InVaultPathOf(vaultRoot, wiki));
     }
 
+    [Fact]
+    [Trait("req", "ACCESS-009")]
+    public void Vault_IsCarried_WhereTheWikiIsTheVaultItself()
+    {
+        // An empty path is a **value**, not a missing one: it is what the wiki being the vault makes,
+        // and a reference's target then stands alone. Read as blank, that ordinary setup would draw no
+        // links and say opening was not set up (ACCESS-009).
+        Assert.Equal(new VaultView("Notes", string.Empty), VaultView.FromStartUp("Notes", string.Empty));
+    }
+
     [Theory]
     [Trait("req", "ACCESS-009")]
     [InlineData("Notes", null)]
     [InlineData(null, "wiki")]
     [InlineData(null, null)]
-    [InlineData("Notes", "   ")]
     [InlineData("  ", "wiki")]
     public void Vault_IsNothing_WhereOnlyOneOfTheTwoWasGiven(string? name, string? wikiPath)
     {

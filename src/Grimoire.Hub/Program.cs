@@ -120,7 +120,11 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
         var vaultRoot = given.GetValueOrDefault("vault-root");
         string? wikiPathInVault = null;
 
-        if (vaultRoot is not null)
+        // **Both or neither**, and only then is anything derived or refused. Half the setting is the
+        // same as none of it (ACCESS-009), so a `--vault-root` given without a `--vault` is not a
+        // misconfiguration to refuse — it is a setting that is not there, and a missing one refuses
+        // nothing. What *is* refused is both being given and disagreeing, below.
+        if (vault is not null && vaultRoot is not null)
         {
             // What the owner gives is the directory they have open in Obsidian; what a link needs is
             // where the wiki sits **inside** it. `--wiki ~/Vault/wiki --vault-root ~/Vault` makes

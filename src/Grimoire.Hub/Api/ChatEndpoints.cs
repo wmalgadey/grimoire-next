@@ -181,8 +181,14 @@ public sealed record VaultView(
         return inside == "." ? string.Empty : inside.Replace(Path.DirectorySeparatorChar, '/').Trim('/');
     }
 
+    /// <remarks>
+    /// <b>An empty <paramref name="wikiPath"/> is a value, not a missing one</b>: it is what
+    /// <see cref="InVaultPathOf"/> gives when the wiki <em>is</em> the vault, and a reference's target
+    /// then stands alone. Rejected as blank, that perfectly ordinary setup would draw no links at all
+    /// and say opening was not set up. Null is what "not given" looks like.
+    /// </remarks>
     public static VaultView? FromStartUp(string? name, string? wikiPath) =>
-        string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(wikiPath)
+        string.IsNullOrWhiteSpace(name) || wikiPath is null
             ? null
             : new VaultView(name, wikiPath);
 }
