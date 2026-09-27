@@ -578,11 +578,12 @@ open_phase_pr() {
             printf 'Opened by phasepr once every task of the phase was checked and `gates.sh` (build, '
             printf 'Fast suite within its time budget, trace-check) was green on %s.\n' "$(git rev-parse --short HEAD)"
         } > "$body"
-        title=$(phase_title "$n")
+        # "User Story 1 — Read back …" titles the PR as "phase 3 — read back …".
+        title=$(phase_title "$n" | sed -E 's/^User Story [0-9]+[[:space:]]*(—|-)[[:space:]]*//')
         pr=$("$GH_REVIEW" phase-open "$S_PHASE_BRANCH" "$FEATURE" \
             "feat($FEATURE_NUM): phase $n — ${title,}" "$body")
         [[ -n "$pr" || "$DRY_RUN" == "true" ]] || halt github-error "Opening the PR for '$S_PHASE_BRANCH' returned no number."
-        log "phase $n: opened PR #${pr:-?}"
+        log "phase $n: opened PR #${pr:-DRY}"
     fi
     S_PHASE_PR=${pr:-DRY}
     state_write

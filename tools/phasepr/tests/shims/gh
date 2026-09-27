@@ -82,7 +82,6 @@ api() {
 
     local path=${endpoint%%\?*} query=""
     [[ "$endpoint" == *\?* ]] && query=${endpoint#*\?}
-    local param
     param() { tr '&' '\n' <<< "$query" | sed -n "s/^$1=//p" | head -n1; }
 
     case "$method $path" in

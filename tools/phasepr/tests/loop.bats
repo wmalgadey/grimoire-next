@@ -26,6 +26,7 @@ setup() {
     pr_json 102 | jq -e '.head.ref == "042-demo-phase-2-base" and .base.ref == "042-demo" and .draft == false and .merged_at != null'
     pr_json 103 | jq -e '.head.ref == "042-demo-phase-3" and .base.ref == "042-demo" and .merged_at != null'
     pr_json 102 | jq -e '.title == "feat(042): phase 2 — foundational — the base"'
+    pr_json 103 | jq -e '.title == "feat(042): phase 3 — use it"'
     pr_json 102 | jq -r .body | grep -q 'T001, T002'
     pr_json 102 | jq -r .body | grep -q 'DEMO-001'
     [ "$(count_calls '^pr merge 10[23] --merge --delete-branch$')" -eq 2 ]
