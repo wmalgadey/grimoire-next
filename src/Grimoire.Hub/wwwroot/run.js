@@ -592,17 +592,25 @@ function lost(count) {
 function watch() {
   const events = new EventSource(`/api/submissions/${submission}/record/events`);
 
-  // Whether the next `record` event is this connection's opening one. The first event of every stream
-  // carries the whole of the record, so on a connection made again it replaces what is held rather
-  // than being added to it — added, a reconnection would hold the record twice. What is already on the
-  // page is untouched either way: `drawn` appends only the segments past those it has drawn.
-  let opened = false;
+  // Whether this connection's opening event is still to come. The first event of every stream carries
+  // the whole of the record, so it replaces what is held rather than being added to it — added, a
+  // connection made again would hold the record twice. What is already on the page is untouched either
+  // way: `drawn` appends only the segments past those it has drawn.
+  //
+  // Reset on `open`, which fires on **every** connection this object makes and not only the first:
+  // `EventSource` reconnects by itself and goes on using the same object, so a flag set once would
+  // stay set through a drop and make the snapshot after it read as an append.
+  let awaitingTheSnapshot = true;
+
+  events.addEventListener("open", () => {
+    awaitingTheSnapshot = true;
+  });
 
   events.addEventListener("record", (event) => {
     const { append } = JSON.parse(event.data);
 
-    sent = opened ? sent + append : append;
-    opened = true;
+    sent = awaitingTheSnapshot ? append : sent + append;
+    awaitingTheSnapshot = false;
 
     drawn(sent);
   });

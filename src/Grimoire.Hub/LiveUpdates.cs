@@ -36,11 +36,12 @@ public sealed class Sent
 /// process is the connection each stream is written to, and that is the host's.
 /// </para>
 /// <para>
-/// One unbounded <see cref="Channel"/> per subscriber, drained by the endpoint serving that
-/// subscriber's stream. Unbounded because the alternative to dropping a browser's events is
-/// bounding them, and a bound reached would either block the board under its lock or lose a change
-/// the page then never shows. What is on a channel is a bare signal rather than a payload, so a
-/// slow reader's queue is a handful of bytes however long it is behind (research.md R-05).
+/// One <see cref="Channel"/> per subscriber, drained by the endpoint serving that subscriber's
+/// stream. It holds <b>one</b> signal and drops what it cannot hold, which is exactly right rather
+/// than a compromise: a signal carries no payload, and what to send is worked out from the current
+/// state when the subscriber wakes — so one pending signal already says everything a hundred of
+/// them would. A subscriber that is far behind costs one byte, and a write never blocks the board
+/// under its lock (research.md R-05).
 /// </para>
 /// <para>
 /// <b>Nothing is replayed.</b> What is published while nobody is subscribed reaches nobody: the
@@ -54,14 +55,26 @@ public sealed class LiveUpdates
     /// <summary>The submissions list — one topic, because every browser reading it reads the same list.</summary>
     public const string Submissions = "submissions";
 
-    /// <summary>The chat — one topic too, because there is exactly one chat (QUERY-005).</summary>
-    public const string Chat = "chat";
-
     /// <summary>
     /// A signal, and the whole of what a channel carries. What to send is worked out per subscriber
-    /// when it wakes, which is what keeps a slow reader's queue small however far behind it is.
+    /// when it wakes, which is what lets one pending signal stand for every change behind it.
     /// </summary>
     private const byte Something = 0;
+
+    /// <summary>
+    /// One signal held, and a write that cannot be held is dropped rather than waited for.
+    /// </summary>
+    /// <remarks>
+    /// Dropping loses nothing: the signal says only that something changed, and the subscriber reads
+    /// the state itself when it wakes. Waiting is what could not be allowed — <see cref="Changed"/> is
+    /// called by the board under its one lock and by the conductor under a run's, and a write that
+    /// blocked would hold one of those for as long as a browser is slow.
+    /// </remarks>
+    private static readonly BoundedChannelOptions OneSignal = new(capacity: 1)
+    {
+        FullMode = BoundedChannelFullMode.DropWrite,
+        SingleReader = true,
+    };
 
     private readonly Lock gate = new();
 
@@ -81,7 +94,8 @@ public sealed class LiveUpdates
     /// <remarks>
     /// It never blocks and it never throws. The callers are the board under its lock and the
     /// conductor under a run's, and a publish that could wait would hold one of those for as long as
-    /// a browser is slow — so the channels are unbounded and a write to one always succeeds.
+    /// a browser is slow — so a channel that is already holding a signal drops this one, which says
+    /// the same thing.
     /// </remarks>
     public void Changed(string topic)
     {
@@ -132,7 +146,7 @@ public sealed class LiveUpdates
         ArgumentNullException.ThrowIfNull(opening);
         ArgumentNullException.ThrowIfNull(next);
 
-        var channel = Channel.CreateUnbounded<byte>();
+        var channel = Channel.CreateBounded<byte>(OneSignal);
         var sent = new Sent();
 
         Joined(topic, channel);
@@ -146,11 +160,9 @@ public sealed class LiveUpdates
 
             while (await channel.Reader.WaitToReadAsync(token).ConfigureAwait(false))
             {
-                // Everything that is queued, read before anything is made of it: several changes
-                // while this subscriber was away are one thing to send it, not one each.
-                while (channel.Reader.TryRead(out _))
-                {
-                }
+                // The one signal taken before anything is made of it, so that a change arriving while
+                // `next` is reading the state leaves a signal behind and this loop comes round for it.
+                channel.Reader.TryRead(out _);
 
                 foreach (var increment in next(sent))
                 {
