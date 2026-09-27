@@ -119,6 +119,20 @@ public sealed class RunBoard(TimeProvider clock, ISubmissionStore store, RunBoar
     public delegate Run RunForQueued(Queued queued);
 
     /// <summary>
+    /// The run is the queue's now: start watching it. Called <b>after</b> it is on disk and the thing
+    /// it works is marked with it.
+    /// </summary>
+    /// <remarks>
+    /// Split from <see cref="RunForQueued"/> so that the ordering is structural rather than a promise.
+    /// Making a run and watching it used to be one step, which put the elapsed timer and the conductor's
+    /// record of the run in place <em>before</em> the store was written — so a write that failed left the
+    /// queue thinking nothing was handed out while the conductor still held a run under that id, and the
+    /// next pump would overwrite it and leave the first run's timer to end the second. Nothing now exists
+    /// to roll back: what this starts is started only once the write has succeeded.
+    /// </remarks>
+    public delegate void RunIsUnderWay(Run run);
+
+    /// <summary>
     /// Something about a submission changed: a state, a figure, or an acknowledgement. The browser
     /// is sent the list again (ACCESS-005).
     /// </summary>
@@ -305,9 +319,10 @@ public sealed class RunBoard(TimeProvider clock, ISubmissionStore store, RunBoar
     /// the other.
     /// </para>
     /// </remarks>
-    public Run? TakeNext(RunForQueued newRun)
+    public Run? TakeNext(RunForQueued newRun, RunIsUnderWay watch)
     {
         ArgumentNullException.ThrowIfNull(newRun);
+        ArgumentNullException.ThrowIfNull(watch);
 
         lock (gate)
         {
@@ -337,6 +352,8 @@ public sealed class RunBoard(TimeProvider clock, ISubmissionStore store, RunBoar
                 return null;
             }
 
+            // Made, and nothing else: no record written, no timer armed, nothing registered as being
+            // watched. What a failed write below has to leave behind is nothing at all.
             var run = newRun(next);
 
             // On disk before it is marked, for the reason `Accept` writes before it adds: a write
@@ -357,6 +374,12 @@ public sealed class RunBoard(TimeProvider clock, ISubmissionStore store, RunBoar
             }
 
             next.HandedTo(run.Id, run.Model);
+
+            // And only now is it watched. Last, because everything before it can fail and leave the
+            // queue as it was, and this cannot be undone: an armed ceiling and a run the conductor owns
+            // outlive a throw (RUNS-006, GUARD-004).
+            watch(run);
+
             changed?.Invoke(next);
             return run;
         }

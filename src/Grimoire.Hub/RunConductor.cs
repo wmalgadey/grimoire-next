@@ -119,9 +119,14 @@ public sealed class RunConductor(
     /// </summary>
     /// <remarks>
     /// <b>Which grant, and so which door, follows from which kind it is</b> — and the endpoint travels
-    /// on the grant, so the two cannot be crossed (GUARD-005, research.md R-06). A question's run also
-    /// gets <b>no record</b>: RUNS-007 gives one to a run a submission causes, because a record exists
-    /// for a run that is handed over and reviewed afterwards, and a chat is read as it happens.
+    /// on the grant, so the two cannot be crossed (GUARD-005, research.md R-06).
+    /// <para>
+    /// It <b>only makes the run</b>. Nothing is written, no ceiling is armed and the conductor does not
+    /// yet own it — that is <see cref="Watching"/>, which the board calls once the run is on disk. Doing
+    /// both here put an armed timer and a watched run in place before the store was written, and a write
+    /// that failed then left the queue thinking nothing had been handed out while this still held a run
+    /// under that id.
+    /// </para>
     /// </remarks>
     public Run Begin(Queued queued)
     {
@@ -129,7 +134,7 @@ public sealed class RunConductor(
 
         var question = queued is Question;
 
-        var run = new Run(
+        return new Run(
             Guid.NewGuid(),
             queued.Id,
             clock.GetUtcNow(),
@@ -137,6 +142,20 @@ public sealed class RunConductor(
             Ceilings.Fixed,
             model,
             question ? RunCause.AQuestion : RunCause.ASubmission);
+    }
+
+    /// <summary>
+    /// The run is the queue's: its record opened, its elapsed ceiling armed, and the conductor watching
+    /// it. Called by the board, under its lock, once the run is on disk (RUNS-006, GUARD-004).
+    /// </summary>
+    /// <remarks>
+    /// A question's run gets <b>no record</b>: RUNS-007 gives one to a run a submission causes, because
+    /// a record exists for a run that is handed over and reviewed afterwards, and a chat is read as it
+    /// happens.
+    /// </remarks>
+    public void Watching(Run run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
 
         if (run.IsToChangeTheWiki)
         {
@@ -165,13 +184,12 @@ public sealed class RunConductor(
         // ceiling exists for, and such a run reports no cost to read the clock against. So it is
         // the clock that raises it here, and not a line of the CLI's.
         var deadline = clock.CreateTimer(
-            _ => ElapsedCeilingReached(queued.Id),
+            _ => ElapsedCeilingReached(run.QueuedId),
             state: null,
             dueTime: run.Ceilings.Elapsed,
             period: Timeout.InfiniteTimeSpan);
 
-        runs[queued.Id] = new Watched(run, deadline, new SemaphoreSlim(1, 1));
-        return run;
+        runs[run.QueuedId] = new Watched(run, deadline, new SemaphoreSlim(1, 1));
     }
 
     /// <summary>The run this submission is being worked by, or null once it is over.</summary>

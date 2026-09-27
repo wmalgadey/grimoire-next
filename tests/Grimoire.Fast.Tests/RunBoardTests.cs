@@ -147,6 +147,60 @@ public sealed class RunBoardTests
         Assert.Empty(hub.Board.Snapshot());
     }
 
+    [Fact]
+    [Trait("req", "RUNS-004")]
+    [Trait("req", "RUNS-006")]
+    public async Task Queue_LeavesNothingUnderWay_WhenTheRunCouldNotBeWrittenDown()
+    {
+        var store = new InMemorySubmissionStore();
+        var failing = new FastHub(store, new HubJournal(), new InMemoryRunRecord());
+
+        // The state file is unwritable — a locked database, a full disk. RUNS-004's whole design admits
+        // this happens, which is why every write goes to disk before the queue moves.
+        store.WhileWriting = () => throw new IOException("the state file could not be written");
+
+        await Assert.ThrowsAsync<IOException>(async () => await failing.SubmitAsync("Ada Lovelace."));
+
+        // Nothing was handed out: the board is as it was, with nothing on it at all — the write that
+        // failed was the one that accepts the submission.
+        Assert.Empty(failing.Board.All);
+
+        // And nothing is being watched. Made and watched in one step, a failed write left the conductor
+        // holding a run under an id the board read as still waiting — and the next pump overwrote it,
+        // leaving the first run's armed ceiling to end the second (GUARD-004, RUNS-006).
+        store.WhileWriting = null;
+
+        var accepted = await failing.AcceptedAsync("Grace Hopper.");
+
+        Assert.NotNull(accepted.RunId);
+        Assert.Equal(accepted.RunId, failing.Conductor.Of(accepted.Id)!.Id);
+        Assert.Single(failing.Harness.Dispatched);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public async Task Queue_WatchesNoRun_WhenAQuestionsRunCouldNotBeWrittenDown()
+    {
+        var store = new InMemorySubmissionStore();
+        var failing = new FastHub(store, new HubJournal(), new InMemoryRunRecord());
+
+        // A question is accepted without touching the store — nothing of it is on disk (QUERY-005) — so
+        // the write that can fail is the one that records its *run*, which is what RUNS-006 needs on
+        // disk to be able to kill its agent after a stop.
+        var question = failing.Board.Ask("What does the wiki say?", StartUpInputs.BothPresent).Accepted!;
+        failing.Chat.Ask(question);
+
+        store.WhileWriting = () => throw new IOException("the state file could not be written");
+
+        await Assert.ThrowsAsync<IOException>(async () => await failing.Queue.PumpAsync());
+
+        // The question is still waiting, and no run is watched for it: what the board reads and what
+        // the conductor holds agree, which is what a rollback would have had to restore afterwards.
+        Assert.Null(question.RunId);
+        Assert.Null(failing.Conductor.Of(question.Id));
+        Assert.Empty(failing.Harness.Dispatched);
+    }
+
     /// <summary>
     /// The run of this submission or question, ended the way the conductor ends one — through the
     /// harness, so that the queue moves by the event that moves it in the real hub (research.md R-03).
