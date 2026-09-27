@@ -21,7 +21,8 @@ grant recorded and its figures kept (RUNS-002, RUNS-003, RUNS-006, RUNS-010, GUA
 | QUERY-002 | An accepted question MUST cause a run that is given the question, the purpose description, the question instruction, the run's identifier, and what has been asked and answered in the same chat before it, so that a follow-up is answered in the light of what came before; the run MUST run on the model Grimoire was started with. | test |
 | QUERY-003 | A question MUST be refused when its text is empty or only whitespace, when the question instruction is missing, or when the purpose description is missing; no run MUST start, the refused question MUST NOT be stored and MUST carry no state, and the user MUST be told which of the three it was. | test |
 | QUERY-004 | The question instruction MUST state that the answer is written for the user to read, rests on what the wiki's pages say, names every page it rests on inside its prose as a link to that page in the link form the wiki uses (WIKI-001), and that nothing in the wiki is to be written, changed or appended. | review |
-| QUERY-005 | A chat MUST hold the questions asked in it, their answers and what the agent did, for as long as Grimoire runs and whether or not a browser is connected to it, and MUST NOT survive Grimoire stopping and starting again. | test |
+| QUERY-005 | A chat MUST hold the questions asked in it, their answers and what the agent did, for as long as Grimoire runs and whether or not a browser is connected to it, and MUST NOT survive Grimoire stopping and starting again. There MUST be exactly one chat, the same one for every browser reading it. Users MUST be able to start a new, empty chat, after which nothing of the previous chat is reachable and nothing of it is kept. | test |
+| QUERY-006 | When a question's run ends failed, the chat MUST say against that question that it got no answer and why, MUST NOT present anything the run had produced as its answer, and the user MUST be able to ask the question again once the failure has been acknowledged. | test |
 
 QUERY-001 is INGEST-001's counterpart, and "without the user waiting" means the same thing it means
 there: the question is answered with the turn as the chat carries one, and the run outlives the request
@@ -70,6 +71,28 @@ trigger.
 **The steps are not in the dispatch.** What the agent did to reach an earlier answer is for the user
 to check, not context the next run needs, and a run's tool results are the largest thing in a chat by
 far.
+
+**Exactly one chat, and every browser reads that same one.** A chat per browser would make Grimoire
+tell one reader from another, which nothing else in this feature needs (Constitution II.1) — so
+"a question asked in one tab appears in the other" and "a new chat empties both" fall out rather than
+being built.
+
+**A question still being answered is not stopped by a new chat.** Its run is not a chat and goes on
+being a run: it holds the queue until it ends and its figures stay with it (RUNS-010). What it
+produces belongs to the chat that is gone, so nothing of it appears in the new one. Grimoire has no
+way to stop a run except a ceiling, and building one here would be a mechanism this feature does not
+otherwise need (research.md R-13).
+
+**QUERY-006 is the other end of RUNS-003.** A question whose run failed blocks the queue exactly as a
+failed ingest does, and the user must be able to clear it — but there is no row in the submissions
+list to clear it from, because a question is not a submission. The chat offers the one control against
+the question that failed. ACCESS-003's wording is unchanged: it asks for a failed run to be
+acknowledgeable in the browser, and it is.
+
+The acknowledged question still reads *got no answer*, as an acknowledged submission still reads
+`failed`, and the user can then ask it again. **Nothing the run had produced is presented as its
+answer**: half a sentence from a run that stopped at a ceiling is not an answer, and showing it as one
+would be the worst kind of wrong — an answer that looks like an answer and is not.
 
 **What a stop takes with it.** A question that got no answer and was never acknowledged holds the
 queue while Grimoire runs, exactly as a failed submission does (RUNS-003) — and that block goes with

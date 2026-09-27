@@ -230,6 +230,8 @@ public static class ChatEndpoints
         this IEndpointRouteBuilder endpoints,
         ChatIntake intake,
         Chat chat,
+        RunBoard board,
+        RunQueue queue,
         SubmissionsEndpoints.StartUpInputsCheck startUpInputs,
         LiveUpdates live,
         VaultView? vault)
@@ -237,6 +239,8 @@ public static class ChatEndpoints
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(intake);
         ArgumentNullException.ThrowIfNull(chat);
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(live);
 
         endpoints.MapPost("/api/chat/questions", async (QuestionRequest? request) =>
@@ -262,6 +266,38 @@ public static class ChatEndpoints
                 sent => Opening(chat, sent, vault),
                 sent => Increments(chat, sent, vault),
                 token)));
+
+        // A new chat (QUERY-005). Every browser reading the chat is sent the new, empty snapshot,
+        // because there is one chat and they all read it — so this empties both tabs rather than the
+        // one it was asked from. `Chat.Start` wakes them itself.
+        //
+        // **A question still being answered is not stopped.** Its run is not a chat and goes on being
+        // a run: it holds the queue until it ends and its figures stay with it (RUNS-010). What it
+        // produces belongs to the chat that is gone (research.md R-13).
+        endpoints.MapPost("/api/chat", () =>
+        {
+            chat.Start();
+            return Results.NoContent();
+        });
+
+        // The user has seen that this question got no answer (ACCESS-003, RUNS-003, QUERY-006).
+        //
+        // It exists because a failed question blocks the queue exactly as a failed ingest does, and
+        // there is no row in the submissions list to clear it from — a question is not a submission.
+        endpoints.MapPost("/api/chat/questions/{id:guid}/acknowledgement", async (Guid id) =>
+        {
+            board.Acknowledge(id);
+
+            // Asked either way. The board decides whether anything may start, and an acknowledgement
+            // that cleared nothing simply leaves it deciding no.
+            await queue.PumpAsync().ConfigureAwait(false);
+
+            // **One status for both cases**, as the submission's acknowledgement already gives: a page
+            // loaded before the last run failed can acknowledge a failure that has already been
+            // cleared, and answering that with an error would put a failure on the user's screen for a
+            // request that did exactly what it should — nothing.
+            return Results.NoContent();
+        });
 
         return endpoints;
     }

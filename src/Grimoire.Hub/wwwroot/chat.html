@@ -114,6 +114,11 @@
         word-break: break-word;
       }
       .acknowledge { flex: none; font: inherit; margin: 0; padding: 0.1rem 0.6rem; }
+      #new-chat { font: inherit; margin: 0; padding: 0.1rem 0.6rem; }
+      /* A question that got no answer: what it half-wrote is not shown as its answer, because an
+         answer that looks like one and is not is the worst kind of wrong (QUERY-006). */
+      li[data-state="no-answer"] .answer { display: none; }
+      li[data-state="no-answer"] .references { display: none; }
       /* The pages an answer rests on, made followable — drawn beside the prose rather than into it,
          because rewriting the answer's text node would replace what the user is reading
          (ACCESS-007, ACCESS-009). */
@@ -132,6 +137,10 @@
          from here. -->
     <p class="jobs">
       <a href="index.html">Submit a source, and read what became of each</a>
+      <!-- No modal confirmation: docs/ux.md rules them out, and a chat is not kept anywhere, so
+           starting a new one destroys nothing that was going to survive Grimoire anyway
+           (QUERY-005). -->
+      <button id="new-chat" type="button">Start a new chat</button>
     </p>
 
     <form id="question">
