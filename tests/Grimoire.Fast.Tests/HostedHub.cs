@@ -60,6 +60,17 @@ internal sealed class HostedHub : IAsyncDisposable
         Runs = new RunReference(Store);
     }
 
+    /// <summary>
+    /// The three start-up inputs are real files, because <c>InstructionLoader</c> reads paths and is not
+    /// behind a port. Deleting one is how a test reaches INGEST-003's and QUERY-003's "not at the path
+    /// the hub was started with", which is read per submission and per question rather than once.
+    /// </summary>
+    public void IngestInstructionIsGone() => File.Delete(Path.Combine(directory, "ingest.md"));
+
+    public void QuestionInstructionIsGone() => File.Delete(Path.Combine(directory, "question.md"));
+
+    public void PurposeDescriptionIsGone() => File.Delete(Path.Combine(directory, "purpose.md"));
+
     public InMemoryAgentHarness Agent { get; } = new();
 
     public InMemoryWikiStore Wiki { get; } = new();
@@ -101,6 +112,19 @@ internal sealed class HostedHub : IAsyncDisposable
     /// </summary>
     public Task<HttpResponseMessage> PostAsync(string path) =>
         client.PostAsync(new Uri(path, UriKind.Relative), content: null, TestContext.Current.CancellationToken);
+
+    /// <summary>
+    /// A command the page sends with a JSON body, the way the page sends it.
+    /// </summary>
+    /// <remarks>
+    /// It exists so that the status and the wire names an endpoint answers with are read from the
+    /// endpoint rather than from the objects behind it. Those names are what the browser reads: a test
+    /// that asserted the enum the board returns would pass while the page was told something else — the
+    /// same shape of mistake that let a hub serving five tools at the question door pass its tests
+    /// (GUARD-005's history).
+    /// </remarks>
+    public Task<HttpResponseMessage> PostAsync<TBody>(string path, TBody body) =>
+        client.PostAsJsonAsync(new Uri(path, UriKind.Relative), body, TestContext.Current.CancellationToken);
 
     /// <summary>
     /// One of the hub's streams, opened the way the browser's <c>EventSource</c> opens it.

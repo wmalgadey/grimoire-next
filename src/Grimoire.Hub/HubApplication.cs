@@ -227,8 +227,8 @@ public static class HubApplication
 
         var app = builder.Build();
 
-        // The page is static content served from wwwroot/ — one HTML file and one script, no
-        // build step (research.md R-10).
+        // The pages are static content served from wwwroot/ — three HTML files and three scripts, no
+        // build step and no bundler (DEC-019, research.md R-10, R-14).
         app.UseDefaultFiles();
         app.UseStaticFiles();
 
