@@ -117,9 +117,14 @@ Everything else — `StartedAt`, `GrantedTools`, `GrantRecordedAt`, `Model`, `Ag
 (GUARD-003, RUNS-010). `EntriesLost` is always zero for a question's run: it has no record to lose
 entries from.
 
-**The schema change** is DEC-031's mechanism, unchanged: `PRAGMA table_info(runs)`, then
-`ALTER TABLE` for what is missing. No column is renamed on disk and no table is rebuilt, so an
-existing `submissions.db` comes back with its submissions intact (research.md R-04).
+**The schema change** is DEC-031's mechanism for the columns that are missing:
+`PRAGMA table_info(runs)`, then `ALTER TABLE` for each. No column is renamed on disk and no table is
+rebuilt.
+
+**A file that cannot hold a null `submission_id` is refused**, not migrated — see research.md R-04's
+revision. SQLite cannot drop a `NOT NULL` constraint without rebuilding the table, and the owner
+decided the file goes: nothing runs Grimoire in production yet, so such a file holds their own test
+ingests. It is refused at start-up and names itself, so they know what to delete.
 
 ---
 

@@ -139,6 +139,26 @@ exists, but the cheaper and more honest change is to make the existing column nu
 a run whose `submission_id` is null was caused by a question. No column is renamed, no table is
 rebuilt, and an older file comes back with its submissions intact.
 
+**Revised while implementing** (phase 3, raised in review): the last sentence asked for something
+SQLite cannot do. `CREATE TABLE IF NOT EXISTS` does not alter a table that is already there and the
+`ALTER TABLE` step only *adds* columns, so a file an older Grimoire wrote keeps
+`submission_id TEXT NOT NULL` — and the first question asked against it fails on the insert. Dropping
+a `NOT NULL` constraint in SQLite means **rebuilding the table**, so "nullable in meaning, no table
+rebuilt" cannot both hold.
+
+**OWNER DECISION, 2026-09-27: the file goes.** A file whose `runs` table cannot hold a run with no
+submission behind it is refused at start-up, naming itself so the owner knows what to delete. The
+reason is that nothing runs Grimoire in production yet, so the rows such a file holds are the owner's
+own test ingests — and a rebuild would be machinery carried for ever to keep a file nobody needs. The
+first Grimoire that has users with files worth keeping revisits this.
+
+Refusing to start is what the adapter already does with a file it cannot read: a state value it does
+not know throws rather than being guessed at, for the same reason — every submission the user made is
+in that file, and reading one of them wrongly is worse than not starting. **DEC-031's mechanism keeps
+its consumer**: a file written by an earlier commit of this feature takes a null `submission_id` but
+lacks the columns added after it, and `PRAGMA table_info` + `ALTER TABLE` is what brings it up to
+date. A Contract test covers each of the two files.
+
 ---
 
 ## R-05 — How each stream is fed, and what an increment is
@@ -186,6 +206,31 @@ carries an increment.
 `read_page`. A question's run is dispatched at that address; an ingest run keeps
 `/mcp/runs/{runId}` and its five tools. `ToolGrant` gains the endpoint segment beside the names, so
 the grant and the door that serves it are one value and cannot disagree.
+
+**Revised while implementing** (phase 3, raised in review): **mapping a second route does not give a
+second catalogue.** `AddMcpServer().WithTools<A>().WithTools<B>()` builds *one*
+`McpServerOptions.ToolCollection`, and `MapMcp` serves that same one at every pattern it is mapped
+to — measured on `ModelContextProtocol.AspNetCore` 2.2.0, which merged the duplicate `list_pages` and
+`read_page` silently rather than failing, so `/mcp/questions/{runId}` served all five tools and
+GUARD-005 did not hold at all.
+
+What replaces it is `HttpServerTransportOptions.ConfigureSessionOptions`, which the library does
+offer: it runs per session with that request's `HttpContext` and that session's `McpServerOptions`,
+whose `ToolCollection` is what the session serves. A session opened on the questions route is given a
+catalogue built from `WikiReadToolsServer` alone. **The decision's substance is unchanged** — the
+session's catalogue *is* the grant, and the write tools are not in it to be reached by any name, which
+is DEC-011's deny-by-default by construction. What changed is the mechanism that carries it.
+
+Each catalogue is built from its own attributed type rather than by taking two of the five by name: a
+type that holds only the two reads has no place a third could be selected from by mistake, which is
+the difference between construction and an allow-list.
+
+Two tests were missing and now exist. `QuestionGrantTests` asserted what a tool *type* declares, and a
+hub serving five tools at the question door satisfied every one of those assertions; what a **route**
+serves is read over a real MCP session in `WikiToolDoorTests` (Contract — the handshake is the real
+thing, and it costs seconds the Fast budget does not have). And `HarnessProcess.ArgumentsFor` built
+the URL from a literal `/mcp/runs/`, so nothing consumed `ToolGrant.Endpoint` and every question's run
+would have reached the ingest door; it now comes off the grant, with a Fast test on both kinds.
 
 **Why not a narrower `--allowed-tools`.** DEC-011's decision is that tools are deny-by-default **by
 construction, not by an allow-list of names**, and its evidence is that `--tools ""` makes the

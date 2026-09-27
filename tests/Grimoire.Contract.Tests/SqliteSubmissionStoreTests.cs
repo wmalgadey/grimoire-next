@@ -328,29 +328,52 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-006")]
+    public void OlderFile_IsRefused_BecauseItsRunTableCannotHoldAQuestionsRun()
+    {
+        // A file an older Grimoire wrote declares `submission_id` NOT NULL, and a question's run is
+        // written with a null there. `CREATE TABLE IF NOT EXISTS` does not alter a table that is
+        // already present, and dropping a NOT NULL constraint in SQLite means rebuilding the table —
+        // which `research.md` R-04 asked not to happen, so one of the two had to give.
+        WriteAFileOfTheOlderSchema(Guid.NewGuid(), Guid.NewGuid());
+
+        // OWNER DECISION: the file goes. Nothing runs Grimoire in production yet, so the rows such a
+        // file holds are the owner's own test ingests, and a rebuild would be machinery carried for
+        // ever to keep a file nobody needs.
+        //
+        // Refused at construction and not at the first question, because the first question is the
+        // wrong place to learn it: the insert would fail on a constraint, which is a failure the user
+        // can do nothing about and would not understand. Refusing to start is what this adapter already
+        // does with a state value it cannot read, and for the same reason.
+        var refused = Assert.Throws<InvalidOperationException>(() => Reopened());
+
+        // And it names the file, so the owner knows what to delete.
+        Assert.Contains("submissions.db", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-010")]
-    public void OlderFile_ComesBackWithItsSubmissionsIntactAndItsFiguresAtZero()
+    public void FileWithoutThisVersionsColumns_ComesBackWithItsSubmissionsIntactAndItsFiguresAtZero()
     {
         var submissionId = Guid.NewGuid();
         var runId = Guid.NewGuid();
 
-        // The four columns this Grimoire wants are not there, because the Grimoire that wrote this file
-        // did not have them. The owner's own `submissions.db` is exactly this file, and the alternative
-        // to reading it is asking them to delete the list of everything they ever submitted
-        // (research.md R-07).
-        WriteAFileOfTheOlderSchema(submissionId, runId);
+        // A file whose `runs` table can hold a question's run but is missing columns this Grimoire
+        // added — which is what a database written by an earlier commit of this very feature is. This
+        // is what keeps DEC-031's `PRAGMA table_info` + `ALTER TABLE` a mechanism with a consumer.
+        WriteAFileMissingThisVersionsColumns(submissionId, runId);
 
         var read = Assert.Single(Reopened().Load());
 
         Assert.Equal(submissionId, read.Id);
-        Assert.Equal("An older Grimoire wrote this.", read.Text);
+        Assert.Equal("A Grimoire without the later columns wrote this.", read.Text);
         Assert.Equal(SubmissionState.Done, read.State);
         Assert.Equal(runId, read.Run!.Id);
         Assert.Equal(ToolGrant.ForIngest, read.Run.GrantedTools);
 
-        // Nothing is known about what an older run spent, and zero is the only honest answer a column
-        // can give. The model is left empty rather than guessed at: the current `--model` would claim
-        // the run had used one it may never have seen.
+        // Nothing is known about what such a run spent, and zero is the only honest answer a column can
+        // give. The model is left empty rather than guessed at: the current `--model` would claim the
+        // run had used one it may never have seen.
         Assert.Equal(string.Empty, read.Run.Model);
         Assert.Equal(0, read.Run.CostSpent);
         Assert.Equal(0, read.Run.ToolCalls);
@@ -358,10 +381,32 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     /// <summary>
+    /// A file whose <c>runs</c> table takes a null <c>submission_id</c> but has none of the columns
+    /// added after it — a database an earlier commit of <c>004-ask-the-wiki</c> wrote.
+    /// </summary>
+    private void WriteAFileMissingThisVersionsColumns(Guid submissionId, Guid runId) =>
+        WriteAFile(
+            submissionId,
+            runId,
+            "A Grimoire without the later columns wrote this.",
+            submissionIdColumn: "submission_id            TEXT NULL,");
+
+    /// <summary>
     /// A file with the schema <c>002-ingest-queue</c> left, written with no help from the adapter under
     /// test — a fixture the adapter built would not be an older file at all.
     /// </summary>
-    private void WriteAFileOfTheOlderSchema(Guid submissionId, Guid runId)
+    private void WriteAFileOfTheOlderSchema(Guid submissionId, Guid runId) =>
+        WriteAFile(
+            submissionId,
+            runId,
+            "An older Grimoire wrote this.",
+            submissionIdColumn: "submission_id            TEXT NOT NULL,");
+
+    /// <summary>
+    /// One writer for both fixtures, so that the only difference between them is the one column the
+    /// tests are about.
+    /// </summary>
+    private void WriteAFile(Guid submissionId, Guid runId, string text, string submissionIdColumn)
     {
         using var connection = new SqliteConnection(
             new SqliteConnectionStringBuilder
@@ -385,7 +430,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
 
             CREATE TABLE runs (
                 id                       TEXT PRIMARY KEY,
-                submission_id            TEXT NOT NULL,
+                {submissionIdColumn}
                 started_at               TEXT NOT NULL,
                 granted_tools            TEXT NOT NULL,
                 grant_recorded_at        TEXT NOT NULL,
@@ -394,7 +439,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
             );
 
             INSERT INTO submissions VALUES
-                ('{submissionId}', 'An older Grimoire wrote this.', '{Noon:O}', 'done', '{runId}', NULL);
+                ('{submissionId}', '{text}', '{Noon:O}', 'done', '{runId}', NULL);
 
             INSERT INTO runs VALUES
                 ('{runId}', '{submissionId}', '{Noon:O}',

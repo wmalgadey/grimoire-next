@@ -45,6 +45,9 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
 
     private readonly string connectionString;
 
+    /// <summary>The file itself, so that a refusal can name it and the owner knows what to delete.</summary>
+    private string DataSource => new SqliteConnectionStringBuilder(connectionString).DataSource;
+
     /// <summary>
     /// Creates the file and its two tables where they are not there yet. The directory is
     /// Grimoire's own and never the wiki: the queue writes nothing into the wiki, and Grimoire's
@@ -82,7 +85,51 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             );
             """);
 
+        RefuseAFileThatCannotHoldAQuestionsRun();
         BringTheRunTableUpToDate();
+    }
+
+    /// <summary>
+    /// A file whose <c>runs</c> table cannot hold a run with no submission behind it is refused rather
+    /// than worked around (RUNS-006, QUERY-005).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A question's run is written with a null <c>submission_id</c>, and a table declared
+    /// <c>NOT NULL</c> will not take one. <c>CREATE TABLE IF NOT EXISTS</c> does not alter a table that
+    /// is already there and <see cref="BringTheRunTableUpToDate"/> only <em>adds</em> columns, so a file
+    /// an older Grimoire wrote keeps that constraint — and the first question asked against it would
+    /// fail on the insert, which is a failure the user can do nothing about and would not understand.
+    /// </para>
+    /// <para>
+    /// <b>Refused, and not migrated.</b> Dropping a <c>NOT NULL</c> constraint in SQLite means
+    /// rebuilding the table, and <c>research.md</c> R-04 asked for a change that does not rebuild one —
+    /// which turns out to be impossible, so one of the two had to give. OWNER DECISION: the file goes.
+    /// Nothing runs Grimoire in production yet, so the rows such a file holds are the owner's own test
+    /// ingests, and a rebuild would be machinery carried for ever to save a file nobody needs. The
+    /// first Grimoire that has users to keep files for revisits this.
+    /// </para>
+    /// <para>
+    /// Refusing to start is what this adapter already does with a file it cannot read — a state value it
+    /// does not know throws rather than being guessed at, for the same reason: every submission the user
+    /// made is in that file, and reading one of them wrongly is worse than not starting.
+    /// </para>
+    /// </remarks>
+    private void RefuseAFileThatCannotHoldAQuestionsRun()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText =
+            "SELECT 1 FROM pragma_table_info('runs') WHERE name = 'submission_id' AND \"notnull\" = 1";
+
+        if (command.ExecuteScalar() is not null)
+        {
+            throw new InvalidOperationException(
+                $"The state file at \"{DataSource}\" was written by a Grimoire that had no questions, "
+                + "and its runs table cannot hold one. Delete it and start again; nothing in it is "
+                + "needed by this Grimoire.");
+        }
     }
 
     /// <summary>

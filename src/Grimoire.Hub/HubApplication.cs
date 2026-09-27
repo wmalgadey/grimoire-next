@@ -211,9 +211,19 @@ public static class HubApplication
         builder.Services.AddSingleton(wiki);
         builder.Services.AddSingleton(sp => new RunAddress(
             sp.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>(), options.Model));
-        builder.Services.AddMcpServer().WithHttpTransport()
-            .WithTools<WikiToolsServer>()
-            .WithTools<WikiReadToolsServer>();
+        builder.Services.AddWikiToolSurfaces();
+
+        // **The session's catalogue is its grant.** `WithTools` is deliberately not called: it builds
+        // one collection for the whole server, and `MapMcp` serves that same one at every pattern — so
+        // the two routes below would both serve all five tools, which is what GUARD-005 exists to
+        // prevent (WikiToolSurfaces). Each session is given the catalogue its route calls for instead,
+        // and what is not in it does not exist for that run.
+        builder.Services.AddMcpServer()
+            .WithHttpTransport(http => http.ConfigureSessionOptions = (context, options, _) =>
+            {
+                options.ToolCollection = WikiToolSurfaces.For(context, context.RequestServices);
+                return Task.CompletedTask;
+            });
 
         var app = builder.Build();
 
@@ -261,10 +271,10 @@ public static class HubApplication
         // One endpoint per run: the identifier in the path is how a tool call is attributed to
         // its run. Unauthenticated and on loopback, per docs/product.md §2.
         //
-        // **Two doors, and the second serves two tools.** The tools a question's run is not granted
-        // are not registered at its endpoint at all, which is what makes GUARD-005 deny-by-default by
-        // construction rather than an allow-list over a larger surface (DEC-011, research.md R-06).
-        // Which door a run is dispatched at travels on its grant, so the two cannot be crossed.
+        // **Two doors, and the second serves two tools.** Which catalogue a session gets is decided
+        // per session from the route it was opened on (`WikiToolSurfaces`), because mapping a second
+        // pattern does not give a second catalogue. Which door a run is dispatched at travels on its
+        // grant, so the two cannot be crossed (GUARD-005, DEC-011).
         app.MapMcp("/mcp/runs/{runId}");
         app.MapMcp("/mcp/questions/{runId}");
 

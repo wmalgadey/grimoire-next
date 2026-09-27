@@ -67,7 +67,14 @@ public sealed class HarnessProcess(HarnessSettings settings) : IAgentHarness
                 [AgentTranscript.ServerName] = new JsonObject
                 {
                     ["type"] = "http",
-                    ["url"] = new Uri(mcpBaseAddress, $"/mcp/runs/{dispatch.RunId}").ToString(),
+                    // **The door comes off the grant**, not out of a literal here. The grant carries
+                    // the endpoint segment beside the tool names precisely so that the two cannot
+                    // disagree: pointed at the wrong door, a run would be served a surface that is not
+                    // its grant and would end failed before its first model call — or, worse, reach
+                    // tools it was never granted (GUARD-001, GUARD-005, research.md R-06).
+                    ["url"] = new Uri(
+                        mcpBaseAddress,
+                        $"/mcp/{dispatch.Grant.Endpoint}/{dispatch.RunId}").ToString(),
                 },
             },
         };

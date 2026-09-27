@@ -1,4 +1,5 @@
 using Grimoire.Agent;
+using Grimoire.Agent.Adapters;
 using Grimoire.Hub.Mcp;
 
 namespace Grimoire.Fast.Tests;
@@ -19,6 +20,13 @@ namespace Grimoire.Fast.Tests;
 /// What is asserted is <b>equality</b>, never containment. A surface that is not the grant ends the
 /// run failed before its first model call, so "these two and no others" is the claim and a subset
 /// check would let a write tool through.
+/// </para>
+/// <para>
+/// <b>What a type declares is not what a route serves</b>, and the difference is not academic: a hub
+/// that served all five tools at the question door passed every test in this file, because mapping a
+/// second route does not give a second catalogue. What the route serves is read over a real MCP
+/// session, which costs seconds and so sits in the Contract suite — <c>WikiToolDoorTests</c>. These
+/// stay here because they are the hub's own half of the grant, as GUARD-002's Fast test is.
 /// </para>
 /// </remarks>
 [Trait("level", "fast")]
@@ -84,6 +92,32 @@ public sealed class QuestionGrantTests
         // And the ingest door does serve them, so the assertion above is about this type and not about
         // a name nothing in the tree has.
         Assert.Equal(TheWriteTools.Order(), WikiToolsServer.ServedNames.Intersect(TheWriteTools).Order());
+    }
+
+    [Fact]
+    public void Dispatch_PointsAQuestionsRunAtTheDoorItsGrantNames()
+    {
+        var question = new AgentDispatch(
+            Guid.NewGuid(), Guid.NewGuid(), "a prompt", ToolGrant.Question(FastSuite.Clock()), FastHub.Model);
+
+        var ingest = new AgentDispatch(
+            Guid.NewGuid(), Guid.NewGuid(), "a prompt", ToolGrant.Ingest(FastSuite.Clock()), FastHub.Model);
+
+        var somewhere = new Uri("http://127.0.0.1:5057");
+
+        // The address the agent is told to reach its tools at comes **off the grant**. Built from a
+        // literal instead, every question's run would connect to the ingest door — served a surface
+        // that is not its grant, and so failed before its first model call, or worse reaching tools it
+        // was never granted (GUARD-001, GUARD-005).
+        Assert.Contains(
+            $"/mcp/questions/{question.RunId}",
+            string.Join(' ', HarnessProcess.ArgumentsFor(question, somewhere)),
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            $"/mcp/runs/{ingest.RunId}",
+            string.Join(' ', HarnessProcess.ArgumentsFor(ingest, somewhere)),
+            StringComparison.Ordinal);
     }
 
     [Fact]
