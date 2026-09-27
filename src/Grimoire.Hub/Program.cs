@@ -66,6 +66,9 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
           --question-instruction <path>
                                 Grimoire's own question instruction
                                 (default: instructions/question.md)
+          --vault <name>        the Obsidian vault the wiki is read in, so that a page an
+                                answer names can be opened from it
+          --vault-root <path>   the wiki's own path inside that vault
           --state <path>        where the queue is kept, so that it survives a stop
                                 (default: state/ beside the hub)
           --urls <url>          where the hub listens; loopback only
@@ -109,6 +112,11 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
             return null;
         }
 
+        // Both optional, and **their absence refuses nothing**: the answer still arrives and the page's
+        // name is still readable in it, with one line saying opening is not set up (ACCESS-009).
+        var vault = given.GetValueOrDefault("vault");
+        var vaultRoot = given.GetValueOrDefault("vault-root");
+
         var state = given.GetValueOrDefault("state") ?? DefaultStateDirectory;
 
         if (IsInside(state, wiki))
@@ -122,7 +130,7 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
         }
 
         return new StartUp(
-            new HubOptions(instruction, questionInstruction, purpose, wiki, model),
+            new HubOptions(instruction, questionInstruction, purpose, wiki, model, vault, vaultRoot),
             address,
             state);
     }

@@ -121,6 +121,19 @@ public sealed record ChatTurnView(
 }
 
 /// <summary>
+/// The Obsidian vault the wiki is read in, and the wiki's own path inside it (ACCESS-009).
+/// </summary>
+/// <remarks>
+/// On the snapshot rather than written into the page, for the reason the cost ceiling is: these are
+/// the hub's start-up values and not the browser's. The browser joins <see cref="WikiPath"/> to a
+/// reference's target — which is that page's path relative to the wiki's root — to reach the page in
+/// the owner's own vault.
+/// </remarks>
+public sealed record VaultView(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("wikiPath")] string WikiPath);
+
+/// <summary>
 /// The chat as the browser reads it (QUERY-005, ACCESS-007, ACCESS-008).
 /// </summary>
 /// <param name="Total">
@@ -133,10 +146,17 @@ public sealed record ChatTurnView(
 /// each turn, because it is the hub's value and the same for every run in the chat — the same reason
 /// the submissions list carries it once.
 /// </param>
+/// <param name="Vault">
+/// Where a referenced page can be opened, and <b>absent where Grimoire was not told both</b> — the
+/// browser then shows page names as plain text and says opening is not set up (ACCESS-009).
+/// </param>
 public sealed record ChatView(
     [property: JsonPropertyName("turns")] IReadOnlyList<ChatTurnView> Turns,
     [property: JsonPropertyName("total")] long Total,
-    [property: JsonPropertyName("costCeiling")] long CostCeiling);
+    [property: JsonPropertyName("costCeiling")] long CostCeiling,
+    [property: JsonPropertyName("vault")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    VaultView? Vault = null);
 
 /// <summary>What the browser posts to ask the wiki.</summary>
 public sealed record QuestionRequest([property: JsonPropertyName("text")] string? Text);
@@ -151,7 +171,8 @@ public static class ChatEndpoints
         ChatIntake intake,
         Chat chat,
         SubmissionsEndpoints.StartUpInputsCheck startUpInputs,
-        LiveUpdates live)
+        LiveUpdates live,
+        VaultView? vault)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(intake);
@@ -176,7 +197,11 @@ public static class ChatEndpoints
         // that changed** — one more field would be a mechanism with no consumer (Constitution II.1).
         endpoints.MapGet("/api/chat/events", (CancellationToken token) =>
             TypedResults.ServerSentEvents(
-                live.Watch(LiveUpdates.Chat, sent => Opening(chat, sent), sent => Increments(chat, sent), token)));
+                live.Watch(
+                LiveUpdates.Chat,
+                sent => Opening(chat, sent, vault),
+                sent => Increments(chat, sent, vault),
+                token)));
 
         return endpoints;
     }
@@ -190,7 +215,7 @@ public static class ChatEndpoints
     /// the change log. That is the whole of ACCESS-007's reconnect clause — a browser that comes back
     /// reads the chat as it then stands, including what arrived while it was away.
     /// </remarks>
-    private static IEnumerable<SseItem<object>> Opening(Chat chat, Sent sent)
+    private static IEnumerable<SseItem<object>> Opening(Chat chat, Sent sent, VaultView? vault)
     {
         // The turns and the position in the change log, taken together. Read apart, a piece of an
         // answer arriving between the two would be in this snapshot *and* past the position — so the
@@ -204,7 +229,8 @@ public static class ChatEndpoints
             new ChatView(
                 [.. snapshot.Turns.Select(ChatTurnView.Of)],
                 snapshot.Turns.Sum(turn => turn.Question.Figures?.CostSpent ?? 0),
-                Ceilings.Fixed.Cost),
+                Ceilings.Fixed.Cost,
+                vault),
             ChatEvents.Chat);
     }
 
@@ -215,11 +241,11 @@ public static class ChatEndpoints
     /// A new chat is a fresh snapshot rather than a run of increments: the turns it would refer to are
     /// gone, and every browser reading the chat is sent the new, empty one (QUERY-005).
     /// </remarks>
-    private static IEnumerable<SseItem<object>> Increments(Chat chat, Sent sent)
+    private static IEnumerable<SseItem<object>> Increments(Chat chat, Sent sent, VaultView? vault)
     {
         if (chat.Generation != sent.Generation)
         {
-            foreach (var afresh in Opening(chat, sent))
+            foreach (var afresh in Opening(chat, sent, vault))
             {
                 yield return afresh;
             }

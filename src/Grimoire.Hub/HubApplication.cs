@@ -21,12 +21,24 @@ namespace Grimoire.Hub;
 /// Grimoire's own question instruction, versioned in this repository. Changing it is an owner decision
 /// named in the PR, exactly as changing the ingest one is (QUERY-004, Constitution V.1).
 /// </param>
+/// <param name="VaultName">
+/// The Obsidian vault the wiki is read in, or null where the owner has not said. Optional, and its
+/// absence refuses nothing: the answer still arrives and the page's name is still readable in it
+/// (ACCESS-009).
+/// </param>
+/// <param name="VaultRoot">
+/// The wiki's own path inside that vault — the directory a reference's target hangs off. The owner
+/// defines it, which is why the absolute-path form was rejected: that would have taken the decision
+/// away from them (research.md R-09).
+/// </param>
 public sealed record HubOptions(
     string InstructionPath,
     string QuestionInstructionPath,
     string PurposeDescriptionPath,
     string WikiRoot,
-    string Model);
+    string Model,
+    string? VaultName = null,
+    string? VaultRoot = null);
 
 /// <summary>
 /// The composition root: the one place that knows every context (plan.md, Structure Decision).
@@ -160,6 +172,22 @@ public static class HubApplication
         await queue.DrainAsync().ConfigureAwait(false);
         await conductor.StopEverythingAsync().ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// What the browser needs to open a page in the owner's editor, or null where it was not told both
+    /// (ACCESS-009).
+    /// </summary>
+    /// <remarks>
+    /// Both or neither. One without the other cannot build a link — a vault with no path inside it
+    /// addresses the wrong place, and a path with no vault addresses nothing — so half the setting is
+    /// the same as none of it, and the browser is told so rather than left to work it out.
+    /// </remarks>
+    private static VaultView? VaultFor(HubOptions options) =>
+        options is { VaultName: { } name, VaultRoot: { } root }
+            && !string.IsNullOrWhiteSpace(name)
+            && !string.IsNullOrWhiteSpace(root)
+                ? new VaultView(name, root)
+                : null;
 
     public static WebApplication Build(
         string[] args,
@@ -297,7 +325,7 @@ public static class HubApplication
         var asking = new ChatIntake(board, queue);
 
         app.MapSubmissions(intake, board, queue, instructions.Read, live);
-        app.MapChat(asking, chat, instructions.Read, live);
+        app.MapChat(asking, chat, instructions.Read, live, VaultFor(options));
         app.MapRunRecord(board, record, live);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to
