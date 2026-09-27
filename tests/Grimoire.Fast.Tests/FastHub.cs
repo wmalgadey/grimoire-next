@@ -119,11 +119,7 @@ internal sealed class FastHub
         InstructionLoader.QuestionPayload(
             "THE QUESTION INSTRUCTION",
             "THE PURPOSE",
-            string.Join(
-                "\n\n",
-                Chat.Turns
-                    .Where(turn => turn.Question.RunId != runId && turn.Answer.Length > 0)
-                    .Select(turn => $"Asked: {turn.Question.Text}\n\nAnswered: {turn.Answer}")),
+            InstructionLoader.ConversationSoFar(Chat, runId),
             question,
             runId);
 

@@ -74,7 +74,7 @@ public sealed class InstructionLoader(
         return QuestionPayload(
             File.ReadAllText(questionInstructionPath),
             File.ReadAllText(purposeDescriptionPath),
-            SoFar(chat, runId),
+            ConversationSoFar(chat, runId),
             question,
             runId);
     }
@@ -114,16 +114,27 @@ public sealed class InstructionLoader(
     /// to check, not context the next run needs, and a run's tool results are the largest thing in a
     /// chat by far (research.md R-07).
     /// <para>
-    /// This run's own turn is left out — it is the question being asked, which the payload carries
-    /// whole at the end — and so is any turn that produced no answer: a question that got none has
-    /// nothing to say about what came before, and half a sentence from a failed run is not an answer
-    /// (QUERY-006).
+    /// Three turns are left out, and each for its own reason. This run's own, because it is the question
+    /// being asked and the payload carries that whole at the end. One still being answered or waiting,
+    /// because there is nothing settled to hand on. And <b>one that got no answer</b>: QUERY-006 says
+    /// nothing such a run produced is presented as its answer, and half a sentence from a failed run is
+    /// no more an answer to the next question than it is to its own.
+    /// </para>
+    /// <para>
+    /// Public and static so that the Fast suite assembles the conversation the way the hub does rather
+    /// than with a copy of this rule beside it — a double that built it differently would hide exactly
+    /// the kind of difference this method is where it is to prevent (Constitution III.9).
     /// </para>
     /// </remarks>
-    private static string SoFar(Chat chat, Guid runId) =>
-        string.Join(
+    public static string ConversationSoFar(Chat chat, Guid runId)
+    {
+        ArgumentNullException.ThrowIfNull(chat);
+
+        return string.Join(
             "\n\n",
             chat.Turns
-                .Where(turn => turn.Question.RunId != runId && turn.Answer.Length > 0)
+                .Where(turn => turn.Question.RunId != runId)
+                .Where(turn => turn.Question.State == QuestionState.Answered && turn.Answer.Length > 0)
                 .Select(turn => $"Asked: {turn.Question.Text}\n\nAnswered: {turn.Answer}"));
+    }
 }
