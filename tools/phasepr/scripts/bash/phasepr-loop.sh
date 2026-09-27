@@ -712,16 +712,23 @@ triage_round() {
     other_phases_unchanged "$others" "$n"
     check_denials triage
     check_commit_subjects "$before"
+    changed_git=false
+    [[ "$(git rev-parse HEAD)" != "$before" ]] && changed_git=true
     json=$(json_tail "$AGENT_RESULT")
-    if [[ -z "$json" ]] || ! jq -e 'has("changed") and has("another_round")' <<< "$json" >/dev/null; then
-        record_progress false "triage (no {\"changed\", \"another_round\", \"halt\"} line)"
+    # Both decisions must be booleans: "another_round": "yes" read as false would merge a head
+    # the agent wanted reviewed. Without a valid line and without a commit, the round made no
+    # progress; with a commit, what to do with it is undecided, and that is the owner's to see.
+    if [[ -z "$json" ]] || ! jq -e '(.changed | type) == "boolean" and (.another_round | type) == "boolean"' \
+            <<< "$json" >/dev/null; then
+        if [[ "$changed_git" == "true" ]]; then
+            halt triage-mismatch "The triage agent committed on '$S_PHASE_BRANCH' but ended without a valid {\"changed\": true|false, \"another_round\": true|false, \"halt\": …} line, so whether its push needs a further review round is undecided. Nothing was pushed; read its log in $LOG_DIR, push or drop the commit by hand, and rerun."
+        fi
+        record_progress false "triage (no valid {\"changed\", \"another_round\", \"halt\"} line)"
         return 0
     fi
     halt_reason=$(jq -r '.halt // empty' <<< "$json")
     [[ -n "$halt_reason" ]] && halt agent-halt "$halt_reason"
     changed_json=$(jq -r '.changed' <<< "$json")
-    changed_git=false
-    [[ "$(git rev-parse HEAD)" != "$before" ]] && changed_git=true
     if [[ "$changed_json" != "$changed_git" ]]; then
         halt triage-mismatch "The triage agent reported changed=$changed_json, but its commits say $changed_git. Check its replies on PR #$S_PHASE_PR against the branch and rerun."
     fi
@@ -932,7 +939,9 @@ ensure_ignored() {
 setup_draft() {
     local body title tasks n t total checked mark before
     S_STEP=setup
-    remote_has_branch "$FEATURE" || run git push -u origin "$FEATURE"
+    # The feature branch as it is here goes to origin first — without force — so the draft PR and
+    # every phase branch start from it, and no local commit is left behind unpushed.
+    push_branch "$FEATURE"
     S_DRAFT_PR=$("$GH_REVIEW" find "$FEATURE" main open)
     if [[ -n "$S_DRAFT_PR" ]]; then
         state_write

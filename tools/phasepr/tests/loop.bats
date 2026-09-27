@@ -222,6 +222,31 @@ setup() {
     pr_json 102 | jq -e '.merged_at != null'
 }
 
+@test "a triage that commits but gives its round decision as anything but a boolean halts, and nothing is pushed" {
+    threads_for_review 1 1
+    scenario triage-review.sh '
+        echo "fix" >> src-phase-2.txt
+        git commit -qam "fix(042): the fix"
+        echo "{\"changed\": true, \"another_round\": \"yes\", \"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: triage-mismatch"* ]]
+    [ "$(git log -1 --format=%s origin/042-demo-phase-2-base)" != "fix(042): the fix" ]
+    [ "$(count_calls 'requested_reviewers')" -eq 0 ]
+}
+
+@test "local commits on the feature branch reach origin before anything else" {
+    echo note > local-note.txt
+    git add local-note.txt
+    git commit -qm "docs(042): a note made here"
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    git fetch -q origin
+    git log --format=%s origin/042-demo | grep -qx 'docs(042): a note made here'
+}
+
 @test "a triage without its round decision counts as no progress" {
     threads_for_review 1 1
     scenario triage-review.sh 'echo "{\"changed\": false, \"halt\": null}"'

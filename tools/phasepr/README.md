@@ -15,7 +15,8 @@ is a phase, and a phase is done only when its PR is merged.
 ## What it does
 
 ```
-setup        draft PR <NNN-slug> -> main       body: an agent, from spec.md; plus the phase checklist
+setup        push <NNN-slug> (never forced)    so origin has every local commit before anything starts
+             draft PR <NNN-slug> -> main       body: an agent, from spec.md; plus the phase checklist
 per phase N  branch <NNN-slug>-phase-N[-slug]   off the feature branch
              implement iterations               fresh `claude -p "/speckit-implement …"`, scoped to phase N,
                                                 until every task of N is checked, the tree is clean
@@ -228,7 +229,7 @@ owner has to make. Rerun it once that is decided.
 | `commit-subject` | an agent commit is not `type(scope): subject` with the feature's number or a requirement ID as scope | rewords it on the branch, or reruns to accept it |
 | `ci-red` | the PR's checks are red although `gates.sh` was green | looks at the check |
 | `permission-denied` | the permission mode refused an agent something it needed | allows it in `.claude/settings.json`, changes model or mode, or takes it out of the task |
-| `triage-mismatch` | a triage claimed a change it did not commit, or the reverse | checks its replies |
+| `triage-mismatch` | a triage claimed a change it did not commit, or the reverse; or it committed without a valid `changed`/`another_round` pair (both booleans) | checks its replies, pushes or drops the commit |
 | `iteration-limit` | `max_implement_iterations` used up | finishes the phase or reruns |
 | `push-rejected`, `github-error`, `mutation-failed`, `phases-open` | what they say | |
 
