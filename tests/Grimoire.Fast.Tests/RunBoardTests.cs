@@ -148,6 +148,39 @@ public sealed class RunBoardTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-003")]
+    [Trait("req", "RUNS-006")]
+    [Trait("req", "QUERY-005")]
+    public async Task Queue_MovesAfterARestart_WhenTheFailureThatHeldItWasAQuestions()
+    {
+        hub.Harness.AgentProcess = new AgentProcessIdentity(4_711, FastSuite.Start);
+
+        var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
+
+        Assert.NotNull(question.RunId);
+
+        // Grimoire stops with the question's run in progress, and starts again. RUNS-006: the agent is
+        // terminated by the identity recorded with its run — which is the whole reason that run has a
+        // row while the question has none (research.md R-04).
+        var restarted = hub.Restarted();
+
+        Assert.Equal(
+            new AgentProcessIdentity(4_711, FastSuite.Start),
+            Assert.Single(restarted.Harness.Terminated));
+
+        // **The block went with the chat.** A question's failure holds the queue while Grimoire runs,
+        // exactly as a submission's does — but a chat does not survive a stop (QUERY-005), so there is
+        // no question left on any screen to acknowledge. A block restored without its question is a
+        // queue nothing can ever clear, which is worse than the gap; RUNS-003's last clause says so.
+        var afterwards = await restarted.AcceptedAsync("Grace Hopper found the first bug.");
+
+        Assert.NotNull(afterwards.RunId);
+
+        // And the chat is empty, which is what left nothing to acknowledge.
+        Assert.Empty(restarted.Chat.Turns);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-004")]
     [Trait("req", "RUNS-006")]
     public async Task Queue_LeavesNothingUnderWay_WhenTheRunCouldNotBeWrittenDown()

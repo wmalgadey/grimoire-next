@@ -38,6 +38,12 @@ trigger.
 to check, not context the next run needs, and a run's tool results are the largest thing in a chat by
 far.
 
+**What a stop takes with it.** A question that got no answer and was never acknowledged holds the
+queue while Grimoire runs, exactly as a failed submission does (RUNS-003) — and that block goes with
+the chat. There is nothing left to acknowledge: the question is on no screen and on no disk, so a
+block restored without it could never be cleared. RUNS-003's last clause says so, and
+`docs/capabilities/runs.md` carries the reasoning.
+
 QUERY-005 makes "gone after a restart" a **requirement** rather than a limitation, which is why the
 chat is a plain object in memory and not a port: a persistent second implementation would contradict
 this sentence rather than serve it (Constitution II.4). Held while nobody is connected, because the

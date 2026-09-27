@@ -12,7 +12,7 @@ Traceability: what a run did, why, how it ended, what it cost; approving lint pr
 | --- | --- | --- |
 | RUNS-001 | Every submission MUST carry exactly one state at a time, drawn from submitted, running, done, failed. | test |
 | RUNS-002 | At most one run MUST be in progress at any time, and waiting submissions MUST start in the order they were made. | test |
-| RUNS-003 | After a run ends failed, no further run MUST start until the user has acknowledged that failure; waiting submissions MUST stay waiting, and the acknowledged run MUST stay failed. | test |
+| RUNS-003 | After a run ends failed, no further run MUST start until the user has acknowledged that failure; waiting submissions MUST stay waiting, and the acknowledged run MUST stay failed. A failure the user can no longer see MUST NOT hold the queue: a question's failure goes with the chat that held it when Grimoire stops. | test |
 | RUNS-004 | Submissions and their states MUST survive Grimoire stopping and starting again; a run that was in progress when Grimoire stopped MUST read failed afterwards. | test |
 | RUNS-005 | A run MUST end done when the agent stopped on its own, neither ceiling was reached, and, for a run that is to change the wiki, the wiki's log holds an entry for that run; an entry belongs to a run when `log.md` contains that run's identifier. When such a run stops inside both ceilings and the log holds no entry for it, Grimoire MUST tell the agent once that the entry is missing and let it continue within the ceilings; if the agent then stops and the entry is there, the run MUST end done. In every other case the run MUST end failed. Grimoire MUST read nothing else in the wiki to decide this. | test |
 | RUNS-006 | No agent MUST go on working on a run once Grimoire has ended that run. When Grimoire stops and is given the chance to act, a run that is in progress MUST be stopped with it. The process identifier of a run's agent MUST be recorded with the run; at start-up, for every run Grimoire reads as having been in progress, it MUST terminate that process where it is still alive — before that run reads failed and before any further run starts — and MUST NOT terminate a process that is no longer that run's agent. | test |
@@ -37,6 +37,16 @@ handed over** (QUERY-005, GUARD-005).
 - **RUNS-008** and **RUNS-009** are now properties of a **record** rather than of every run. The
   frame and the ordering are unchanged word for word; which runs have records is RUNS-007's business
   and is stated in one place instead of three.
+- **RUNS-003** gains a last clause. It is what a question's failure surviving a stop would otherwise
+  cost: the block holds until the user acknowledges the failure, but a chat does not survive Grimoire
+  stopping (QUERY-005), so after a restart there is no question on any screen to acknowledge. A block
+  restored without the question it belongs to is a queue **nothing can ever clear** — an empty chat,
+  and Grimoire refusing to run again until the owner deletes the state file, which is strictly worse
+  than the gap. Persisting the question instead to keep the block is what QUERY-005 forbids in as many
+  words. So the block is a property of a failure the user can still see, and a start-up terminates such
+  a run's agent, marks the run ended failed, and lets the queue go on (RUNS-006, contracts/question-run.md §4).
+  A submission's failure is untouched: it is on disk, it is on the screen, and it holds the queue across
+  a restart exactly as it did.
 
 RUNS-006 and RUNS-010 are untouched and both bind a question's run: no agent outlives its run and a
 start-up terminates what it finds alive — which is why a question's **run** has a row on disk even
