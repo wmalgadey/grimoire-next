@@ -172,9 +172,11 @@ function stepHappened(item, step) {
   steps.append(drawn);
 
   // The fold says how many there are, which is what lets the user see something happened without
-  // opening it.
-  steps.querySelector(":scope > summary").textContent =
-    `${steps.querySelectorAll(":scope > details.step").length} steps`;
+  // opening it. Singular where there is one: "1 steps" is the kind of thing a reader trips over, and
+  // the first step of every answer would say it.
+  const many = steps.querySelectorAll(":scope > details.step").length;
+
+  steps.querySelector(":scope > summary").textContent = `${many} ${many === 1 ? "step" : "steps"}`;
 }
 
 // A question's state, its reason and its figure. Written, never rebuilt: each has an element of its
