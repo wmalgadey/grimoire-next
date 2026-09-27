@@ -430,6 +430,13 @@ public static class ChatEndpoints
             state = view.State,
             because = view.Because,
             costSpent = view.CostSpent,
+
+            // **Beyond what contracts/hub-http-api.md lists for this event**, and it has to be. The
+            // control ACCESS-003 asks for is offered on the strength of this, and a question's failure
+            // arrives as an increment — a browser that only learnt it from a snapshot would show no
+            // control until something else made it reconnect. Whether a failure is still waiting to be
+            // seen is part of the question's state, which is what this event is for.
+            awaitingAcknowledgement = view.AwaitingAcknowledgement,
             total = chat.Total,
         };
     }

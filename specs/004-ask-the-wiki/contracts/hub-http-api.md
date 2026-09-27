@@ -102,7 +102,13 @@ data: {"turns":[…],"total":148233,"costCeiling":2000000,"vault":{"name":"Notes
 | `asked` | a question joined the chat | `{"id":…,"text":…,"askedAt":…,"state":"waiting"}` |
 | `answer` | the agent wrote more of an answer | `{"id":…,"append":"…"}` |
 | `step` | the agent made a call, or one returned | `{"id":…,"step":{"kind":"called"\|"returned","tool":"read_page","content":"…"}}` |
-| `question` | a question's state or figures changed | `{"id":…,"state":…,"because":…,"costSpent":…,"total":…}` |
+| `question` | a question's state or figures changed | `{"id":…,"state":…,"because":…,"costSpent":…,"awaitingAcknowledgement":…,"total":…}` |
+
+`awaitingAcknowledgement` was added to the `question` event **while phase 6 was being built**, and it
+had to be: the control ACCESS-003 asks for is offered on the strength of it, and a question's failure
+reaches the browser as an increment — told only by a snapshot, a browser would show no control until
+something else made it reconnect. Whether a failure is still waiting to be seen is part of the
+question's state, which is what that event is for.
 
 **A turn**, as the snapshot carries it:
 
