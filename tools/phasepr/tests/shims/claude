@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+#
+# A fake `claude -p ... --output-format json`. The prompt's first-line marker names the iteration
+# kind (implement-phase, triage-review, draft-body). The k-th call of a kind runs
+# $SCENARIO/<kind>.<k>.sh, else $SCENARIO/<kind>.sh, else the default below; what that prints
+# becomes `.result`, its exit code the CLI's. A scenario that writes $FAKE_GH/denials.json (an
+# array of permission denials) has them reported as the CLI's `permission_denials`, once.
+# Calls are logged to $FAKE_GH/calls.log.
+
+set -euo pipefail
+
+: "${FAKE_GH:?}"
+prompt=""
+args=("$@")
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -p) prompt=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+kind=$(grep -oE 'phasepr prompt: [a-z-]+' <<< "$prompt" | head -n1 | sed 's/.*: //')
+[[ -n "$kind" ]] || { printf 'claude (fake): no phasepr marker in the prompt\n' >&2; exit 1; }
+count=$(( $(cat "$FAKE_GH/claude-$kind.count" 2>/dev/null || echo 0) + 1 ))
+printf '%s\n' "$count" > "$FAKE_GH/claude-$kind.count"
+printf 'claude %s #%s %s\n' "$kind" "$count" "${args[*]:2}" >> "$FAKE_GH/calls.log"
+[[ -z "${ANTHROPIC_API_KEY+set}" ]] || printf 'claude saw ANTHROPIC_API_KEY\n' >> "$FAKE_GH/calls.log"
+export PROMPT=$prompt CALL=$count
+
+TASKS_SH="$(git rev-parse --show-toplevel)/tools/phasepr/scripts/bash/tasks.sh"
+
+default_implement() {
+    local phase tasks id
+    phase=$(grep -oE '\*\*Phase [0-9]+' <<< "$PROMPT" | head -n1 | grep -oE '[0-9]+')
+    tasks=$(ls specs/*/tasks.md)
+    for id in $("$TASKS_SH" open "$tasks" "$phase"); do
+        sed "s/^- \[ \] $id /- [X] $id /" "$tasks" > "$tasks.tmp" && mv "$tasks.tmp" "$tasks"
+    done
+    printf 'phase %s, call %s\n' "$phase" "$CALL" >> "src-phase-$phase.txt"
+    git add -A
+    git commit -q -m "feat(042): phase $phase work ($CALL)"
+    printf 'Done.\n{"halt": null}\n'
+}
+
+default_triage() {
+    local pr gh_review
+    pr=$(grep -oE 'PR #[0-9]+' <<< "$PROMPT" | head -n1 | grep -oE '[0-9]+')
+    gh_review=$(grep -oE 'bash [^ ]+/gh-review.sh' <<< "$PROMPT" | head -n1 | cut -d' ' -f2)
+    "$gh_review" threads "$pr" | jq -r '.[] | "\(.thread_id) \(.comment_id)"' | while read -r t c; do
+        "$gh_review" reply "$pr" "$c" "Declined: a style preference with no rule behind it."
+        "$gh_review" resolve "$t"
+    done
+    printf '{"changed": false, "another_round": false, "halt": null}\n'
+}
+
+set +e
+if [[ -x "$SCENARIO/$kind.$count.sh" ]]; then
+    result=$("$SCENARIO/$kind.$count.sh")
+elif [[ -x "$SCENARIO/$kind.sh" ]]; then
+    result=$("$SCENARIO/$kind.sh")
+else
+    case "$kind" in
+        implement-phase) result=$(default_implement) ;;
+        triage-review) result=$(default_triage) ;;
+        draft-body) result="The demo feature, as it is once merged." ;;
+    esac
+fi
+rc=$?
+set -e
+denials='[]'
+if [[ -f "$FAKE_GH/denials.json" ]]; then
+    denials=$(cat "$FAKE_GH/denials.json")
+    rm -f "$FAKE_GH/denials.json"
+fi
+jq -n --arg result "$result" --argjson rc "$rc" --argjson denials "$denials" \
+    '{type: "result", subtype: (if $rc == 0 then "success" else "error_max_turns" end),
+      is_error: ($rc != 0), result: $result, permission_denials: $denials}'
+exit "$rc"

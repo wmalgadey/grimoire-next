@@ -94,6 +94,13 @@ dotnet run --project src/Grimoire.Hub -- --wiki <dir> --purpose <file> --model <
 
 `GRIMOIRE_MODEL` / `--model` must be a pinned model id; aliases are refused (DEC-010). No `ANTHROPIC_API_KEY` — runs go through the owner's subscription sign-in (DEC-001), and the harness strips the variable from the child.
 
+Implement a feature one phase PR at a time, unattended — repository tooling, not part of Grimoire; `tools/phasepr/README.md` says what it does and where it stops. Its own tests need bats-core:
+
+```
+bash tools/phasepr/scripts/bash/phasepr-loop.sh --dry-run      # on the feature branch; prints every gh/git/claude call
+bats tools/phasepr/tests
+```
+
 ## Build and analysis settings you will hit
 
 `Directory.Build.props` turns SDK analyzers up to `Recommended`, switches on `EnforceCodeStyleInBuild` and makes every warning an error. CA1502 (complexity) is an error at threshold 15 from `CodeMetricsConfig.txt` (DEC-007). `tests/.editorconfig` switches off CA1707 and CA1502 for the suites only. Central package versions live in `Directory.Packages.props` — add a `PackageVersion` there, a bare `PackageReference` in the project.

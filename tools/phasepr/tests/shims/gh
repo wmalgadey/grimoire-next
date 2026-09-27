@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+#
+# A fake of the part of GitHub phasepr uses, kept in files under $FAKE_GH:
+#   pulls/<n>.json     the pull requests
+#   reviews/<n>.json   their reviews
+#   threads/<n>.json   their review threads (GraphQL shape)
+#   calls.log          one line per gh call
+#
+# The fake Copilot reviews a PR's head when the PR is opened ready for review and whenever
+# copilot-pull-request-reviewer[bot] is requested — any other login is accepted and ignored, as
+# GitHub does. Its k-th review adds the threads in $FAKE_GH/review-queue/<k>.json, when that exists.
+#
+# Knobs: FAKE_COPILOT=off (never reviews), FAKE_CONFLICT=1 (every PR conflicts),
+#        FAKE_CHECKS_RC=<n> (exit code of `gh pr checks`), FAKE_THREADS_MORE=1 (threads have a next page),
+#        FAKE_GRAPHQL_ERROR=1 (the threads query answers with an error),
+#        FAKE_HEAD_SHA=<sha> (what GitHub reports as every PR's head).
+
+set -euo pipefail
+shopt -s extglob
+
+: "${FAKE_GH:?}" "${FAKE_ORIGIN:?}"
+mkdir -p "$FAKE_GH/pulls" "$FAKE_GH/reviews" "$FAKE_GH/threads"
+printf '%s\n' "$*" >> "$FAKE_GH/calls.log"
+
+BOT="copilot-pull-request-reviewer[bot]"
+
+fail() { printf 'gh (fake): %s\n' "$*" >&2; exit 1; }
+
+pr_file() { printf '%s/pulls/%s.json\n' "$FAKE_GH" "$1"; }
+
+head_sha() { git --git-dir="$FAKE_ORIGIN" rev-parse "refs/heads/$1"; }
+
+copilot_review() {
+    local n=$1 head sha count queue
+    [[ "${FAKE_COPILOT:-on}" == "on" ]] || return 0
+    head=$(jq -r '.head.ref' "$(pr_file "$n")")
+    sha=$(head_sha "$head")
+    [[ -f "$FAKE_GH/reviews/$n.json" ]] || printf '[]\n' > "$FAKE_GH/reviews/$n.json"
+    jq --arg sha "$sha" --arg bot "$BOT" \
+        '. + [{user: {login: $bot, type: "Bot"}, state: "COMMENTED", commit_id: $sha}]' \
+        "$FAKE_GH/reviews/$n.json" > "$FAKE_GH/tmp" && mv "$FAKE_GH/tmp" "$FAKE_GH/reviews/$n.json"
+    count=$(( $(cat "$FAKE_GH/copilot.count" 2>/dev/null || echo 0) + 1 ))
+    printf '%s\n' "$count" > "$FAKE_GH/copilot.count"
+    queue="$FAKE_GH/review-queue/$count.json"
+    [[ -f "$FAKE_GH/threads/$n.json" ]] || printf '[]\n' > "$FAKE_GH/threads/$n.json"
+    if [[ -f "$queue" ]]; then
+        jq -s '.[0] + .[1]' "$FAKE_GH/threads/$n.json" "$queue" > "$FAKE_GH/tmp" \
+            && mv "$FAKE_GH/tmp" "$FAKE_GH/threads/$n.json"
+    fi
+}
+
+api() {
+    local method="" endpoint="" paginate=false
+    local -a fields=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -X) method=$2; shift 2 ;;
+            -f|-F) fields+=("$2"); shift 2 ;;
+            --paginate) paginate=true; shift ;;
+            --jq|-q) fail "--jq is not supported by the fake; pipe to jq" ;;
+            -*) fail "unsupported flag $1" ;;
+            *) endpoint=$1; shift ;;
+        esac
+    done
+    : "$paginate"
+    # gh's own rule: GET, or POST once a parameter is given.
+    if [[ -z "$method" ]]; then
+        method=GET
+        [[ ${#fields[@]} -gt 0 ]] && method=POST
+    fi
+
+    field() {
+        local kv v
+        for kv in "${fields[@]}"; do
+            if [[ "${kv%%=*}" == "$1" ]]; then
+                v=${kv#*=}
+                [[ "$v" == @* ]] && v=$(cat "${v#@}")
+                printf '%s' "$v"
+                return 0
+            fi
+        done
+        return 1
+    }
+
+    local path=${endpoint%%\?*} query=""
+    [[ "$endpoint" == *\?* ]] && query=${endpoint#*\?}
+    param() { tr '&' '\n' <<< "$query" | sed -n "s/^$1=//p" | head -n1; }
+
+    case "$method $path" in
+        "POST graphql")
+            local q
+            q=$(field query)
+            if [[ "$q" == *resolveReviewThread* ]]; then
+                local id f
+                id=$(field id)
+                for f in "$FAKE_GH"/threads/*.json; do
+                    jq --arg id "$id" 'map(if .id == $id then .isResolved = true else . end)' "$f" \
+                        > "$FAKE_GH/tmp" && mv "$FAKE_GH/tmp" "$f"
+                done
+                printf '{"data":{"resolveReviewThread":{"thread":{"isResolved":true}}}}\n'
+            elif [[ "$q" == *reviewThreads* && "${FAKE_GRAPHQL_ERROR:-0}" == "1" ]]; then
+                printf '{"data": {"repository": null}, "errors": [{"message": "Something went wrong"}]}\n'
+            elif [[ "$q" == *reviewThreads* ]]; then
+                local n
+                n=$(field number)
+                jq --argjson more "${FAKE_THREADS_MORE:-0}" \
+                    '{data: {repository: {pullRequest: {reviewThreads:
+                        {pageInfo: {hasNextPage: ($more == 1)}, nodes: .}}}}}' \
+                    "$FAKE_GH/threads/$n.json" 2>/dev/null \
+                    || printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}\n'
+            else
+                fail "unknown graphql query"
+            fi
+            ;;
+        "GET repos/"*/pulls)
+            local head base state
+            head=$(param head); head=${head#*:}
+            base=$(param base)
+            state=$(param state)
+            jq -s --arg head "$head" --arg base "$base" --arg state "$state" \
+                '[.[] | select(.head.ref == $head and .base.ref == $base
+                               and ($state == "all" or .state == $state))]' \
+                "$FAKE_GH"/pulls/*.json 2>/dev/null || printf '[]\n'
+            ;;
+        "POST repos/"*/pulls)
+            local n draft
+            n=$(( $(cat "$FAKE_GH/next.number" 2>/dev/null || echo 100) + 1 ))
+            printf '%s\n' "$n" > "$FAKE_GH/next.number"
+            draft=$(field draft)
+            jq -n --argjson n "$n" --arg title "$(field title)" --arg head "$(field head)" \
+                --arg base "$(field base)" --arg body "$(field body)" --argjson draft "$draft" \
+                --arg ms "$([[ "${FAKE_CONFLICT:-0}" == "1" ]] && echo dirty || echo clean)" \
+                '{number: $n, title: $title, head: {ref: $head}, base: {ref: $base}, body: $body,
+                  draft: $draft, state: "open", merged_at: null, mergeable_state: $ms}' \
+                > "$(pr_file "$n")"
+            [[ "$draft" == "true" ]] || copilot_review "$n"
+            cat "$(pr_file "$n")"
+            ;;
+        "GET repos/"*/pulls/+([0-9]))
+            # The head's SHA is where the branch points on origin now (FAKE_HEAD_SHA overrides it).
+            local f sha
+            f=$(pr_file "${path##*/}")
+            sha=${FAKE_HEAD_SHA:-$(head_sha "$(jq -r .head.ref "$f")" 2>/dev/null || true)}
+            jq --arg sha "$sha" '.head.sha = $sha' "$f"
+            ;;
+        "PATCH repos/"*/pulls/+([0-9]))
+            local f
+            f=$(pr_file "${path##*/}")
+            jq --arg body "$(field body)" '.body = $body' "$f" > "$FAKE_GH/tmp" && mv "$FAKE_GH/tmp" "$f"
+            cat "$f"
+            ;;
+        "GET repos/"*/pulls/+([0-9])/reviews)
+            local n=${path%/reviews}
+            cat "$FAKE_GH/reviews/${n##*/}.json" 2>/dev/null || printf '[]\n'
+            ;;
+        "POST repos/"*/pulls/+([0-9])/requested_reviewers)
+            local n=${path%/requested_reviewers}
+            n=${n##*/}
+            [[ "$(field 'reviewers[]')" == "$BOT" ]] && copilot_review "$n"
+            printf '{}\n'
+            ;;
+        "POST repos/"*/pulls/+([0-9])/comments/+([0-9])/replies)
+            printf '%s\n' "$(field body)" >> "$FAKE_GH/replies.log"
+            printf '{}\n'
+            ;;
+        "POST repos/"*/issues/+([0-9])/comments)
+            printf '%s\n' "$(field body)" >> "$FAKE_GH/comments.log"
+            printf '{}\n'
+            ;;
+        *) fail "unsupported api call: $method $endpoint" ;;
+    esac
+}
+
+merge() {
+    local n=$1 f head base work
+    f=$(pr_file "$n")
+    [[ "$(jq -r .mergeable_state "$f")" == "dirty" ]] && fail "Pull request #$n is not mergeable"
+    head=$(jq -r .head.ref "$f")
+    base=$(jq -r .base.ref "$f")
+    work=$(mktemp -d)
+    git clone -q "$FAKE_ORIGIN" "$work"
+    git -C "$work" checkout -q "$base"
+    git -C "$work" merge -q --no-ff "origin/$head" -m "Merge pull request #$n from owner/$head"
+    git -C "$work" push -q origin "$base"
+    git -C "$work" push -q origin --delete "$head"
+    rm -rf "$work"
+    jq '.state = "closed" | .merged_at = "2026-01-01T00:00:00Z"' "$f" > "$FAKE_GH/tmp" && mv "$FAKE_GH/tmp" "$f"
+}
+
+case "${1:-}" in
+    api) shift; api "$@" ;;
+    pr)
+        case "${2:-}" in
+            checks) exit "${FAKE_CHECKS_RC:-0}" ;;
+            merge) merge "$3" ;;
+            ready)
+                f=$(pr_file "$3")
+                jq '.draft = false' "$f" > "$FAKE_GH/tmp" && mv "$FAKE_GH/tmp" "$f"
+                ;;
+            *) fail "unsupported: gh $*" ;;
+        esac
+        ;;
+    *) fail "unsupported: gh $*" ;;
+esac

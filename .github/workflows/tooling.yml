@@ -1,0 +1,33 @@
+name: Tooling
+
+# phasepr's own checks: shellcheck over its scripts and its bats suite. Repository tooling, not
+# Grimoire — this workflow checks no rule of the constitution and is not a required check, so it
+# is not a gate (Constitution II.2); the two gates stay trace-check and time-budget in ci.yml.
+# It runs only where phasepr changed.
+on:
+  push:
+    branches: [main]
+    paths: ["tools/phasepr/**", ".github/workflows/tooling.yml"]
+  pull_request:
+    paths: ["tools/phasepr/**", ".github/workflows/tooling.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tooling:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # shellcheck and jq come with the runner image; bats-core does not.
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install --yes bats
+
+      - name: shellcheck
+        run: shellcheck -x tools/phasepr/scripts/bash/*.sh tools/phasepr/tests/shims/*
+
+      - name: bats
+        run: bats tools/phasepr/tests

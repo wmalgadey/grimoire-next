@@ -1,0 +1,38 @@
+# phasepr configuration
+# No secrets here: gh uses its own login, claude its own OAuth sign-in.
+# Precedence: command-line flags > phasepr-config.local.yml > this file.
+
+# Model for every agent iteration, passed as `--model`: a pinned id, not an alias, so a run is
+# reproducible — and one that supports auto mode (see README, "Permissions").
+model: "claude-opus-5-5"
+
+# Agent CLI. Only "claude" is implemented; phasepr-loop.sh refuses anything else.
+agent_cli: "claude"
+
+# How the agent CLI decides what an iteration may do, headless. "auto": its own safety check
+# decides, and what it refuses halts phasepr with the refused commands named. "bypassPermissions":
+# everything is allowed — only inside a sandbox, and as root the CLI refuses it (IS_SANDBOX=1).
+# Either way git push, reset, rebase, commit --amend and gh pr merge are refused outright.
+permission_mode: "auto"
+
+# --max-turns for one agent iteration. An implement iteration covers a whole phase.
+max_turns: 200
+
+# Implement iterations per phase before phasepr halts, whatever else happens.
+max_implement_iterations: 8
+
+# Run scripts/mutation.sh after the last phase and record its table in specs/<feature>/mutation.md.
+# CI's mutation job measures the same on the PR to main; --skip-mutation skips it for one run.
+run_mutation: true
+
+# Review rounds per phase PR. A round is a push after findings. Constitution I.11 caps it at 3,
+# and phasepr refuses a higher value.
+max_review_rounds: 3
+
+# Seconds to wait for the reviewer's review of the current head, and between two polls.
+review_timeout: 600
+review_poll_interval: 20
+
+# The login that `requested_reviewers` accepts for a Copilot re-review, and that Copilot's reviews
+# carry. Verified against this repository (README, "Reviewer login").
+reviewer_login: "copilot-pull-request-reviewer[bot]"
