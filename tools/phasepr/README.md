@@ -60,17 +60,38 @@ started) and `/speckit.phasepr.status`. That installation has **not** been tried
   thread, `gh pr merge`, `gh pr ready` and `gh pr checks` go through GitHub's GraphQL API; the rest
   is REST.
 - `claude`, signed in through its own OAuth login. No `ANTHROPIC_API_KEY`: every iteration uses the
-  CLI's existing sign-in. As root, `claude` refuses `--dangerously-skip-permissions` unless
-  `IS_SANDBOX=1` is set — only ever set that inside a container.
+  CLI's existing sign-in.
 - `dotnet` for the gates, and whatever `scripts/mutation.sh` needs.
 
 Every agent iteration is
 
 ```
-claude -p "<prompt>" --dangerously-skip-permissions --output-format json --max-turns N [--model ID]
+claude -p "<prompt>" --permission-mode auto --output-format json --max-turns N [--model ID] \
+       --disallowedTools "Bash(git push:*)" "Bash(git reset:*)" "Bash(git rebase:*)" \
+                         "Bash(git commit --amend:*)" "Bash(gh pr merge:*)"
 ```
 
 with stdin closed; the JSON output and the prompt are kept in `specs/<feature>/phasepr/logs/`.
+
+### Permissions
+
+Headless, a permission prompt has nobody to answer it, so an iteration runs in one of the two modes
+that never ask:
+
+- **`auto`** (the default): the CLI's own safety check decides each action. What it refuses is not
+  asked about — it is listed in the result's `permission_denials`, and phasepr halts with
+  `permission-denied`, naming the refused commands. Verified on 2026-09-27 with CLI 2.1.283, as
+  root too: with `claude-sonnet-5` an implement and a triage iteration ran without a single refusal,
+  the triage's replies, resolves and round comment through `gh-review.sh` included. With
+  `claude-haiku-4-5-20251001` auto mode refused every action that needs approval, even writing a
+  file — pick a model that supports it.
+- **`bypassPermissions`**: everything is allowed. Only inside a sandbox; as root the CLI refuses it
+  unless `IS_SANDBOX=1` is set.
+
+In both modes the CLI refuses outright what phasepr alone does or forbids: `git push`, `git reset`,
+`git rebase`, `git commit --amend`, `gh pr merge`. An agent that tries one anyway is logged, not
+halted — nothing happened. The history check below stays either way: auto mode let a
+`git commit --amend` through when it was not on that list.
 
 ## Configuration
 
@@ -81,6 +102,7 @@ the flags.
 | --- | --- | --- |
 | `model` | empty — the CLI's default | set a pinned model id |
 | `agent_cli` | `claude` | the only one implemented; `invoke_agent` is where another would go |
+| `permission_mode` | `auto` | `auto` or `bypassPermissions`; see "Permissions" |
 | `max_turns` | 200 | per iteration |
 | `max_implement_iterations` | 8 | per phase, a hard stop whatever else happens |
 | `max_review_rounds` | 3 | 1–3; Constitution I.11 caps it at three |
@@ -150,6 +172,7 @@ owner has to make. Rerun it once that is decided.
 | `protocol-violation` | history rewritten, branch switched, another phase's checkbox moved | repairs by hand; nothing was reset |
 | `owner-review` | the phase changes `instructions/`, `docs/decisions.md` or the constitution (I.11) | approves the PR (phasepr then merges) or merges it |
 | `ci-red` | the PR's checks are red although `gates.sh` was green | looks at the check |
+| `permission-denied` | the permission mode refused an agent something it needed | allows it in `.claude/settings.json`, changes model or mode, or takes it out of the task |
 | `triage-mismatch` | a triage claimed a change it did not commit, or the reverse | checks its replies |
 | `iteration-limit` | `max_implement_iterations` used up | finishes the phase or reruns |
 | `push-rejected`, `github-error`, `mutation-failed`, `phases-open` | what they say | |

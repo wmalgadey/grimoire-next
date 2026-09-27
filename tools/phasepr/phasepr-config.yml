@@ -9,6 +9,12 @@ model: ""
 # Agent CLI. Only "claude" is implemented; phasepr-loop.sh refuses anything else.
 agent_cli: "claude"
 
+# How the agent CLI decides what an iteration may do, headless. "auto": its own safety check
+# decides, and what it refuses halts phasepr with the refused commands named. "bypassPermissions":
+# everything is allowed — only inside a sandbox, and as root the CLI refuses it (IS_SANDBOX=1).
+# Either way git push, reset, rebase, commit --amend and gh pr merge are refused outright.
+permission_mode: "auto"
+
 # --max-turns for one agent iteration. An implement iteration covers a whole phase.
 max_turns: 200
 

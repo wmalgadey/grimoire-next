@@ -50,7 +50,7 @@ setup() {
     run phasepr
     [ "$status" -eq 0 ]
     calls | grep '^claude ' | while read -r line; do
-        [[ "$line" == *"--dangerously-skip-permissions --output-format json --max-turns 200 --model test-model"* ]]
+        [[ "$line" == *"--permission-mode auto --output-format json --max-turns 200 --model test-model --disallowedTools Bash(git push:*) Bash(git reset:*) Bash(git rebase:*) Bash(git commit --amend:*) Bash(gh pr merge:*)" ]]
     done
     [ "$(count_calls '^claude implement-phase')" -eq 2 ]
     [ "$(count_calls '^claude draft-body')" -eq 1 ]
@@ -125,6 +125,21 @@ setup() {
     [[ "$output" == *"only 'claude'"* ]]
 }
 
+@test "a permission mode that would wait for an answer is refused" {
+    printf 'permission_mode: "acceptEdits"\n' >> tools/phasepr/phasepr-config.local.yml
+    run phasepr
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"auto or bypassPermissions"* ]]
+}
+
+@test "permission_mode bypassPermissions reaches the agent CLI" {
+    printf 'permission_mode: "bypassPermissions"\n' >> tools/phasepr/phasepr-config.local.yml
+    git commit -qam "config: bypass"
+    run phasepr --phase 2
+    [ "$status" -eq 0 ]
+    [ "$(count_calls 'permission-mode bypassPermissions')" -eq 2 ]
+}
+
 @test "a branch that is not a feature branch needs --feature" {
     git checkout -q main
     run phasepr
@@ -184,7 +199,7 @@ setup() {
     [[ "$output" == *"Open threads:   4"* ]]
     [[ "$output" == *"Owner decision:"* ]]
     [ "$(state_value halt)" = "review-rounds" ]
-    [ "$(count_calls 'pr merge')" -eq 0 ]
+    [ "$(count_calls '^pr merge')" -eq 0 ]
 }
 
 @test "after a rounds halt, a rerun merges once the owner has closed the threads" {
@@ -281,6 +296,29 @@ setup() {
     [[ "$output" == *"Owner decision: T002 needs a requirement ID the spec does not have"* ]]
 }
 
+@test "an agent refused something it needed halts the run and names it" {
+    scenario implement-phase.sh '
+        printf "%s" "[{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"dotnet ef database update\\nsecond line\"}}]" > "$FAKE_GH/denials.json"
+        echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: permission-denied"* ]]
+    [[ "$output" == *"The implement agent was refused: dotnet ef database update. permission_mode is 'auto';"* ]]
+}
+
+@test "an agent refused a command it must never run is only logged" {
+    printf '%s' '[{"tool_name": "Bash", "tool_input": {"command": "git push origin HEAD"}}]' > "$BATS_TEST_TMPDIR/push.json"
+    scenario implement-phase.sh '
+        cp "$BATS_TEST_TMPDIR/push.json" "$FAKE_GH/denials.json"
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git commit -qam "feat: base"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"refused, as it must be: git push origin HEAD"* ]]
+}
+
 @test "three iterations in a row without progress trip the circuit breaker" {
     scenario implement-phase.sh 'echo "nothing done"'
     run phasepr --phase 2
@@ -323,7 +361,7 @@ setup() {
     run phasepr --phase 2
     [ "$status" -eq 1 ]
     [[ "$output" == *"phasepr halted: ci-red"* ]]
-    [ "$(count_calls 'pr merge')" -eq 0 ]
+    [ "$(count_calls '^pr merge')" -eq 0 ]
 }
 
 @test "a phase that changes docs/decisions.md waits for the owner's approval (I.11)" {

@@ -56,6 +56,7 @@ CFG_MAX_ROUNDS=3
 CFG_REVIEW_TIMEOUT=600
 CFG_POLL=20
 CFG_REVIEWER="copilot-pull-request-reviewer[bot]"
+CFG_PERMISSION_MODE="auto"
 
 FEATURE=""
 ONLY_PHASE=""
@@ -101,6 +102,7 @@ load_config() {
             review_timeout) CFG_REVIEW_TIMEOUT=$value ;;
             review_poll_interval) CFG_POLL=$value ;;
             reviewer_login) CFG_REVIEWER=$value ;;
+            permission_mode) CFG_PERMISSION_MODE=$value ;;
             *) die_usage "unknown key '$key' in $file" ;;
         esac
     done < "$file"
@@ -138,6 +140,11 @@ fi
 case "$CFG_AGENT_CLI" in
     claude) ;;
     *) die_usage "agent_cli '$CFG_AGENT_CLI' is not implemented; only 'claude' is" ;;
+esac
+# Headless, a permission prompt has nobody to answer it: only the modes that never ask will do.
+case "$CFG_PERMISSION_MODE" in
+    auto|bypassPermissions) ;;
+    *) die_usage "permission_mode must be auto or bypassPermissions, got '$CFG_PERMISSION_MODE'" ;;
 esac
 
 export PHASEPR_REVIEWER_LOGIN=$CFG_REVIEWER
@@ -385,6 +392,13 @@ done_count() {
 
 AGENT_RESULT=""
 AGENT_RC=0
+AGENT_DENIED=""
+
+# What an agent must never do, whatever the permission mode decides: phasepr pushes and merges
+# itself, and judges history against its snapshot. The CLI refuses these outright
+# (--disallowedTools); an agent that tries one anyway has done no harm, so such a refusal is only
+# logged. Any other refusal means the agent could not do its work, and phasepr halts on it.
+FORBIDDEN_COMMANDS=("git push" "git reset" "git rebase" "git commit --amend" "gh pr merge")
 
 invoke_agent() {
     local kind=$1 prompt=$2 base
@@ -397,15 +411,22 @@ invoke_agent() {
 
 invoke_claude() {
     local kind=$1 prompt=$2 base=$3
-    local -a cmd=(claude -p "$prompt" --dangerously-skip-permissions --output-format json
+    local c forbidden
+    local -a cmd=(claude -p "$prompt" --permission-mode "$CFG_PERMISSION_MODE" --output-format json
                   --max-turns "$CFG_MAX_TURNS")
     [[ -n "$CFG_MODEL" ]] && cmd+=(--model "$CFG_MODEL")
+    # Last: the option takes every argument up to the next option.
+    cmd+=(--disallowedTools)
+    for c in "${FORBIDDEN_COMMANDS[@]}"; do
+        cmd+=("Bash($c:*)")
+    done
     if [[ "$DRY_RUN" == "true" ]]; then
         printf '[dry-run] claude -p "$(cat %q)"' "$base.prompt.md" >&2
         printf ' %q' "${cmd[@]:3}" >&2
         printf '\n' >&2
         AGENT_RESULT='{"changed": false, "halt": null}'
         AGENT_RC=0
+        AGENT_DENIED=""
         return 0
     fi
     log "agent: $kind (log $base.json)"
@@ -414,7 +435,21 @@ invoke_claude() {
     AGENT_RC=$?
     set -e
     AGENT_RESULT=$(jq -r '.result // empty' "$base.json" 2>/dev/null || true)
+    forbidden=$(printf '%s|' "${FORBIDDEN_COMMANDS[@]}")
+    AGENT_DENIED=$(jq -r '.permission_denials[]?
+            | if .tool_name == "Bash" then (.tool_input.command // "" | split("\n")[0]) else .tool_name end' \
+        "$base.json" 2>/dev/null | sort -u || true)
+    if grep -qE "^(${forbidden%|})( |$)" <<< "$AGENT_DENIED"; then
+        log "refused, as it must be: $(grep -E "^(${forbidden%|})( |$)" <<< "$AGENT_DENIED" | paste -sd';' -)"
+    fi
+    AGENT_DENIED=$(grep -vE "^(${forbidden%|})( |$)" <<< "$AGENT_DENIED" || true)
     [[ "$AGENT_RC" -eq 0 ]] || log "agent exited $AGENT_RC ($(jq -r '.subtype // "no result"' "$base.json" 2>/dev/null || echo 'no JSON'))"
+}
+
+# Halts when the permission mode refused the agent something it needed.
+check_denials() {
+    [[ -n "$AGENT_DENIED" ]] || return 0
+    halt permission-denied "The $1 agent was refused: $(paste -sd';' - <<< "$AGENT_DENIED" | sed 's/;/; /g'). permission_mode is '$CFG_PERMISSION_MODE'; auto mode refuses everything that needs approval when the model does not support it (seen with a Haiku model). Allow it (permissions.allow in .claude/settings.json, or permission_mode: bypassPermissions inside a sandbox), or take it out of the task, then rerun."
 }
 
 # The last line of the reply that is a JSON object, compacted; empty when there is none.
@@ -501,6 +536,7 @@ implement_iteration() {
 
     validate_history "$before" "$S_PHASE_BRANCH"
     other_phases_unchanged "$others" "$n"
+    check_denials implement
     halt_reason=$(json_tail "$AGENT_RESULT" | jq -r '.halt // empty' 2>/dev/null || true)
     [[ -n "$halt_reason" ]] && halt agent-halt "$halt_reason"
 
@@ -609,6 +645,7 @@ triage_round() {
 
     validate_history "$before" "$S_PHASE_BRANCH"
     other_phases_unchanged "$others" "$n"
+    check_denials triage
     json=$(json_tail "$AGENT_RESULT")
     if [[ -z "$json" ]] || ! jq -e 'has("changed")' <<< "$json" >/dev/null; then
         record_progress false "triage (no {\"changed\", \"halt\"} line)"
@@ -788,6 +825,7 @@ setup_draft() {
     while :; do
         invoke_agent draft-body "$(render "$EXT_ROOT/prompts/draft-body.md" \
             "FEATURE=$FEATURE" "FEATURE_DIR=$FEATURE_DIR")"
+        check_denials draft-body
         [[ -n "$AGENT_RESULT" ]] && break
         record_progress false "draft body"
     done

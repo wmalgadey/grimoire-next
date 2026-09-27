@@ -3,7 +3,9 @@
 # A fake `claude -p ... --output-format json`. The prompt's first-line marker names the iteration
 # kind (implement-phase, triage-review, draft-body). The k-th call of a kind runs
 # $SCENARIO/<kind>.<k>.sh, else $SCENARIO/<kind>.sh, else the default below; what that prints
-# becomes `.result`, its exit code the CLI's. Calls are logged to $FAKE_GH/calls.log.
+# becomes `.result`, its exit code the CLI's. A scenario that writes $FAKE_GH/denials.json (an
+# array of permission denials) has them reported as the CLI's `permission_denials`, once.
+# Calls are logged to $FAKE_GH/calls.log.
 
 set -euo pipefail
 
@@ -64,7 +66,12 @@ else
 fi
 rc=$?
 set -e
-jq -n --arg result "$result" --argjson rc "$rc" \
+denials='[]'
+if [[ -f "$FAKE_GH/denials.json" ]]; then
+    denials=$(cat "$FAKE_GH/denials.json")
+    rm -f "$FAKE_GH/denials.json"
+fi
+jq -n --arg result "$result" --argjson rc "$rc" --argjson denials "$denials" \
     '{type: "result", subtype: (if $rc == 0 then "success" else "error_max_turns" end),
-      is_error: ($rc != 0), result: $result}'
+      is_error: ($rc != 0), result: $result, permission_denials: $denials}'
 exit "$rc"
