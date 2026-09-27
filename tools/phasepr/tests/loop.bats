@@ -425,12 +425,12 @@ setup() {
     echo "$output"
     [ "$status" -eq 1 ]
     [[ "$output" == *"phasepr halted: owner-review"* ]]
-    grep -q 'Constitution I.11' "$FAKE_GH/comments.log"
+    grep -q 'phasepr stops before merging' "$FAKE_GH/comments.log"
     jq '. + [{user: {login: "owner", type: "User"}, state: "APPROVED", commit_id: "x"}]' \
         "$FAKE_GH/reviews/102.json" > "$FAKE_GH/r" && mv "$FAKE_GH/r" "$FAKE_GH/reviews/102.json"
     run phasepr --phase 2
     echo "$output"
     [ "$status" -eq 0 ]
     pr_json 102 | jq -e '.merged_at != null'
-    [ "$(grep -c 'Constitution I.11' "$FAKE_GH/comments.log")" -eq 1 ]
+    [ "$(grep -c 'phasepr stops before merging' "$FAKE_GH/comments.log")" -eq 1 ]
 }
