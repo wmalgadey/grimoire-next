@@ -225,7 +225,7 @@ public sealed class SubmissionStateTests
     }
 
     private static JsonElement Reported(Submission submission) =>
-        JsonSerializer.SerializeToElement(SubmissionView.Of(submission));
+        JsonSerializer.SerializeToElement(SubmissionView.Of(submission.Snapshot));
 
     [Theory]
     [InlineData(SubmissionState.Submitted, "submitted")]

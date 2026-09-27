@@ -93,6 +93,11 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store, 
     private readonly List<Submission> submissions = [];
 
     /// <summary>Every submission the user made, newest first — the order the browser lists them in.</summary>
+    /// <remarks>
+    /// The submissions themselves, for a caller that wants the objects. What the browser is told is
+    /// built from <see cref="Snapshot"/> instead, because these are read one at a time afterwards and
+    /// the list the browser reads has to be one instant (ACCESS-005).
+    /// </remarks>
     public IReadOnlyList<Submission> All
     {
         get
@@ -101,6 +106,24 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store, 
             {
                 return [.. Enumerable.Reverse(submissions)];
             }
+        }
+    }
+
+    /// <summary>
+    /// Every submission as it stands at <b>one</b> instant, newest first (ACCESS-005).
+    /// </summary>
+    /// <remarks>
+    /// One pass of the one lock for the whole list, and not <see cref="All"/> followed by a reading of
+    /// each submission: those readings are each atomic in themselves, but they are taken one after
+    /// another, so a run ending between two of them would make a list that combines two instants —
+    /// which is exactly what "read as one instant under the board's one lock" forbids and what the
+    /// browser is sent. A delta would break it, and so does reading the whole list a row at a time.
+    /// </remarks>
+    public IReadOnlyList<SubmissionSnapshot> Snapshot()
+    {
+        lock (gate)
+        {
+            return [.. Enumerable.Reverse(submissions).Select(SubmissionSnapshot.Of)];
         }
     }
 

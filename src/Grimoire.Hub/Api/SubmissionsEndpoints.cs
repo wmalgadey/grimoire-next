@@ -60,13 +60,15 @@ public sealed record SubmissionView(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     int? EntriesLost = null)
 {
-    public static SubmissionView Of(Submission submission)
+    public static SubmissionView Of(SubmissionSnapshot submission)
     {
         ArgumentNullException.ThrowIfNull(submission);
 
-        // One reading of all of it, under the board's lock. Asked separately, a run ending between
-        // two answers would put `running` beside an offered acknowledgement — a pair this contract
-        // says cannot occur — or beside a final figure, a pair that never existed (ACCESS-005).
+        // One reading of all of it, taken under the board's lock with every other row of the same
+        // list. Asked separately, a run ending between two answers would put `running` beside an
+        // offered acknowledgement — a pair this contract says cannot occur — or beside a final figure,
+        // a pair that never existed; and asked one row at a time, the list itself would combine two
+        // instants (ACCESS-005, SubmissionBoard.Snapshot).
         var status = submission.Status;
 
         return new SubmissionView(
@@ -161,7 +163,7 @@ public static class SubmissionsEndpoints
             // submission, and `contracts/hub-http-api.md` promises none — the browser reads the
             // list. A location pointing at a route nobody serves would be a promise that 404s.
             return result.Accepted is { } accepted
-                ? Results.Json(SubmissionView.Of(accepted), statusCode: StatusCodes.Status202Accepted)
+                ? Results.Json(SubmissionView.Of(accepted.Snapshot), statusCode: StatusCodes.Status202Accepted)
                 : Refused(result.Refused!.Value);
         });
 
@@ -216,7 +218,7 @@ public static class SubmissionsEndpoints
     /// The list as both the endpoint and the stream answer with it, so the two cannot drift apart.
     /// </summary>
     private static SubmissionListView List(SubmissionBoard board) =>
-        new([.. board.All.Select(SubmissionView.Of)], Ceilings.Fixed.Cost);
+        new([.. board.Snapshot().Select(SubmissionView.Of)], Ceilings.Fixed.Cost);
 
     private static IResult Refused(Refusal refusal)
     {
