@@ -42,6 +42,19 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     private static StoredRun ARun(Guid submissionId, DateTimeOffset startedAt) =>
         new(Guid.NewGuid(), submissionId, startedAt, ToolGrant.ForIngest, startedAt, PinnedModel, AgentProcess: null);
 
+    /// <summary>
+    /// A run with <b>no submission behind it</b> — one a question caused. Its grant is the read-only one,
+    /// because that is what such a run is served (GUARD-005).
+    /// </summary>
+    private static StoredRun AQuestionsRun() => new(
+        Guid.NewGuid(),
+        QueuedId: null,
+        Noon,
+        ToolGrant.ForQuestion,
+        Noon,
+        PinnedModel,
+        AgentProcess: null);
+
     /// <summary>The model a run is recorded against (DEC-010).</summary>
     private const string PinnedModel = "claude-opus-4-5-20251101";
 
@@ -242,6 +255,76 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         Assert.Equal(Spent, read.Run.Tokens);
         Assert.Equal(9, read.Run.ToolCalls);
         Assert.Equal(2, read.Run.EntriesLost);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    [Trait("req", "RUNS-010")]
+    public void RunWithoutASubmission_RoundTripsThroughTheFile()
+    {
+        var store = Reopened();
+        var run = AQuestionsRun();
+
+        store.AddRun(run);
+        store.RecordAgentProcess(run.Id, new AgentProcessIdentity(4_711, Noon));
+        store.RecordFigures(run.Id, costSpent: 148_233, Spent, toolCalls: 3, entriesLost: 0);
+
+        // Read back through a store built afresh over the same file, because a store answering from
+        // what it still held in memory would prove nothing about the file. Only the real SQLite decides
+        // whether a null `submission_id` round-trips at all (Constitution III.4).
+        var read = Assert.Single(Reopened().LoadRunsWithoutASubmission());
+
+        Assert.Equal(run.Id, read.Id);
+
+        // The null is the point: nothing of the question is on disk, so there is nothing for this to
+        // point at (QUERY-005, research.md R-04).
+        Assert.Null(read.QueuedId);
+
+        Assert.Equal(Noon, read.StartedAt);
+        Assert.Equal(ToolGrant.ForQuestion, read.GrantedTools);
+        Assert.Equal(PinnedModel, read.Model);
+        Assert.Equal(new AgentProcessIdentity(4_711, Noon), read.AgentProcess);
+        Assert.Equal(148_233, read.CostSpent);
+        Assert.Equal(Spent, read.Tokens);
+        Assert.Equal(3, read.ToolCalls);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public void RunWithoutASubmission_IsReadBackAsInProgress_UntilItHasEnded()
+    {
+        var store = Reopened();
+        var run = AQuestionsRun();
+
+        store.AddRun(run);
+
+        // In progress, which is what a start-up reads these back for: it terminates the agent of every
+        // run it finds in that state before anything else runs, and a run with nothing on disk would
+        // leave an orphaned `claude` holding the granted tools with no ceiling on it (RUNS-006).
+        Assert.Single(Reopened().LoadRunsWithoutASubmission());
+
+        store.RunEnded(run.Id, costSpent: 148_233, Spent, toolCalls: 3, entriesLost: 0);
+
+        // And gone from that reading once it has ended, so the next start-up does not go looking for an
+        // agent that is finished. The ending and the figures are one statement: a stop between them
+        // would leave a run read as in progress beside the figures it ended on.
+        Assert.Empty(Reopened().LoadRunsWithoutASubmission());
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-004")]
+    public void RunWithoutASubmission_IsInNoListOfSubmissions()
+    {
+        var store = Reopened();
+
+        store.Add(ASubmission("Ada Lovelace wrote the first program.", Noon));
+        store.AddRun(AQuestionsRun());
+
+        // A question is not a submission, and its run hangs off none: `Load` answers with the
+        // submissions and what they were given, and a question's run is in neither (research.md R-12).
+        var read = Assert.Single(Reopened().Load());
+
+        Assert.Null(read.Run);
     }
 
     [Fact]
