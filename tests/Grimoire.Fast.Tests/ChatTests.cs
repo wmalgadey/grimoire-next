@@ -195,6 +195,57 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-003")]
+    public async Task NewChat_LeavesTheQueueMoving_WhenARunItTookAwayFailsAfterwards()
+    {
+        var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
+
+        Assert.NotNull(question.RunId);
+
+        // The chat is put away **while that question is still being answered**. It has not failed yet,
+        // so there is nothing to disregard at this moment — which is exactly the case a fix that only
+        // looked at the failures it could already see would miss.
+        hub.Board.StartANewChat(hub.Chat.Start);
+
+        Assert.Empty(hub.Chat.Turns);
+
+        // And then its run fails. The turn that carried its acknowledgement control is long gone, so a
+        // block here is one nothing could ever lift (RUNS-003, QUERY-005).
+        hub.Harness.End(question.Id, RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
+        await Task.Yield();
+
+        Assert.Equal(QuestionState.NoAnswer, question.State);
+
+        // The queue moves.
+        var afterwards = await hub.AcceptedAsync("Grace Hopper found the first bug.");
+
+        Assert.NotNull(afterwards.RunId);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-003")]
+    public async Task NewChat_LeavesASubmissionsFailureHoldingTheQueue()
+    {
+        var failing = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+
+        hub.Harness.End(failing.Id, RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
+        await Task.Yield();
+
+        // A new chat is about questions. **A submission's failure is untouched by it**: it is on disk,
+        // it is on the list, and its row still offers the control — so it goes on holding the queue
+        // exactly as RUNS-003 says (research.md R-12).
+        hub.Board.StartANewChat(hub.Chat.Start);
+
+        var behind = await hub.AcceptedAsync("Grace Hopper found the first bug.");
+
+        Assert.Null(behind.RunId);
+
+        await hub.AcknowledgeAsync(failing.Id);
+
+        Assert.NotNull(behind.RunId);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-002")]
     [Trait("req", "QUERY-002")]
     public async Task Chat_ShowsTheQuestionsInTheOrderTheyWillRun_WhenSeveralAreAskedAtOnce()

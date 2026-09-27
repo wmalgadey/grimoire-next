@@ -276,22 +276,16 @@ public static class ChatEndpoints
         // produces belongs to the chat that is gone (research.md R-13).
         endpoints.MapPost("/api/chat", async () =>
         {
-            // The questions this chat was about, read before it goes. One of them may be a failure that
-            // is holding the queue, and its control is about to be removed from the screen along with
-            // the turn it sat on.
-            var asked = chat.Snapshot().Turns.Select(turn => turn.Question.Id).ToList();
-
-            chat.Start();
-
-            // **A failure the user can no longer see does not hold the queue** — RUNS-003's last
-            // clause, which a new chat reaches as surely as a stop does. Without this, starting a new
-            // chat over an unacknowledged failure left the queue blocked by a question on no screen
-            // with no control to clear it, until Grimoire was restarted — and a new chat is the remedy
-            // this feature offers for a failed question, so the remedy was the trap.
+            // **One step, under the board's lock.** Emptying the chat and letting its questions go
+            // are the same act: done as two, a question accepted in between would be added to the chat
+            // and then taken out of it while staying queued on the board — waiting its turn, and in no
+            // conversation (RunBoard.StartANewChat).
             //
-            // A question still being answered is untouched: it is not a failure, and its run goes on
-            // holding the queue exactly as it should (QUERY-005, research.md R-13).
-            board.AcknowledgeQuestions(asked);
+            // A failure the user can no longer see does not hold the queue, which is RUNS-003's last
+            // clause reaching the case a new chat makes. A question still being answered goes on
+            // holding it while its run runs, and is disregarded only if that run ends failed — by then
+            // its control is long gone with the turn it sat on (QUERY-005, research.md R-13).
+            board.StartANewChat(chat.Start);
 
             // Asked either way, as the acknowledgement below asks: the board decides whether anything
             // may start, and one that cleared nothing simply leaves it deciding no.

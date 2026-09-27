@@ -657,27 +657,36 @@ public sealed class RunBoard(
     }
 
     /// <summary>
-    /// The questions this chat's turns were about that are still holding the queue, acknowledged
-    /// because the chat that showed them is gone (RUNS-003, QUERY-005).
+    /// The chat is put away, and every question that was in it goes with it (QUERY-005, RUNS-003).
     /// </summary>
+    /// <param name="putTheChatAway">
+    /// What empties the chat itself, called <b>inside this board's lock</b> so that the two are one
+    /// step. The lock order is board → chat throughout, which is the order this keeps.
+    /// </param>
     /// <remarks>
-    /// A failure the user can no longer see must not hold the queue — the clause RUNS-003 gained for a
-    /// stop, and a new chat takes the chat away just as surely. Without this, starting a new chat over
-    /// an unacknowledged failure left the queue blocked by a question that was on no screen and had no
-    /// control to clear it: a Grimoire that never ran again until it was restarted. And starting a new
-    /// chat is the remedy the feature offers for a failed question, so the remedy was the trap.
     /// <para>
-    /// A question still being answered is untouched: it is not a failure, and its run goes on holding
-    /// the queue exactly as it should (QUERY-005).
+    /// One operation rather than two, because a question accepted between them would be added to the
+    /// chat and then removed from it while staying queued here — on the board, waiting its turn, and
+    /// in no conversation. <see cref="Ask"/> takes this same lock, so there is no such moment.
+    /// </para>
+    /// <para>
+    /// Every question is marked, not only the ones that have already failed. One still being answered
+    /// has not failed <em>yet</em> — and when its run ends, that failure would be as invisible and as
+    /// permanent as any other, because the turn that carried its control is long gone.
     /// </para>
     /// </remarks>
-    public void AcknowledgeQuestions(IEnumerable<Guid> questionIds)
+    public void StartANewChat(Action putTheChatAway)
     {
-        ArgumentNullException.ThrowIfNull(questionIds);
+        ArgumentNullException.ThrowIfNull(putTheChatAway);
 
-        foreach (var question in questionIds)
+        lock (gate)
         {
-            AcknowledgeQuestion(question);
+            foreach (var question in queued.OfType<Question>())
+            {
+                question.TheChatIsGone();
+            }
+
+            putTheChatAway();
         }
     }
 

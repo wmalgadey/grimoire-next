@@ -58,12 +58,42 @@ public sealed record QuestionStatus(
 /// </remarks>
 public sealed class Question : Queued
 {
+    /// <summary>
+    /// Whether the chat that held this question has been put away. Assumes the board's lock.
+    /// </summary>
+    private bool theChatIsGone;
+
     internal Question(Guid id, string text, DateTimeOffset askedAt, Lock gate)
         : base(id, gate)
     {
         Text = text;
         AskedAt = askedAt;
     }
+
+    /// <summary>
+    /// A failure nobody can see does not hold the queue (RUNS-003).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// RUNS-003's last clause, reaching the case a new chat makes: the question is on no screen and
+    /// the control that would clear it went with the turn it sat on, so a block here is one **nothing
+    /// could ever lift** — a Grimoire that does not run again until it is restarted. And starting a
+    /// new chat is the remedy this feature offers for a question that failed, so the block would be
+    /// reached by the very act meant to escape it.
+    /// </para>
+    /// <para>
+    /// It is asked at the moment the queue reads it rather than settled when the chat went, because a
+    /// question that was still <em>being answered</em> then has not failed yet: its run goes on being
+    /// a run and goes on holding the queue while it does (QUERY-005), and only when it ends failed is
+    /// there a failure to disregard.
+    /// </para>
+    /// </remarks>
+    internal override bool IsUnacknowledgedFailure => base.IsUnacknowledgedFailure && !theChatIsGone;
+
+    /// <summary>
+    /// The chat that held this question has been put away (QUERY-005). Assumes the board's lock.
+    /// </summary>
+    internal void TheChatIsGone() => theChatIsGone = true;
 
     /// <summary>
     /// What the user asked, whole, as they typed it. QUERY-003 refuses one that is empty after
