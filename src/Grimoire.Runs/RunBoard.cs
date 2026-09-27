@@ -502,11 +502,25 @@ public sealed class RunBoard(
     /// failed, or not one this Grimoire knows. A page loaded before the last run failed can send
     /// exactly that, and the answer to it is that nothing happens (contracts/hub-http-api.md).
     /// </remarks>
-    public void Acknowledge(Guid queuedId)
+    public void AcknowledgeSubmission(Guid submissionId) => Acknowledge<Submission>(submissionId);
+
+    /// <summary>
+    /// The same, for a question — and <b>only</b> a question (QUERY-006, ACCESS-003).
+    /// </summary>
+    /// <remarks>
+    /// The two are separate because the two doors are: the chat's acknowledgement addresses a question
+    /// and the list's addresses a submission, and one that located either kind would let a submission's
+    /// failure be cleared through the chat, by an id the chat never showed. What a door may act on is
+    /// part of what the door is.
+    /// </remarks>
+    public void AcknowledgeQuestion(Guid questionId) => Acknowledge<Question>(questionId);
+
+    private void Acknowledge<TQueued>(Guid queuedId)
+        where TQueued : Queued
     {
         lock (gate)
         {
-            if (Located(queuedId) is { IsUnacknowledgedFailure: true } failure)
+            if (Located(queuedId) is TQueued { IsUnacknowledgedFailure: true } failure)
             {
                 var at = clock.GetUtcNow();
                 failure.Acknowledged(at);
@@ -639,6 +653,31 @@ public sealed class RunBoard(
                 store.RecordFigures(run, costSpent, tokens, toolCalls, entriesLost);
                 changed?.Invoke(working);
             }
+        }
+    }
+
+    /// <summary>
+    /// The questions this chat's turns were about that are still holding the queue, acknowledged
+    /// because the chat that showed them is gone (RUNS-003, QUERY-005).
+    /// </summary>
+    /// <remarks>
+    /// A failure the user can no longer see must not hold the queue — the clause RUNS-003 gained for a
+    /// stop, and a new chat takes the chat away just as surely. Without this, starting a new chat over
+    /// an unacknowledged failure left the queue blocked by a question that was on no screen and had no
+    /// control to clear it: a Grimoire that never ran again until it was restarted. And starting a new
+    /// chat is the remedy the feature offers for a failed question, so the remedy was the trap.
+    /// <para>
+    /// A question still being answered is untouched: it is not a failure, and its run goes on holding
+    /// the queue exactly as it should (QUERY-005).
+    /// </para>
+    /// </remarks>
+    public void AcknowledgeQuestions(IEnumerable<Guid> questionIds)
+    {
+        ArgumentNullException.ThrowIfNull(questionIds);
+
+        foreach (var question in questionIds)
+        {
+            AcknowledgeQuestion(question);
         }
     }
 

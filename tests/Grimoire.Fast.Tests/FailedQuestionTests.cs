@@ -119,7 +119,7 @@ public sealed class FailedQuestionTests
 
         var waiting = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
 
-        await hub.AcknowledgeAsync(question.Id);
+        await hub.AcknowledgeQuestionAsync(question.Id);
 
         // The one control the chat offers against the question that failed, and it clears the block —
         // there is no row in the submissions list to clear it from (ACCESS-003, QUERY-006).
@@ -133,7 +133,7 @@ public sealed class FailedQuestionTests
         var failed = await hub.AskedAsync(AboutAda);
 
         hub.Clock.Advance(Ceilings.Fixed.Elapsed);
-        await hub.AcknowledgeAsync(failed.Id);
+        await hub.AcknowledgeQuestionAsync(failed.Id);
 
         // The same question again, which is what QUERY-006 promises the user: the text is accepted and
         // it is given a run of its own, while the one that got no answer stays in the chat as it was.

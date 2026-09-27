@@ -274,9 +274,29 @@ public static class ChatEndpoints
         // **A question still being answered is not stopped.** Its run is not a chat and goes on being
         // a run: it holds the queue until it ends and its figures stay with it (RUNS-010). What it
         // produces belongs to the chat that is gone (research.md R-13).
-        endpoints.MapPost("/api/chat", () =>
+        endpoints.MapPost("/api/chat", async () =>
         {
+            // The questions this chat was about, read before it goes. One of them may be a failure that
+            // is holding the queue, and its control is about to be removed from the screen along with
+            // the turn it sat on.
+            var asked = chat.Snapshot().Turns.Select(turn => turn.Question.Id).ToList();
+
             chat.Start();
+
+            // **A failure the user can no longer see does not hold the queue** — RUNS-003's last
+            // clause, which a new chat reaches as surely as a stop does. Without this, starting a new
+            // chat over an unacknowledged failure left the queue blocked by a question on no screen
+            // with no control to clear it, until Grimoire was restarted — and a new chat is the remedy
+            // this feature offers for a failed question, so the remedy was the trap.
+            //
+            // A question still being answered is untouched: it is not a failure, and its run goes on
+            // holding the queue exactly as it should (QUERY-005, research.md R-13).
+            board.AcknowledgeQuestions(asked);
+
+            // Asked either way, as the acknowledgement below asks: the board decides whether anything
+            // may start, and one that cleared nothing simply leaves it deciding no.
+            await queue.PumpAsync().ConfigureAwait(false);
+
             return Results.NoContent();
         });
 
@@ -286,7 +306,7 @@ public static class ChatEndpoints
         // there is no row in the submissions list to clear it from — a question is not a submission.
         endpoints.MapPost("/api/chat/questions/{id:guid}/acknowledgement", async (Guid id) =>
         {
-            board.Acknowledge(id);
+            board.AcknowledgeQuestion(id);
 
             // Asked either way. The board decides whether anything may start, and an acknowledgement
             // that cleared nothing simply leaves it deciding no.
@@ -316,12 +336,16 @@ public static class ChatEndpoints
         // The turns and the position in the change log, taken together. Read apart, a piece of an
         // answer arriving between the two would be in this snapshot *and* past the position — so the
         // next wake would send it again and the browser would show it twice.
-        var snapshot = chat.Snapshot();
+        yield return SnapshotOf(chat.Snapshot(), sent, vault);
+    }
 
+    /// <summary>The whole chat as one event, and this subscriber moved to where that reading ends.</summary>
+    private static SseItem<object> SnapshotOf(ChatSnapshot snapshot, Sent sent, VaultView? vault)
+    {
         sent.Generation = snapshot.Generation;
         sent.Changes = snapshot.Changes.Count;
 
-        yield return new SseItem<object>(
+        return new SseItem<object>(
             new ChatView(
                 [.. snapshot.Turns.Select(ChatTurnView.Of)],
                 snapshot.Turns.Sum(turn => turn.Question.Figures?.CostSpent ?? 0),
@@ -339,21 +363,19 @@ public static class ChatEndpoints
     /// </remarks>
     private static IEnumerable<SseItem<object>> Increments(Chat chat, Sent sent, VaultView? vault)
     {
-        if (chat.Generation != sent.Generation)
-        {
-            foreach (var afresh in Opening(chat, sent, vault))
-            {
-                yield return afresh;
-            }
+        // **One reading, and the generation read from it** — not asked for separately before it. Asked
+        // first, a new chat starting between the question and the snapshot would give this pass an
+        // empty chat with a new generation and nothing to send: the wake that the new chat raised would
+        // be spent here producing no event, and the browser would go on showing the old conversation
+        // until some later change happened to arrive. Which, on a chat that was just emptied, may be
+        // never.
+        var snapshot = chat.Snapshot();
 
+        if (snapshot.Generation != sent.Generation)
+        {
+            yield return SnapshotOf(snapshot, sent, vault);
             yield break;
         }
-
-        // The changes and the turns they refer to, from **one** reading. Taken apart, a question
-        // joining the chat between them would leave a descriptor pointing at a turn that is not there:
-        // skipped, and then skipped past for good, so that browser would never be told about the
-        // question at all (Chat.Snapshot).
-        var snapshot = chat.Snapshot();
 
         for (var at = sent.Changes; at < snapshot.Changes.Count; at++)
         {
