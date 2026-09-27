@@ -17,8 +17,13 @@ namespace Grimoire.Hub;
 /// A pinned model id, never an alias and never the default — a start-up input, not a per-submission
 /// choice (research.md R-11).
 /// </param>
+/// <param name="QuestionInstructionPath">
+/// Grimoire's own question instruction, versioned in this repository. Changing it is an owner decision
+/// named in the PR, exactly as changing the ingest one is (QUERY-004, Constitution V.1).
+/// </param>
 public sealed record HubOptions(
     string InstructionPath,
+    string QuestionInstructionPath,
     string PurposeDescriptionPath,
     string WikiRoot,
     string Model);
@@ -60,7 +65,7 @@ public static class HubApplication
     /// </remarks>
     public static void RestoreAfterAStop(
         ISubmissionStore submissions,
-        SubmissionBoard board,
+        RunBoard board,
         IAgentHarness harness,
         IRunRecord record,
         TimeProvider clock)
@@ -74,7 +79,14 @@ public static class HubApplication
         var held = submissions.Load();
         var interrupted = held.Where(s => s.WasUnderWay).Select(s => s.Run!).ToList();
 
-        foreach (var identity in interrupted.Select(r => r.AgentProcess).OfType<AgentProcessIdentity>())
+        // And the runs a question caused that were in progress. They have no submission to read a
+        // state off, which is why the store is asked for them separately — and they have to be asked
+        // for at all, because a run with nothing on disk would leave an orphaned `claude` holding the
+        // granted tools with no ceiling on it (RUNS-006, research.md R-04).
+        var questions = submissions.LoadRunsWithoutASubmission();
+
+        foreach (var identity in interrupted.Concat(questions)
+            .Select(r => r.AgentProcess).OfType<AgentProcessIdentity>())
         {
             harness.Terminate(identity);
         }
@@ -82,6 +94,14 @@ public static class HubApplication
         foreach (var run in interrupted)
         {
             record.Ended(TailOfAnInterruptedRun(run, clock.GetUtcNow()));
+        }
+
+        // **No tail for a question's run** — it has no record (RUNS-007) — and nothing is restored
+        // into a chat, because QUERY-005 empties it. What is left to do is mark the run ended failed,
+        // so that the next start-up does not read it as one to terminate again.
+        foreach (var run in questions)
+        {
+            submissions.RunEnded(run.Id, run.CostSpent, run.Tokens, run.ToolCalls, run.EntriesLost);
         }
 
         board.Restore(held);
@@ -191,7 +211,9 @@ public static class HubApplication
         builder.Services.AddSingleton(wiki);
         builder.Services.AddSingleton(sp => new RunAddress(
             sp.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>(), options.Model));
-        builder.Services.AddMcpServer().WithHttpTransport().WithTools<WikiToolsServer>();
+        builder.Services.AddMcpServer().WithHttpTransport()
+            .WithTools<WikiToolsServer>()
+            .WithTools<WikiReadToolsServer>();
 
         var app = builder.Build();
 
@@ -200,14 +222,22 @@ public static class HubApplication
         app.UseDefaultFiles();
         app.UseStaticFiles();
 
-        var instructions = new InstructionLoader(options.InstructionPath, options.PurposeDescriptionPath);
+        var instructions = new InstructionLoader(
+            options.InstructionPath, options.QuestionInstructionPath, options.PurposeDescriptionPath);
 
         // What the browser is sent while it has a page open. Built here and given to everything that
         // knows something changed, so every suite gets the streams the browser gets (Constitution
         // III.9) — the wiring itself is not tested; what it wires is (III.8).
         var live = new LiveUpdates();
 
-        var board = new SubmissionBoard(clock, submissions, () => live.Changed(LiveUpdates.Submissions));
+        // The one chat, held for as long as this hub runs and written down nowhere (QUERY-005).
+        var chat = new Chat();
+
+        // Which stream a change matters to is decided here and not by the board, which does not know
+        // there are two. A submission's change is the list; a question's is the chat. Told the wrong
+        // one, a page would sit still while what it shows moved on.
+        var board = new RunBoard(clock, submissions, queued => live.Changed(
+            queued is Question ? LiveUpdates.Chat : LiveUpdates.Submissions));
 
         // The knot the conductor and the queue make, tied here because neither may hold the other
         // whole: a run that ends is what lets the next one start, and starting one is what gives
@@ -215,8 +245,13 @@ public static class HubApplication
         // (plan.md, Structure Decision).
         RunQueue? queue = null;
         var conductor = new RunConductor(
-            board, harness, wiki, record, live, clock, options.Model, () => queue!.PumpAsync());
-        queue = new RunQueue(board, conductor, harness, instructions.Assemble);
+            board, harness, wiki, record, chat, live, clock, options.Model, () => queue!.PumpAsync());
+        queue = new RunQueue(
+            board,
+            conductor,
+            harness,
+            instructions.Assemble,
+            (question, runId) => instructions.AssembleQuestion(chat, question, runId));
 
         var intake = new SubmissionIntake(board, queue);
 
@@ -225,7 +260,13 @@ public static class HubApplication
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to
         // its run. Unauthenticated and on loopback, per docs/product.md §2.
+        //
+        // **Two doors, and the second serves two tools.** The tools a question's run is not granted
+        // are not registered at its endpoint at all, which is what makes GUARD-005 deny-by-default by
+        // construction rather than an allow-list over a larger surface (DEC-011, research.md R-06).
+        // Which door a run is dispatched at travels on its grant, so the two cannot be crossed.
         app.MapMcp("/mcp/runs/{runId}");
+        app.MapMcp("/mcp/questions/{runId}");
 
         RestoreAfterAStop(submissions, board, harness, record, clock);
 

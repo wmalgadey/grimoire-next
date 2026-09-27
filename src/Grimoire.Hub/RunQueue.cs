@@ -9,7 +9,7 @@ namespace Grimoire.Hub;
 /// <remarks>
 /// <para>
 /// It judges nothing. Whether a run may start and which submission is next are decisions of the
-/// RUNS context, made in <see cref="SubmissionBoard.TakeNext"/>; this is where the contexts meet,
+/// RUNS context, made in <see cref="RunBoard.TakeNext"/>; this is where the contexts meet,
 /// which is why it sits in the hub beside <see cref="SubmissionIntake"/> (plan.md, Structure
 /// Decision).
 /// </para>
@@ -21,10 +21,11 @@ namespace Grimoire.Hub;
 /// </para>
 /// </remarks>
 public sealed class RunQueue(
-    SubmissionBoard board,
+    RunBoard board,
     RunConductor conductor,
     IAgentHarness harness,
-    RunQueue.PromptAssembly assemblePrompt)
+    RunQueue.PromptAssembly assemblePrompt,
+    RunQueue.QuestionPromptAssembly assembleQuestionPrompt)
 {
     /// <summary>
     /// What a run is given, assembled from the instruction and the purpose description. The hub's
@@ -32,6 +33,17 @@ public sealed class RunQueue(
     /// (Constitution V.1).
     /// </summary>
     public delegate string PromptAssembly(string text, Guid runId);
+
+    /// <summary>
+    /// What a question's run is given: the question instruction, the purpose description, the run's
+    /// identifier, the chat so far, and the question (QUERY-002, contracts/question-run.md §2).
+    /// </summary>
+    /// <remarks>
+    /// A second delegate rather than a flag on the first, because the two prompts are assembled from
+    /// different parts and one of them reads the chat. <see cref="InstructionLoader"/> is what does
+    /// both, and nothing else puts text into a prompt (Constitution V.1).
+    /// </remarks>
+    public delegate string QuestionPromptAssembly(string question, Guid runId);
 
     private readonly Lock gate = new();
     private bool pumping;
@@ -197,7 +209,7 @@ public sealed class RunQueue(
                 // reason a run that was under way at the stop reads after a restart (RUNS-004,
                 // RUNS-006).
                 conductor.Report().RunEnded(
-                    run.SubmissionId, RunOutcome.Failed, RunEndedBecause.GrimoireStopped);
+                    run.QueuedId, RunOutcome.Failed, RunEndedBecause.GrimoireStopped);
                 return;
             }
 
@@ -209,7 +221,7 @@ public sealed class RunQueue(
     {
         try
         {
-            if (board.TextOf(run.SubmissionId) is not { } text)
+            if (board.TextOf(run.QueuedId) is not { } text)
             {
                 return;
             }
@@ -219,10 +231,14 @@ public sealed class RunQueue(
             // deleted between start-up and now — and the run is already registered by then.
             // The model comes off the run, which was given it at Begin beside the grant and both
             // ceilings. One fewer place the model lives, not one more (data-model.md §Run).
+            //
+            // Which prompt follows from what caused the run, and so does the door its tools are
+            // served at — and that door travels on the grant, which the run already carries, so the
+            // two cannot be crossed (GUARD-005, research.md R-06).
             var dispatch = new AgentDispatch(
                 run.Id,
-                run.SubmissionId,
-                assemblePrompt(text, run.Id),
+                run.QueuedId,
+                run.IsToChangeTheWiki ? assemblePrompt(text, run.Id) : assembleQuestionPrompt(text, run.Id),
                 run.Grant,
                 run.Model);
 
@@ -266,7 +282,7 @@ public sealed class RunQueue(
             // way no agent of this run is at work, which is the reason the record's tail names
             // (RUNS-008).
             conductor.Report().RunEnded(
-                run.SubmissionId, RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
+                run.QueuedId, RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
         }
     }
 }

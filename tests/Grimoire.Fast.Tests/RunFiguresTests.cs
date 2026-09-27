@@ -232,7 +232,7 @@ public sealed class RunFiguresTests
         hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
 
         var restarted = hub.Restarted();
-        var restored = restarted.Board.Find(submission.Id)!;
+        var restored = (Submission)restarted.Board.Find(submission.Id)!;
 
         // A run cut off by a stop reads failed and still carries what it spent. `002-ingest-queue`
         // assumed those numbers need not survive; OUT-02 gives them a reader, so they do (RUNS-010).

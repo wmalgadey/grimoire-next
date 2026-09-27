@@ -2,8 +2,32 @@ using Grimoire.Agent;
 
 namespace Grimoire.Runs;
 
+/// <summary>
+/// What caused a run, and so whether it is one that is to change the wiki (RUNS-005, RUNS-007).
+/// </summary>
+/// <remarks>
+/// Two values inside one distinction, and it decides two things and nothing else: whether the run's
+/// log entry is asked for and its one nudge sent, and whether it has a record. Both follow from the
+/// same fact — a submission is handed over and reviewed afterwards, while a question is read as it
+/// happens and changes nothing in the wiki.
+/// <para>
+/// Read off the run rather than off its grant. A grant with no write tool in it does imply the same
+/// thing, but only by inference: what RUNS-005 and RUNS-007 are about is what the run is <em>for</em>,
+/// and a later grant that happened to be read-only for some other reason would silently change what
+/// those two requirements asked of it.
+/// </para>
+/// </remarks>
+public enum RunCause
+{
+    ASubmission,
+    AQuestion,
+}
+
 /// <summary>What the hub knows at the moment the agent stopped.</summary>
-/// <param name="LogEntryPresent">Whether the wiki's log holds an entry for this run.</param>
+/// <param name="LogEntryPresent">
+/// Whether the wiki's log holds an entry for this run. Asked only of a run that is to change the wiki:
+/// for a question's run the log is not read at all, and this is always false (RUNS-005).
+/// </param>
 /// <param name="Elapsed">How long the run has been going, measured against <c>TimeProvider</c>.</param>
 /// <param name="CostSpent">What the run has cost, in input-token equivalents (GUARD-004).</param>
 /// <param name="EndedAbnormally">
@@ -49,26 +73,43 @@ public sealed class Run
 {
     public Run(
         Guid id,
-        Guid submissionId,
+        Guid queuedId,
         DateTimeOffset startedAt,
         ToolGrant grant,
         Ceilings ceilings,
-        string model)
+        string model,
+        RunCause causedBy = RunCause.ASubmission)
     {
         ArgumentNullException.ThrowIfNull(grant);
         ArgumentNullException.ThrowIfNull(ceilings);
 
         Id = id;
-        SubmissionId = submissionId;
+        QueuedId = queuedId;
         StartedAt = startedAt;
         Grant = grant;
         Ceilings = ceilings;
         Model = model;
+        CausedBy = causedBy;
     }
 
     public Guid Id { get; }
 
-    public Guid SubmissionId { get; }
+    /// <summary>
+    /// The submission or the question this run is working. One name for one thing, now that two kinds
+    /// cause runs; it was <c>SubmissionId</c> until <c>004-ask-the-wiki</c>.
+    /// </summary>
+    public Guid QueuedId { get; }
+
+    /// <summary>
+    /// What caused this run, and so whether it is one that is to change the wiki (RUNS-005, RUNS-007).
+    /// </summary>
+    public RunCause CausedBy { get; }
+
+    /// <summary>
+    /// Whether this run is one that is to change the wiki — which is what RUNS-005's log condition and
+    /// its one nudge are asked of, and what RUNS-007 gives a record to.
+    /// </summary>
+    public bool IsToChangeTheWiki => CausedBy == RunCause.ASubmission;
 
     public DateTimeOffset StartedAt { get; }
 
@@ -204,6 +245,15 @@ public sealed class Run
             return RunDecision.Failed;
         }
 
+        // A run that is not to change the wiki has no log entry to hold it to, and so nothing to be
+        // nudged about: it stopped on its own inside both ceilings having written nothing, and that is
+        // the whole of what done means for it. RUNS-005 asks for the entry only of a run that is to
+        // change the wiki, and a question's run has the log read for it not at all.
+        if (!IsToChangeTheWiki)
+        {
+            return RunDecision.Done;
+        }
+
         if (stop.LogEntryPresent)
         {
             return RunDecision.Done;
@@ -250,6 +300,14 @@ public sealed class Run
         if (!StoppedOfItsOwnAccord || exitCode != 0)
         {
             return new RunEnding(RunOutcome.Failed, RunEndedBecause.AgentProcessDied);
+        }
+
+        // The log entry is a condition of a run that is to change the wiki. For any other, stopping on
+        // its own inside both ceilings with a clean exit is done, and the reason names what actually
+        // happened rather than an entry nobody asked for (RUNS-005, RUNS-008).
+        if (!IsToChangeTheWiki)
+        {
+            return new RunEnding(RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
         }
 
         return LogEntryWasPresent

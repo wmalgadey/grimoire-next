@@ -46,14 +46,15 @@ internal sealed class FastHub
         // in process, as an IAsyncEnumerable, with no socket anywhere (research.md R-11).
         Live = new LiveUpdates();
 
-        Board = new SubmissionBoard(Clock, store, () => Live.Changed(LiveUpdates.Submissions));
+        Board = new RunBoard(Clock, store, queued => Live.Changed(
+            queued is Question ? LiveUpdates.Chat : LiveUpdates.Submissions));
 
         // The same knot the composition root ties: a run that ends lets the next one start
         // (HubApplication.Build).
         RunQueue? queue = null;
         Conductor = new RunConductor(
-            Board, Harness, Wiki, Record, Live, Clock, Model, () => queue!.PumpAsync());
-        queue = new RunQueue(Board, Conductor, Harness, Prompt);
+            Board, Harness, Wiki, Record, Chat, Live, Clock, Model, () => queue!.PumpAsync());
+        queue = new RunQueue(Board, Conductor, Harness, Prompt, QuestionPrompt);
         Queue = queue;
         Intake = new SubmissionIntake(Board, Queue);
 
@@ -95,10 +96,13 @@ internal sealed class FastHub
     /// <summary>Where this hub's runs leave their records (RUNS-007).</summary>
     public InMemoryRunRecord Record { get; }
 
-    /// <summary>What the browser would be sent (ACCESS-005, ACCESS-006).</summary>
+    /// <summary>What the browser would be sent (ACCESS-005, ACCESS-006, ACCESS-007).</summary>
     public LiveUpdates Live { get; }
 
-    public SubmissionBoard Board { get; }
+    /// <summary>The one chat this hub holds (QUERY-005).</summary>
+    public Chat Chat { get; } = new();
+
+    public RunBoard Board { get; }
 
     public RunConductor Conductor { get; }
 
@@ -109,6 +113,19 @@ internal sealed class FastHub
     /// <summary>What the hub's instruction loader assembles, without a filesystem to read it from.</summary>
     public static string Prompt(string text, Guid runId) =>
         InstructionLoader.Payload("THE INSTRUCTION", "THE PURPOSE", text, runId);
+
+    /// <summary>The same for a question's run, with the chat this hub holds (QUERY-002).</summary>
+    public string QuestionPrompt(string question, Guid runId) =>
+        InstructionLoader.QuestionPayload(
+            "THE QUESTION INSTRUCTION",
+            "THE PURPOSE",
+            string.Join(
+                "\n\n",
+                Chat.Turns
+                    .Where(turn => turn.Question.RunId != runId && turn.Answer.Length > 0)
+                    .Select(turn => $"Asked: {turn.Question.Text}\n\nAnswered: {turn.Answer}")),
+            question,
+            runId);
 
     public Task<SubmissionResult> SubmitAsync(string text, StartUpInputs? inputs = null) =>
         Intake.SubmitAsync(text, inputs ?? StartUpInputs.BothPresent);
@@ -126,4 +143,25 @@ internal sealed class FastHub
     /// <summary>A submission that was accepted, with its run under way.</summary>
     public async Task<Submission> AcceptedAsync(string text = "A text.") =>
         (await SubmitAsync(text)).Accepted!;
+
+    /// <summary>
+    /// A question asked the way the chat's intake asks it: the board decides, and the queue is then
+    /// asked for the next run (QUERY-001, RUNS-002).
+    /// </summary>
+    public async Task<QuestionResult> AskAsync(string text, StartUpInputs? inputs = null)
+    {
+        var result = Board.Ask(text, inputs ?? StartUpInputs.BothPresent);
+
+        if (result.Accepted is { } question)
+        {
+            Chat.Ask(question);
+            await Queue.PumpAsync().ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    /// <summary>A question that was accepted, with its run under way where nothing was ahead of it.</summary>
+    public async Task<Question> AskedAsync(string text = "What does the wiki say about Ada Lovelace?") =>
+        (await AskAsync(text)).Accepted!;
 }

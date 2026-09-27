@@ -56,6 +56,12 @@ public sealed class LiveUpdates
     public const string Submissions = "submissions";
 
     /// <summary>
+    /// The chat — one topic too, and for a stronger reason: there <b>is</b> exactly one chat, and
+    /// every browser reading it reads that same one (QUERY-005).
+    /// </summary>
+    public const string Chat = "chat";
+
+    /// <summary>
     /// A signal, and the whole of what a channel carries. What to send is worked out per subscriber
     /// when it wakes, which is what lets one pending signal stand for every change behind it.
     /// </summary>

@@ -3,9 +3,20 @@ using Grimoire.Agent;
 namespace Grimoire.Runs;
 
 /// <summary>
-/// A run as what survives a stop keeps it: its identifier, the submission it works, when it began,
-/// the tools it was granted, the model it ran on, which process its agent is, and its figures.
+/// A run as what survives a stop keeps it: its identifier, what caused it, when it began, the tools
+/// it was granted, the model it ran on, which process its agent is, and its figures.
 /// </summary>
+/// <param name="QueuedId">
+/// The submission <b>or the question</b> that caused this run, and <c>null</c> where a question did.
+/// One name for one thing, now that two kinds cause runs.
+/// <para>
+/// Null rather than the question's own identifier, because nothing of a question is on disk
+/// (QUERY-005) and an id pointing at something that was never written would be a reference that
+/// cannot be followed. What the row is for is RUNS-006: a start-up has to terminate the agent of
+/// every run it reads as having been in progress, and a question's run with nothing on disk would
+/// leave an orphaned <c>claude</c> holding the granted tools with no ceiling on it (research.md R-04).
+/// </para>
+/// </param>
 /// <param name="Model">
 /// The pinned model id this run ran on. Kept because a record from last month must say which model
 /// served it, and the owner may change <c>--model</c> between runs (RUNS-008, DEC-010).
@@ -36,7 +47,7 @@ namespace Grimoire.Runs;
 /// </param>
 public sealed record StoredRun(
     Guid Id,
-    Guid SubmissionId,
+    Guid? QueuedId,
     DateTimeOffset StartedAt,
     IReadOnlyList<string> GrantedTools,
     DateTimeOffset GrantRecordedAt,
@@ -62,7 +73,10 @@ public sealed record StoredRun(
 
         return new StoredRun(
             run.Id,
-            run.SubmissionId,
+
+            // A question's run carries no id here: the question is on no disk, so there is nothing
+            // for one to point at (QUERY-005, research.md R-04).
+            run.CausedBy is RunCause.AQuestion ? null : run.QueuedId,
             run.StartedAt,
             run.Grant.ToolNames,
             run.Grant.RecordedAt,
@@ -73,7 +87,7 @@ public sealed record StoredRun(
 
 /// <summary>
 /// One submission as the store holds it: facts, with no judgment on them. What they mean for the
-/// queue is <see cref="SubmissionBoard.Restore"/>'s.
+/// queue is <see cref="RunBoard.Restore"/>'s.
 /// </summary>
 public sealed record StoredSubmission(
     Guid Id,
@@ -139,6 +153,42 @@ public interface ISubmissionStore
     /// run's own record beside it.
     /// </summary>
     void AssignRun(Guid submissionId, StoredRun run);
+
+    /// <summary>
+    /// A run with <b>no submission behind it</b> — one a question caused (RUNS-006, RUNS-010).
+    /// </summary>
+    /// <remarks>
+    /// Written the moment the board hands the question out, for the same reason
+    /// <see cref="AssignRun"/> is written before the submission is marked: a write that fails must
+    /// leave the queue as it was. There is no second statement beside it, because there is no
+    /// submission row to point at the run.
+    /// </remarks>
+    void AddRun(StoredRun run);
+
+    /// <summary>
+    /// The runs with no submission behind them that were in progress when Grimoire stopped, read at
+    /// start-up beside <see cref="Load"/> (RUNS-004, RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// In progress means: no submission, and no ending written for it. A start-up terminates the
+    /// agent of each where the recorded identity is still live and then marks the run ended failed.
+    /// <b>No tail is written</b> — such a run has no record (RUNS-007) — and nothing is restored into
+    /// a chat, because QUERY-005 empties it.
+    /// </remarks>
+    IReadOnlyList<StoredRun> LoadRunsWithoutASubmission();
+
+    /// <summary>
+    /// A run ended and there is <b>no submission state to set</b> — one a question caused. Its final
+    /// figures, keyed by the run (RUNS-010).
+    /// </summary>
+    /// <remarks>
+    /// Beside <see cref="Ended"/> rather than folded into it: that member's promise is that the
+    /// terminal state and the figures are <em>one</em> change, and there is no state here to make one
+    /// of. What it shares with <see cref="RecordFigures"/> is the statement and not the meaning — this
+    /// is the run's last word, and it is also what marks the run as no longer in progress, so a
+    /// start-up does not read it back as one to terminate.
+    /// </remarks>
+    void RunEnded(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost);
 
     /// <summary>
     /// The agent's child process exists. Written as soon as it does, because a kill a moment later

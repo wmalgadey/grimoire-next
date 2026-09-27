@@ -186,15 +186,17 @@ internal sealed class HubUnderTest : IAsyncDisposable
         var state = Path.Combine(directory, "state");
         Directory.CreateDirectory(wiki);
         var instruction = Path.Combine(directory, "ingest.md");
+        var questionInstruction = Path.Combine(directory, "question.md");
         var purpose = Path.Combine(directory, "purpose.md");
         await File.WriteAllTextAsync(instruction, "# Instruction", cancellationToken).ConfigureAwait(false);
+        await File.WriteAllTextAsync(questionInstruction, "# Question", cancellationToken).ConfigureAwait(false);
         await File.WriteAllTextAsync(purpose, "# Purpose", cancellationToken).ConfigureAwait(false);
 
         var agent = new DrivableHarness();
 
         var app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, purpose, WikiRoot: wiki, Model: "claude-opus-4-5-20251101"),
+            new HubOptions(instruction, questionInstruction, purpose, WikiRoot: wiki, Model: "claude-opus-4-5-20251101"),
             agent,
             new FileSystemWikiStore(wiki),
             new SqliteSubmissionStore(state),

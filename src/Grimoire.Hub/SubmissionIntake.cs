@@ -11,7 +11,7 @@ namespace Grimoire.Hub;
 /// only project that knows all three (plan.md, Structure Decision). RUNS decides whether a text is
 /// accepted and holds its state; GUARD runs it; WIKI is reached only through the granted tools.
 /// </remarks>
-public sealed class SubmissionIntake(SubmissionBoard board, RunQueue queue)
+public sealed class SubmissionIntake(RunBoard board, RunQueue queue)
 {
     /// <summary>
     /// Accept a text, or refuse it. An accepted text is not necessarily the one that runs next: a

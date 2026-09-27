@@ -51,7 +51,7 @@ public static class RunRecordEndpoint
 
     public static IEndpointRouteBuilder MapRunRecord(
         this IEndpointRouteBuilder endpoints,
-        SubmissionBoard board,
+        RunBoard board,
         IRunRecord record,
         LiveUpdates live)
     {

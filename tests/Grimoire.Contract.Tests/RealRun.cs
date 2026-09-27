@@ -50,13 +50,15 @@ internal sealed class RealRun : IAsyncDisposable
         Directory.CreateDirectory(Path.Combine(root, "cwd"));
 
         var instruction = Path.Combine(root, "ingest.md");
+        var questionInstruction = Path.Combine(root, "question.md");
         var purpose = Path.Combine(root, "purpose.md");
         await File.WriteAllTextAsync(instruction, "Work the text into the wiki.", cancellationToken).ConfigureAwait(false);
+        await File.WriteAllTextAsync(questionInstruction, "Answer from the wiki.", cancellationToken).ConfigureAwait(false);
         await File.WriteAllTextAsync(purpose, "A wiki about anything.", cancellationToken).ConfigureAwait(false);
 
         var app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, purpose, wikiRoot, PinnedModel),
+            new HubOptions(instruction, questionInstruction, purpose, wikiRoot, PinnedModel),
             new HarnessProcess(HarnessSettings.Default(new Uri("http://127.0.0.1:1"))),
             new FileSystemWikiStore(wikiRoot),
             new SqliteSubmissionStore(Path.Combine(root, "state")),

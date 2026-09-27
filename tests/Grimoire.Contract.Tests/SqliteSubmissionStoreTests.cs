@@ -93,7 +93,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         var held = Assert.Single(Reopened().Load()).Run;
         Assert.NotNull(held);
         Assert.Equal(run.Id, held!.Id);
-        Assert.Equal(submission.Id, held.SubmissionId);
+        Assert.Equal(submission.Id, held.QueuedId);
         Assert.Equal(Noon.AddSeconds(2), held.StartedAt);
 
         // The grant is recorded for every run (GUARD-003), and once the submission outlives the
