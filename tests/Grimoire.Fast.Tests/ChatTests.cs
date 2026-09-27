@@ -166,6 +166,49 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-002")]
+    [Trait("req", "QUERY-002")]
+    public async Task Chat_ShowsTheQuestionsInTheOrderTheyWillRun_WhenSeveralAreAskedAtOnce()
+    {
+        const int AtOnce = 16;
+
+        var token = TestContext.Current.CancellationToken;
+
+        // A submission takes the one run slot, so every question below is accepted and then waits — and
+        // none of them dispatches while the others are still being accepted.
+        var blocking = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+
+        await Task.WhenAll(Enumerable.Range(0, AtOnce)
+            .Select(at => Task.Run(() => hub.AskAsync($"Question number {at}?"), token)));
+
+        // What the chat shows, and what the queue will run: accepting a question and putting it in the
+        // chat are one step, so the two cannot disagree. Two critical sections instead, and two
+        // browsers asking at the same moment could be accepted in one order and appended in the other
+        // — the conversation read backwards, and `ConversationSoFar` handing a follow-up's run a
+        // conversation that never happened in that order (RUNS-002, QUERY-002).
+        var shown = hub.Chat.Turns.Select(turn => turn.Question.Id).ToList();
+
+        Assert.Equal(AtOnce, shown.Count);
+
+        // Let them run, one at a time, and record the order the queue actually hands them out in.
+        hub.Harness.End(blocking.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        var ran = new List<Guid>();
+
+        while (ran.Count < AtOnce)
+        {
+            var running = hub.Harness.Dispatched[^1].SubmissionId;
+
+            ran.Add(running);
+            hub.Harness.End(running, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+            await Task.Yield();
+        }
+
+        Assert.Equal(shown, ran);
+    }
+
+    [Fact]
     [Trait("req", "ACCESS-007")]
     public async Task Chat_IsWrittenTo_WhileAnotherThreadHoldsTheBoard()
     {
