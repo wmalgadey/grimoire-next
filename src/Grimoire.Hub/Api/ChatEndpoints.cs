@@ -131,7 +131,27 @@ public sealed record ChatTurnView(
 /// </remarks>
 public sealed record VaultView(
     [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("wikiPath")] string WikiPath);
+    [property: JsonPropertyName("wikiPath")] string WikiPath)
+{
+    /// <summary>
+    /// What the browser is told, or nothing — <b>both or neither</b> (ACCESS-009).
+    /// </summary>
+    /// <remarks>
+    /// Half the setting is the same as none of it: a vault with no path inside it addresses the wrong
+    /// place, and a path inside a vault nobody named addresses nothing. So the browser is told nothing
+    /// rather than something it cannot use, and it says opening is not set up — which is a truer thing
+    /// to say than a link that goes somewhere wrong.
+    /// <para>
+    /// Named here rather than left inside the composition root so that the rule can be read, and
+    /// asked, without starting a server: what the browser is <em>told</em> is the boundary and needs
+    /// one, but which of the four inputs produce a vault at all is a decision of ours.
+    /// </para>
+    /// </remarks>
+    public static VaultView? FromStartUp(string? name, string? wikiPath) =>
+        string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(wikiPath)
+            ? null
+            : new VaultView(name, wikiPath);
+}
 
 /// <summary>
 /// The chat as the browser reads it (QUERY-005, ACCESS-007, ACCESS-008).

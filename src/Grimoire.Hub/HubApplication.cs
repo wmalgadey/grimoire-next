@@ -173,22 +173,6 @@ public static class HubApplication
         await conductor.StopEverythingAsync().ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// What the browser needs to open a page in the owner's editor, or null where it was not told both
-    /// (ACCESS-009).
-    /// </summary>
-    /// <remarks>
-    /// Both or neither. One without the other cannot build a link — a vault with no path inside it
-    /// addresses the wrong place, and a path with no vault addresses nothing — so half the setting is
-    /// the same as none of it, and the browser is told so rather than left to work it out.
-    /// </remarks>
-    private static VaultView? VaultFor(HubOptions options) =>
-        options is { VaultName: { } name, VaultRoot: { } root }
-            && !string.IsNullOrWhiteSpace(name)
-            && !string.IsNullOrWhiteSpace(root)
-                ? new VaultView(name, root)
-                : null;
-
     public static WebApplication Build(
         string[] args,
         HubOptions options,
@@ -325,7 +309,7 @@ public static class HubApplication
         var asking = new ChatIntake(board, queue);
 
         app.MapSubmissions(intake, board, queue, instructions.Read, live);
-        app.MapChat(asking, chat, instructions.Read, live, VaultFor(options));
+        app.MapChat(asking, chat, instructions.Read, live, VaultView.FromStartUp(options.VaultName, options.VaultRoot));
         app.MapRunRecord(board, record, live);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to

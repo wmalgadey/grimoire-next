@@ -387,7 +387,7 @@ the request handed out addresses that page in the user's wiki.
 
 **Branch**: `004-ask-the-wiki-phase-5-references`
 
-- [ ] T061 [US2] Register **QUERY-004** in `docs/capabilities/query.md` with proof **`review`** and
+- [X] T061 [US2] Register **QUERY-004** in `docs/capabilities/query.md` with proof **`review`** and
       the spec's "Why review" reason, and **ACCESS-009** in `docs/capabilities/access.md` with the
       spec's note that it is where OUT-03's "with references to wiki pages" becomes something the user
       can act on. Before any test of this phase (Constitution IV.2) — **Req:** Principle IV.2
@@ -397,50 +397,50 @@ the request handed out addresses that page in the user's wiki.
 > QUERY-004 gets no test: it is a requirement about what a text says, which III.8 does not test. T072
 > and T092 are its proof.
 
-- [ ] T062 [P] [US2] `ChatStreamTests` in `tests/Grimoire.Fast.Tests/`: the snapshot carries `vault`
+- [X] T062 [P] [US2] `ChatStreamTests` in `tests/Grimoire.Fast.Tests/`: the snapshot carries `vault`
       with the name and the wiki's path inside it **only where Grimoire was told both**, and the field
       is **absent** where either is missing. The two values reach the browser on the snapshot beside
       the cost ceiling, for the reason the list already sends its ceiling: they are the hub's and not
       the page's — **Req:** ACCESS-009 | **Level:** Fast — **Why not lower:** what the stream carries is an in-process assertion; what the browser builds from it is this story's E2E half
-- [ ] T063 [P] [US2] `ChatStreamTests`: a `step` event carries the tool's name and what went in or
+- [X] T063 [P] [US2] `ChatStreamTests`: a `step` event carries the tool's name and what went in or
       came back **whole** — never cut and never summarised — one entry per call and one per result —
       **Req:** ACCESS-007 | **Level:** Fast — **Why not lower:** the moments come from recorded lines, so no process and no sign-in is needed
-- [ ] T064 [US2] `AnswerReferencesTests` in `tests/Grimoire.E2E.Tests/`: the steps under an answer are
+- [X] T064 [US2] `AnswerReferencesTests` in `tests/Grimoire.E2E.Tests/`: the steps under an answer are
       **shut** until the user opens one, open **a step at a time**, and an opened step shows that call
       and what it returned in the shape a run's record is read in — so there is one format to learn
       rather than two — **Req:** ACCESS-007, ACCESS-006 | **Level:** E2E — **Why not lower:** the folding is the browser's, and only a real browser has a thing that is shut
-- [ ] T065 [US2] `AnswerReferencesTests`: with the run under way, a further step appears **below**
+- [X] T065 [US2] `AnswerReferencesTests`: with the run under way, a further step appears **below**
       what is already there, the scroll is where the user left it, and a step they had opened is still
       open — **Req:** ACCESS-007 | **Level:** E2E — **Why not lower:** appending without disturbing is only observable in a browser that has scrolled
-- [ ] T066 [US2] `AnswerReferencesTests`: clicking a page the answer names hands out
+- [X] T066 [US2] `AnswerReferencesTests`: clicking a page the answer names hands out
       `obsidian://open?vault=<name>&file=<the wiki's path in the vault>/<the page>`, addressing that
       page in the user's own wiki, and nothing in the wiki changes — **Req:** ACCESS-009 | **Level:** E2E — **Why not lower:** the rewrite is `chat.js`'s and the click is the browser's; nothing below E2E has either
-- [ ] T067 [US2] `AnswerReferencesTests`: with **neither** vault input given, the answer arrives as
+- [X] T067 [US2] `AnswerReferencesTests`: with **neither** vault input given, the answer arrives as
       normal, the page's name is readable in the prose as **plain text**, and the chat says **once**
       that opening a page is not set up. The question is **not** refused — that is for a missing
       question instruction or purpose description — **Req:** ACCESS-009, QUERY-003 | **Level:** E2E — **Why not lower:** it is what the browser shows instead of a link, which no in-process test reaches
 
 ### Implementation for User Story 2
 
-- [ ] T068 [US2] `instructions/question.md`: the reference shape — every page the answer rests on
+- [X] T068 [US2] `instructions/question.md`: the reference shape — every page the answer rests on
       named **inside its prose** as a link in the wiki's own link form (WIKI-001, OKF §6.1), the
       target being the page's path **relative to the wiki's root**, which is the one anchor an answer
       has because §6.1's own anchor is the page a link sits on and an answer sits on no page. **An
       instruction changes: this phase's PR names it and requests the owner's review** (Constitution
       I.11, V.1) — **Req:** QUERY-004
-- [ ] T069 [US2] `src/Grimoire.Hub/Program.cs`: `HubOptions` gains `VaultName` and `VaultRoot`, read
+- [X] T069 [US2] `src/Grimoire.Hub/Program.cs`: `HubOptions` gains `VaultName` and `VaultRoot`, read
       from `--vault <name>` and `--vault-root <directory>`. **Both optional, and their absence refuses
       nothing** — the owner defines the directory the in-vault paths hang off, which is why the
       absolute-path form was rejected (research.md R-09) — **Req:** ACCESS-009
-- [ ] T070 [US2] `src/Grimoire.Hub/Api/ChatEndpoints.cs`: the snapshot's `vault`, present only where
+- [X] T070 [US2] `src/Grimoire.Hub/Api/ChatEndpoints.cs`: the snapshot's `vault`, present only where
       both values are there — **Req:** ACCESS-009
-- [ ] T071 [US2] `src/Grimoire.Hub/wwwroot/chat.js` and `chat.html`: the steps folded shut under the
+- [X] T071 [US2] `src/Grimoire.Hub/wwwroot/chat.js` and `chat.html`: the steps folded shut under the
       answer, each openable on its own; and the relative Markdown links in the answer rewritten to
       `obsidian://` where `vault` is in the snapshot, shown as plain text with one line saying opening
       is not set up where it is absent. **The link form lives in this one place** and nothing of it
       goes into a wiki page. Grimoire checks no link: OKF requires readers to tolerate a broken one —
       **Req:** ACCESS-007, ACCESS-009
-- [ ] T072 [US2] `docs/review-checklist.md` item 3: extend it so it asks of **each** instruction a run
+- [X] T072 [US2] `docs/review-checklist.md` item 3: extend it so it asks of **each** instruction a run
       receives — the ingest instruction and the question instruction — whether it states the shape its
       requirement lists, in full. **This is QUERY-004's proof** (Constitution III.1, IV.6) — **Req:** QUERY-004
 
