@@ -428,6 +428,15 @@ done_count() {
 
 AGENT_RESULT=""
 AGENT_RC=0
+NEXT_LOG=""
+LOG_SEQ=0
+
+# A fresh log path per call: the time alone repeats when two iterations start in the same second,
+# and the second would overwrite the first's prompt and result.
+next_log() {
+    LOG_SEQ=$((LOG_SEQ + 1))
+    NEXT_LOG="$LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ)-$$-$(printf '%03d' "$LOG_SEQ")-$1"
+}
 AGENT_DENIED=""
 
 # What an agent must never do, whatever the permission mode decides: phasepr pushes and merges
@@ -442,7 +451,8 @@ FORBIDDEN_COMMANDS=("git push" "git reset" "git rebase" "git merge" "git commit 
 
 invoke_agent() {
     local kind=$1 prompt=$2 base
-    base="$LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ)-$kind"
+    next_log "$kind"
+    base=$NEXT_LOG
     printf '%s\n' "$prompt" > "$base.prompt.md"
     case "$CFG_AGENT_CLI" in
         claude) invoke_claude "$kind" "$prompt" "$base" ;;
@@ -525,7 +535,8 @@ run_gates() {
         printf '[dry-run] bash %q\n' "$GATES_SH" >&2
         return 0
     fi
-    GATE_LOG="$LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ)-gates.log"
+    next_log gates
+    GATE_LOG="$NEXT_LOG.log"
     log "gates on $(git rev-parse --short HEAD) (log $GATE_LOG)"
     bash "$GATES_SH" > "$GATE_LOG" 2>&1 && return 0
     GATE_NAME=$(sed -n 's/^=== gate failed: //p' "$GATE_LOG" | tail -n1)
@@ -959,7 +970,8 @@ record_mutation() {
         run git push origin "$FEATURE"
         return 0
     fi
-    log="$LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ)-mutation.log"
+    next_log mutation
+    log="$NEXT_LOG.log"
     log "mutation measurement (log $log)"
     ./scripts/mutation.sh > "$log" 2>&1 \
         || halt mutation-failed "scripts/mutation.sh failed (log: $log). The phases are merged; fix the measurement and rerun."

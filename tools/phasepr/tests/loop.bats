@@ -69,6 +69,7 @@ setup() {
 @test "the implement prompt is /speckit-implement scoped to one phase" {
     run phasepr
     [ "$status" -eq 0 ]
+    [ "$(ls specs/042-demo/phasepr/logs/*implement.prompt.md | wc -l)" -eq 2 ]
     prompt=$(ls specs/042-demo/phasepr/logs/*implement.prompt.md | head -n1)
     head -c 19 "$prompt" | grep -qx '/speckit-implement '
     grep -q 'Phase 2 — Foundational — the base' "$prompt"
