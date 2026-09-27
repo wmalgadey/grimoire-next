@@ -7,7 +7,8 @@ namespace Grimoire.Hub.Mcp;
 
 /// <summary>Which run a tool call belongs to, read from the endpoint it arrived at.</summary>
 /// <remarks>
-/// The run identifier is in the path — <c>/mcp/runs/{runId}</c> — which is how a tool call is
+/// The run identifier is in the path — <c>/mcp/{door}/{runId}</c>, the door being the segment the
+/// run's grant records — which is how a tool call is
 /// attributed to its run. That is addressing, not authorisation: the endpoint is unauthenticated
 /// and bound to loopback, because <c>docs/product.md</c> §2 puts Grimoire inside a network the
 /// user trusts. The first feature that puts it on an untrusted network has to revisit this.

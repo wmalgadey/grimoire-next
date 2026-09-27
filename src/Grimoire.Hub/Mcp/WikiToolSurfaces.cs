@@ -36,10 +36,13 @@ namespace Grimoire.Hub.Mcp;
 internal static class WikiToolSurfaces
 {
     /// <summary>
-    /// The path segment a question's run is served at, as its grant records it — read from the grant
-    /// so that the door and the grant cannot disagree (GUARD-005).
+    /// The route a question's run is served at, built from the segment its grant records — so the
+    /// door, the grant and the address the agent is given cannot disagree (GUARD-005).
     /// </summary>
-    private static readonly string Questions = $"/mcp/{ToolGrant.Questions}/";
+    public const string QuestionsDoor = "/mcp/" + ToolGrant.Questions;
+
+    /// <summary>The route an ingest run is served at, from its grant's segment for the same reason.</summary>
+    public const string RunsDoor = "/mcp/" + ToolGrant.Runs;
 
     /// <summary>
     /// Everything the two surfaces need from the container, registered here so that the surfaces and
@@ -66,7 +69,7 @@ internal static class WikiToolSurfaces
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        return context.Request.Path.StartsWithSegments("/mcp/" + ToolGrant.Questions)
+        return context.Request.Path.StartsWithSegments(QuestionsDoor)
             ? ToolsOf<WikiReadToolsServer>(services)
             : ToolsOf<WikiToolsServer>(services);
     }

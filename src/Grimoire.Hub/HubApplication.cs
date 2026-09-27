@@ -275,8 +275,8 @@ public static class HubApplication
         // per session from the route it was opened on (`WikiToolSurfaces`), because mapping a second
         // pattern does not give a second catalogue. Which door a run is dispatched at travels on its
         // grant, so the two cannot be crossed (GUARD-005, DEC-011).
-        app.MapMcp("/mcp/runs/{runId}");
-        app.MapMcp("/mcp/questions/{runId}");
+        app.MapMcp($"{WikiToolSurfaces.RunsDoor}/{{runId}}");
+        app.MapMcp($"{WikiToolSurfaces.QuestionsDoor}/{{runId}}");
 
         RestoreAfterAStop(submissions, board, harness, record, clock);
 
