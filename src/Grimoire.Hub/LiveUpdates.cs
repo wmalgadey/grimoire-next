@@ -24,6 +24,22 @@ public sealed class Sent
 
     /// <summary>How many lost entries this subscriber has already been told about.</summary>
     public int EntriesLost { get; set; }
+
+    /// <summary>
+    /// How many of the chat's changes this subscriber has been told about (ACCESS-007).
+    /// </summary>
+    /// <remarks>
+    /// A position and not a copy of what was sent: the chat's changes are descriptors read forward, so
+    /// this is the same kind of bookkeeping <see cref="Bytes"/> is for a record. A subscriber starts at
+    /// the <em>end</em> of them, because its snapshot already carried everything before it.
+    /// </remarks>
+    public int Changes { get; set; }
+
+    /// <summary>
+    /// Which chat this subscriber's <see cref="Changes"/> counts into, so that a new chat is told apart
+    /// from the same chat having grown (QUERY-005).
+    /// </summary>
+    public int Generation { get; set; }
 }
 
 /// <summary>

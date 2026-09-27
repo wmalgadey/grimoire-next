@@ -13,6 +13,10 @@
         padding: 2rem 1rem;
       }
       h1 { font-size: 1.25rem; font-weight: 600; }
+      /* A line of links, not a bar and not a menu: docs/ux.md withholds navigation chrome until a
+         second job exists, and a third exists now (ACCESS-010). */
+      .jobs { margin: 0 0 1.5rem; }
+      .jobs a { margin-right: 1rem; }
       a { color: inherit; }
       #missing { color: #b3261e; margin: 0; min-height: 1.5rem; }
       #message { margin-top: 1rem; min-height: 1.5rem; }
@@ -101,6 +105,13 @@
   </head>
   <body>
     <h1><a href="index.html">Grimoire</a> — what this run did</h1>
+
+    <!-- The three jobs reach each other (ACCESS-010). The heading already leads back to the list, so
+         what is missing from this page is the chat. -->
+    <p class="jobs">
+      <a href="index.html">Submit a source, and read what became of each</a>
+      <a href="chat.html">Ask the wiki</a>
+    </p>
 
     <!-- Where lines of the record could not be written, this says so. The run went on; a gap that
          passed for an agent doing nothing would be worse than the gap (RUNS-007, ACCESS-006). -->

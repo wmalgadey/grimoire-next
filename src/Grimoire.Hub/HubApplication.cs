@@ -227,8 +227,8 @@ public static class HubApplication
 
         var app = builder.Build();
 
-        // The page is static content served from wwwroot/ — one HTML file and one script, no
-        // build step (research.md R-10).
+        // The pages are static content served from wwwroot/ — three HTML files and three scripts, no
+        // build step and no bundler (DEC-019, research.md R-10, R-14).
         app.UseDefaultFiles();
         app.UseStaticFiles();
 
@@ -240,14 +240,44 @@ public static class HubApplication
         // III.9) — the wiring itself is not tested; what it wires is (III.8).
         var live = new LiveUpdates();
 
-        // The one chat, held for as long as this hub runs and written down nowhere (QUERY-005).
-        var chat = new Chat();
+        // The one chat, held for as long as this hub runs and written down nowhere (QUERY-005). It
+        // wakes the browsers reading it itself, at every place it changes something, so no caller has
+        // to remember to — which is what left an accepted question undrawn while it waited.
+        var chat = new Chat(() => live.Changed(LiveUpdates.Chat));
 
         // Which stream a change matters to is decided here and not by the board, which does not know
         // there are two. A submission's change is the list; a question's is the chat. Told the wrong
         // one, a page would sit still while what it shows moved on.
-        var board = new RunBoard(clock, submissions, queued => live.Changed(
-            queued is Question ? LiveUpdates.Chat : LiveUpdates.Submissions));
+        var board = new RunBoard(
+            clock,
+            submissions,
+            queued =>
+        {
+            // A question's change is the chat's, and the chat has to be told *which* question before its
+            // subscribers are woken: they read the change log forward, so a wake with nothing recorded
+            // is a wake with nothing to send.
+            if (queued is Question)
+            {
+                // The run is read here, inside the board's lock, and handed over — the chat must never
+                // take this lock from inside its own (Chat.answering). The chat wakes its own readers.
+                chat.QuestionChanged(queued.Id, queued.RunId);
+                return;
+            }
+
+            live.Changed(LiveUpdates.Submissions);
+        },
+
+            // A question joins the chat here, inside the board's lock, in the same breath as it was
+            // accepted — so the order the chat shows is the order the queue will run them in, and no
+            // pump can hand this question a run before there is a turn for that run to be mapped to
+            // (RunBoard.Accepted).
+            queued =>
+            {
+                if (queued is Question asked)
+                {
+                    chat.Ask(asked);
+                }
+            });
 
         // The knot the conductor and the queue make, tied here because neither may hold the other
         // whole: a run that ends is what lets the next one start, and starting one is what gives
@@ -264,8 +294,10 @@ public static class HubApplication
             (question, runId) => instructions.AssembleQuestion(chat, question, runId));
 
         var intake = new SubmissionIntake(board, queue);
+        var asking = new ChatIntake(board, queue);
 
         app.MapSubmissions(intake, board, queue, instructions.Read, live);
+        app.MapChat(asking, chat, instructions.Read, live);
         app.MapRunRecord(board, record, live);
 
         // One endpoint per run: the identifier in the path is how a tool call is attributed to

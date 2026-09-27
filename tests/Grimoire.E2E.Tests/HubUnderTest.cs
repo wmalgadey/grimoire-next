@@ -227,6 +227,37 @@ internal sealed class HubUnderTest : IAsyncDisposable
     }
 
     /// <summary>
+    /// A question asked the way the chat asks it, answering with the accepted question's id. A question
+    /// the browser is to show has to exist before the browser can show it; that the form itself asks is
+    /// ACCESS-007's own, proven in <see cref="AskingTheWikiTests"/>.
+    /// </summary>
+    public async Task<Guid> AskAsync(string text, CancellationToken cancellationToken)
+    {
+        var response = await client.PostAsJsonAsync("/api/chat/questions", new { text }, cancellationToken)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var accepted = await response.Content.ReadFromJsonAsync<ChatTurnView>(cancellationToken)
+            .ConfigureAwait(false);
+
+        return Guid.Parse(accepted!.Id);
+    }
+
+    /// <summary>
+    /// Everything in the wiki directory, by path, with what each file holds — so that "byte for byte
+    /// what it was" is a claim about a real directory and not about a port (GUARD-005).
+    /// </summary>
+    public IReadOnlyDictionary<string, byte[]> WikiAsItStands() =>
+        Directory.Exists(WikiDirectory)
+            ? Directory.GetFiles(WikiDirectory, "*", SearchOption.AllDirectories)
+                .ToDictionary(
+                    path => Path.GetRelativePath(WikiDirectory, path),
+                    File.ReadAllBytes,
+                    StringComparer.Ordinal)
+            : new Dictionary<string, byte[]>(StringComparer.Ordinal);
+
+    /// <summary>
     /// A failure acknowledged the way the page acknowledges it, so that the queue moves on
     /// (ACCESS-003, RUNS-003). That a person can reach this from the browser is
     /// <see cref="AcknowledgementTests"/>; here it is a step on the way to somewhere else.

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Grimoire — ask the wiki</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font: 16px/1.5 system-ui, sans-serif;
+        margin: 0 auto;
+        max-width: 42rem;
+        padding: 2rem 1rem;
+      }
+      h1 { font-size: 1.25rem; font-weight: 600; }
+      /* A line of links, not a bar and not a menu: docs/ux.md withholds navigation chrome until a
+         second job exists, and a third exists now (ACCESS-010). */
+      .jobs { margin: 0 0 1.5rem; }
+      .jobs a { margin-right: 1rem; }
+      textarea {
+        box-sizing: border-box;
+        font: inherit;
+        min-height: 5rem;
+        padding: 0.6rem;
+        resize: vertical;
+        width: 100%;
+      }
+      button { font: inherit; margin-top: 0.75rem; padding: 0.5rem 1.1rem; }
+      #message { margin-top: 1rem; min-height: 1.5rem; }
+      #message[data-kind="refused"] { color: #b3261e; }
+
+      /* The conversation. Oldest first, because that is the order a conversation is read in — the
+         opposite of the submissions list, which is a list and not a conversation. */
+      #chat { list-style: none; margin: 2rem 0 0; padding: 0; }
+      #chat > li {
+        border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        padding: 1rem 0;
+      }
+
+      /* What the user asked, as they typed it — their own words, so they are quoted rather than
+         restyled. */
+      .asked {
+        font-weight: 600;
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      .about {
+        column-gap: 1rem;
+        display: flex;
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+        opacity: 0.7;
+        row-gap: 0.25rem;
+      }
+      .about time { flex: none; font-variant-numeric: tabular-nums; }
+      .state { flex: none; font-weight: 600; opacity: 1; }
+      .because { flex: none; }
+
+      /* The answer is prose, and it grows in place: the element is drawn once and appended to, never
+         replaced (ACCESS-007, docs/ux.md: live content grows in place). */
+      .answer {
+        margin: 0.75rem 0 0;
+        white-space: pre-wrap;
+      }
+
+      /* Each figure in its own element, with tabular figures and a width kept for it, so that a
+         rising number changes a number and moves nothing beside it (ACCESS-008, docs/ux.md).
+
+         The width comes from the cost ceiling, which is what bounds the figure: a run is stopped at
+         2 000 000 (GUARD-004), so the cell cannot pass "2 000 000 / 2 000 000" — twenty-one
+         characters with the thin spaces this page groups them by. The chat's total is bounded by
+         nothing, because a chat may hold any number of questions, so it is given room for one more
+         order of magnitude and allowed to grow rightwards from a line of its own where nothing sits
+         beside it to be moved. */
+      .figure {
+        flex: none;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
+      .cost { width: 21ch; }
+      #total { font-variant-numeric: tabular-nums; }
+      /* The total stands alone with **no ceiling beside it**: every question carries its own, and
+         "x / y" here would invent one that does not exist (ACCESS-008). */
+      #spent {
+        border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        margin: 1.5rem 0 0;
+        padding-top: 0.75rem;
+      }
+
+      /* The steps, read in the shape a run's record is read in: shut by default, one openable at a
+         time, monospace because the content is a log or a file (ACCESS-006, ACCESS-007,
+         docs/ux.md). */
+      .steps { margin-top: 0.75rem; }
+      .steps > summary {
+        cursor: default;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9rem;
+        opacity: 0.8;
+      }
+      .step {
+        margin: 0.4rem 0 0 1.2rem;
+      }
+      .step > summary {
+        cursor: default;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9rem;
+      }
+      .step pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.85rem;
+        margin: 0.3rem 0 0 1.2rem;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .acknowledge { flex: none; font: inherit; margin: 0; padding: 0.1rem 0.6rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Ask the wiki</h1>
+
+    <!-- The three jobs reach each other (ACCESS-010). One link, because both of the other two live
+         on that page: a source is submitted there, and a submission's run is opened from the row that
+         names it — a run's page addresses one submission, so there is no address for it to link to
+         from here. -->
+    <p class="jobs">
+      <a href="index.html">Submit a source, and read what became of each</a>
+    </p>
+
+    <form id="question">
+      <label for="text">What do you want to know?</label>
+      <textarea id="text" name="text" autofocus></textarea>
+      <button id="ask" type="submit">Ask</button>
+    </form>
+
+    <!-- The run happens without the user: once the question is accepted the browser is free
+         (QUERY-001). -->
+    <p id="message" role="status" aria-live="polite"></p>
+
+    <!-- Each question, the answer growing under it, and the steps folded beneath (ACCESS-007). No
+         identifier is rendered. -->
+    <ul id="chat"></ul>
+
+    <!-- What every question in this chat has spent altogether, with no ceiling beside it
+         (ACCESS-008). -->
+    <p id="spent">
+      This chat has spent <span id="total">0</span>.
+    </p>
+
+    <script src="chat.js"></script>
+  </body>
+</html>

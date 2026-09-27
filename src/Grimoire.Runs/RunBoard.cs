@@ -104,8 +104,30 @@ public sealed record QuestionResult
 /// things it holds would be a name that lies, in a tree whose comments carry the reasons.
 /// </para>
 /// </remarks>
-public sealed class RunBoard(TimeProvider clock, ISubmissionStore store, RunBoard.Changed? changed = null)
+public sealed class RunBoard(
+    TimeProvider clock,
+    ISubmissionStore store,
+    RunBoard.Changed? changed = null,
+    RunBoard.Accepted? accepted = null)
 {
+    /// <summary>
+    /// Something was just accepted and is on the board — raised <b>inside the one lock</b>, in the same
+    /// breath as it was added.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="Changed"/>, and inside the lock, because of what it is for: the chat
+    /// puts its turn in from here, so a question is in the chat <b>before any pump can observe it
+    /// waiting</b>. A pump takes this same lock to hand work out, so there is no window in which a
+    /// question exists on the board and not in the chat — and it is exactly that window that lost a
+    /// question's run-to-turn mapping, and with it every word of its answer.
+    /// <para>
+    /// It is not <see cref="Changed"/> raised once more: this says <em>accepted</em>, which happens
+    /// once, and a chat that added a turn on any change would put a question back into a chat that had
+    /// been started afresh (QUERY-005).
+    /// </para>
+    /// </remarks>
+    public delegate void Accepted(Queued queued);
+
     /// <summary>
     /// A run for this submission or question, made by whoever knows what a run is given — the hub.
     /// The board asks for one only once it has decided that this one may start, so that deciding,
@@ -258,6 +280,7 @@ public sealed class RunBoard(TimeProvider clock, ISubmissionStore store, RunBoar
                 AcknowledgedAt: null));
 
             queued.Add(submission);
+            accepted?.Invoke(submission);
             changed?.Invoke(submission);
             return SubmissionResult.Of(submission);
         }
@@ -300,6 +323,10 @@ public sealed class RunBoard(TimeProvider clock, ISubmissionStore store, RunBoar
             var question = new Question(Guid.NewGuid(), text, clock.GetUtcNow(), gate);
 
             queued.Add(question);
+
+            // In the chat before the lock is released, so no pump can find it waiting before its turn
+            // exists. What that window cost is in `Accepted`.
+            accepted?.Invoke(question);
             changed?.Invoke(question);
             return QuestionResult.Of(question);
         }

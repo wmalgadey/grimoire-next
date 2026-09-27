@@ -165,6 +165,124 @@ public sealed class ChatTests
         Assert.Equal(ToolGrant.ForQuestion, run.GrantedTools);
     }
 
+    [Fact]
+    [Trait("req", "ACCESS-007")]
+    public async Task Chat_HoldsTheAnswer_WhenAnotherRunsEndingIsWhatStartedTheQuestion()
+    {
+        // The question waits behind a submission, so the run it is eventually given is handed out by
+        // **that submission's ending**, on the harness's thread and not on the asking one. This is the
+        // path the run-to-turn mapping used to be lost on: the question existed on the board before it
+        // existed in the chat, so a pump that reached it in that window found no turn to map its run
+        // to — and every word of the answer that followed went nowhere.
+        var blocking = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+        var question = (await hub.AskAsync("What does the wiki say about Ada Lovelace?")).Accepted!;
+
+        Assert.Null(question.RunId);
+
+        hub.Harness.End(blocking.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        Assert.NotNull(question.RunId);
+
+        Said(question, "She wrote the first program.");
+        hub.Harness.Called(question.Id, "read_page", """{"path":"people/ada-lovelace.md"}""");
+
+        // The answer and the step reached the turn, which is only true if the run was mapped to it.
+        var turn = Assert.Single(hub.Chat.Turns);
+
+        Assert.Equal("She wrote the first program.", turn.Answer);
+        Assert.Single(turn.Steps);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-002")]
+    [Trait("req", "QUERY-002")]
+    public async Task Chat_ShowsTheQuestionsInTheOrderTheyWillRun_WhenSeveralAreAskedAtOnce()
+    {
+        const int AtOnce = 16;
+
+        var token = TestContext.Current.CancellationToken;
+
+        // A submission takes the one run slot, so every question below is accepted and then waits — and
+        // none of them dispatches while the others are still being accepted.
+        var blocking = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+
+        await Task.WhenAll(Enumerable.Range(0, AtOnce)
+            .Select(at => Task.Run(() => hub.AskAsync($"Question number {at}?"), token)));
+
+        // What the chat shows, and what the queue will run: accepting a question and putting it in the
+        // chat are one step, so the two cannot disagree. Two critical sections instead, and two
+        // browsers asking at the same moment could be accepted in one order and appended in the other
+        // — the conversation read backwards, and `ConversationSoFar` handing a follow-up's run a
+        // conversation that never happened in that order (RUNS-002, QUERY-002).
+        var shown = hub.Chat.Turns.Select(turn => turn.Question.Id).ToList();
+
+        Assert.Equal(AtOnce, shown.Count);
+
+        // Let them run, one at a time, and record the order the queue actually hands them out in.
+        hub.Harness.End(blocking.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        var ran = new List<Guid>();
+
+        while (ran.Count < AtOnce)
+        {
+            var running = hub.Harness.Dispatched[^1].SubmissionId;
+
+            ran.Add(running);
+            hub.Harness.End(running, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+            await Task.Yield();
+        }
+
+        Assert.Equal(shown, ran);
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-007")]
+    public async Task Chat_IsWrittenTo_WhileAnotherThreadHoldsTheBoard()
+    {
+        var store = new InMemorySubmissionStore();
+        var locking = new FastHub(store, new HubJournal(), new InMemoryRunRecord());
+
+        var question = await locking.AskedAsync("What does the wiki say about Ada Lovelace?");
+        var run = question.RunId!.Value;
+
+        var token = TestContext.Current.CancellationToken;
+
+        using var boardIsHeld = new SemaphoreSlim(0, 1);
+        using var letTheBoardGo = new SemaphoreSlim(0, 1);
+
+        // A thread inside the board's lock, holding it. `WhileWriting` runs while whoever is writing
+        // still holds it, which is what makes this deterministic rather than a race to be won.
+        store.WhileWriting = () =>
+        {
+            store.WhileWriting = null;
+            boardIsHeld.Release();
+            letTheBoardGo.Wait(TimeSpan.FromSeconds(5), token);
+        };
+
+        var holding = Task.Run(() => locking.Harness.Spend(question.Id, 12_000), token);
+
+        Assert.True(
+            await boardIsHeld.WaitAsync(TimeSpan.FromSeconds(5), token), "the board's lock was never taken");
+
+        // **The chat is written to while that lock is held elsewhere.** It must not need the board: the
+        // board raises the chat's changes from inside its own lock, so a chat that took the board from
+        // inside its own would give the two an order each contradicts — one thread holding the chat and
+        // wanting the board, another holding the board and wanting the chat, and both waiting for ever
+        // (Chat.answering).
+        var written = Task.Run(() => locking.Chat.AgentSaid(run, "She wrote the first program."), token);
+
+        Assert.True(
+            await Task.WhenAny(written, Task.Delay(TimeSpan.FromSeconds(5), token)) == written,
+            "writing to the chat waited for the board's lock, which is the deadlock this ordering exists to prevent");
+
+        letTheBoardGo.Release();
+        await holding;
+
+        Assert.Equal("She wrote the first program.", Assert.Single(locking.Chat.Turns).Answer);
+    }
+
     private void Said(Question question, string text) =>
         hub.Harness.Did(question.Id, new TranscriptMoment(RunMomentKind.AgentSaid, null, text));
 
