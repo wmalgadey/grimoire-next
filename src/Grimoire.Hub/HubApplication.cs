@@ -240,8 +240,10 @@ public static class HubApplication
         // III.9) — the wiring itself is not tested; what it wires is (III.8).
         var live = new LiveUpdates();
 
-        // The one chat, held for as long as this hub runs and written down nowhere (QUERY-005).
-        var chat = new Chat();
+        // The one chat, held for as long as this hub runs and written down nowhere (QUERY-005). It
+        // wakes the browsers reading it itself, at every place it changes something, so no caller has
+        // to remember to — which is what left an accepted question undrawn while it waited.
+        var chat = new Chat(() => live.Changed(LiveUpdates.Chat));
 
         // Which stream a change matters to is decided here and not by the board, which does not know
         // there are two. A submission's change is the list; a question's is the chat. Told the wrong
@@ -253,8 +255,9 @@ public static class HubApplication
             // is a wake with nothing to send.
             if (queued is Question)
             {
-                chat.QuestionChanged(queued.Id);
-                live.Changed(LiveUpdates.Chat);
+                // The run is read here, inside the board's lock, and handed over — the chat must never
+                // take this lock from inside its own (Chat.answering). The chat wakes its own readers.
+                chat.QuestionChanged(queued.Id, queued.RunId);
                 return;
             }
 

@@ -256,6 +256,54 @@ public sealed class ChatStreamTests
     }
 
     /// <summary>The agent's own text, which is what the answer is made of (research.md R-08).</summary>
+    [Fact]
+    public async Task Asked_SaysTheQuestionIsWaiting_EvenWhereItsRunHasAlreadyStarted()
+    {
+        await using var hub = new HostedHub();
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+
+        await stream.NextAsync<ChatView>("chat");
+
+        // Nothing else holds the queue, so asking starts the question's run before this returns: by the
+        // time the event below is read, the question is already being answered.
+        await hub.AskAsync(AboutAda);
+
+        var (name, data) = await stream.NextAsync();
+
+        // The `asked` event records a question **joining the chat**, and a question joins it waiting its
+        // turn (QUERY-001). Read at the moment it is serialised instead, it would say `answering` —
+        // a state the question arrived in only afterwards, drawn for the instant before the `question`
+        // event that actually reports the change (contracts/hub-http-api.md).
+        Assert.Equal("asked", name);
+        Assert.Contains("\"state\":\"waiting\"", data, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("req", "QUERY-001")]
+    public async Task Asked_ReachesTheBrowser_WhileTheQuestionWaitsBehindSomethingElse()
+    {
+        await using var hub = new HostedHub();
+
+        // A submission takes the one run slot, so the question is accepted and then **waits**
+        // (RUNS-002). Nothing about it changes again until the queue reaches it.
+        await hub.SubmitAsync("Ada Lovelace wrote the first program.");
+
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+        await stream.NextAsync<ChatView>("chat");
+
+        await hub.AskAsync(AboutAda);
+
+        // It is drawn while it waits. The board raises its own change before the question is on the
+        // chat, so that one reaches no turn — and without the chat raising one of its own when the turn
+        // is added, an accepted question would sit there unanswered *and* undrawn until something else
+        // happened to change (Chat.Changed).
+        var (name, data) = await stream.NextAsync();
+
+        Assert.Equal("asked", name);
+        Assert.Contains("\"state\":\"waiting\"", data, StringComparison.Ordinal);
+        Assert.Contains(AboutAda, data, StringComparison.Ordinal);
+    }
+
     private static void Said(HostedHub hub, Guid question, string text) =>
         hub.Agent.Did(question, new TranscriptMoment(RunMomentKind.AgentSaid, null, text));
 

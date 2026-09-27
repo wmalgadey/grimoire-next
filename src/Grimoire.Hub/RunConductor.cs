@@ -403,7 +403,8 @@ public sealed class RunConductor(
                 break;
         }
 
-        live.Changed(LiveUpdates.Chat);
+        // No wake here: the chat raises its own at every place it changes something, so one added
+        // beside it would be a second mechanism doing the same job (Chat.Changed).
     }
 
     /// <summary>The run this report is about, or null once it is over.</summary>
@@ -620,12 +621,8 @@ public sealed class RunConductor(
             run.ToolCalls,
             run.IsToChangeTheWiki ? record.EntriesLost(run.Id) : 0);
 
-        // And the chat, whose question has just changed state and carries its final figure (ACCESS-007,
-        // ACCESS-008). Said after the board, because that is where the state it draws comes from.
-        if (!run.IsToChangeTheWiki)
-        {
-            live.Changed(LiveUpdates.Chat);
-        }
+        // The chat needs no wake here either: telling the board is what reaches it, through the change
+        // the composition root passes on (HubApplication.Build, Chat.Changed).
     }
 
     /// <summary>

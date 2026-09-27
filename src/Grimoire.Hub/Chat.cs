@@ -144,6 +144,25 @@ public sealed class ChatTurn(Question question)
 }
 
 /// <summary>
+/// One turn as it stood at one instant: the question, and <b>copies</b> of the answer and the steps
+/// as they were (ACCESS-007).
+/// </summary>
+/// <remarks>
+/// The two growing things are copied because a snapshot has to agree with the position in the change
+/// log that was taken with it. The <see cref="Question"/> is the live object, because its state and
+/// figures are read through the board and are idempotent to re-send.
+/// </remarks>
+public sealed record ChatTurnAsItWas(Question Question, string Answer, IReadOnlyList<ChatStep> Steps);
+
+/// <summary>
+/// The chat at one instant, with the position in its change log that goes with it (ACCESS-007).
+/// </summary>
+public sealed record ChatSnapshot(
+    IReadOnlyList<ChatTurnAsItWas> Turns,
+    int Changes,
+    int Generation);
+
+/// <summary>
 /// The current conversation: the questions asked in it, their answers, and what the agent did under
 /// each (QUERY-005).
 /// </summary>
@@ -166,10 +185,41 @@ public sealed class ChatTurn(Question question)
 /// (Constitution II.1, RUNS-007).
 /// </para>
 /// </remarks>
-public sealed class Chat
+public sealed class Chat(Chat.Changed? changed = null)
 {
+    /// <summary>
+    /// Something in the chat changed: every browser reading it is woken (ACCESS-007).
+    /// </summary>
+    /// <remarks>
+    /// A delegate the composition root supplies, which is the precedent <c>RunBoard.Changed</c> sets.
+    /// Raised at the end of <b>every</b> method here that writes something, which is what makes
+    /// "a change is always followed by a wake" a property of this class rather than a thing each
+    /// caller has to remember — a caller that forgot left an accepted question undrawn until something
+    /// else happened to change.
+    /// <para>
+    /// Raised inside the chat's lock, and the lock order is <b>board → chat → live</b> throughout. What
+    /// it does must therefore not take the board: the hub's <c>LiveUpdates.Changed</c> writes a byte to
+    /// a channel per subscriber and does not.
+    /// </para>
+    /// </remarks>
+    public delegate void Changed();
+
     private readonly Lock gate = new();
     private readonly List<ChatChange> changes = [];
+
+    /// <summary>
+    /// Which turn a run is answering, kept here rather than asked of the board.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is what keeps the two locks in one order.</b> Finding the turn by reading
+    /// <c>Question.RunId</c> takes the <em>board's</em> lock, and the board raises this chat's changes
+    /// from inside that same lock — so a moment arriving while a question was accepted could leave one
+    /// thread holding the chat and wanting the board while another held the board and wanted the chat.
+    /// The chat is told which run belongs to which turn instead, by the caller that already holds the
+    /// board, and never asks.
+    /// </remarks>
+    private readonly Dictionary<Guid, ChatTurn> answering = [];
+
     private List<ChatTurn> turns = [];
     private int generation;
 
@@ -251,6 +301,7 @@ public sealed class Chat
             // subscribers are given next is the one with this question in it.
             turns = [.. turns, new ChatTurn(question)];
             changes.Add(new ChatChange(ChatEvents.Asked, question.Id));
+            changed?.Invoke();
         }
     }
 
@@ -268,6 +319,7 @@ public sealed class Chat
             turn.AgentSaid(text);
 
             changes.Add(new ChatChange(ChatEvents.Answer, turn.Question.Id, from, turn.Answer.Length));
+            changed?.Invoke();
         }
     }
 
@@ -283,6 +335,7 @@ public sealed class Chat
 
             turn.StepHappened(step);
             changes.Add(new ChatChange(ChatEvents.Step, turn.Question.Id, Step: turn.Steps.Count - 1));
+            changed?.Invoke();
         }
     }
 
@@ -295,14 +348,51 @@ public sealed class Chat
     /// figures are read off the question and its run rather than kept here, so this carries no values —
     /// only that there is something new to read.
     /// </remarks>
-    public void QuestionChanged(Guid questionId)
+    public void QuestionChanged(Guid questionId, Guid? runId)
     {
         lock (gate)
         {
-            if (turns.Exists(turn => turn.Question.Id == questionId))
+            if (turns.Find(turn => turn.Question.Id == questionId) is not { } turn)
             {
-                changes.Add(new ChatChange(ChatEvents.Question, questionId));
+                return;
             }
+
+            // Which run answers this turn, told rather than asked: the caller is the board, inside its
+            // own lock, where the run is already known. Asking would take that lock from inside this
+            // one and put the two in an order the board itself contradicts.
+            if (runId is { } run)
+            {
+                answering[run] = turn;
+            }
+
+            changes.Add(new ChatChange(ChatEvents.Question, questionId));
+            changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Everything a stream's opening event needs, read at <b>one</b> instant (ACCESS-007).
+    /// </summary>
+    /// <remarks>
+    /// The answer and the steps are <b>copied</b> here rather than read from the turns afterwards, and
+    /// the position in the change log is taken in the same breath. Read apart, a piece of an answer
+    /// arriving between the two would be in the snapshot <em>and</em> past the subscriber's position —
+    /// so the next wake would send it again and the browser would show it twice.
+    /// <para>
+    /// A turn's state and figures are deliberately <em>not</em> captured: reading them takes the board's
+    /// lock, which this must never do while holding its own. They do not need to be — every change to
+    /// one records a <c>question</c> descriptor, and that event carries absolute values, so sending it
+    /// once more says the same thing rather than doubling anything.
+    /// </para>
+    /// </remarks>
+    public ChatSnapshot Snapshot()
+    {
+        lock (gate)
+        {
+            return new ChatSnapshot(
+                [.. turns.Select(turn => new ChatTurnAsItWas(turn.Question, turn.Answer, turn.Steps))],
+                changes.Count,
+                generation);
         }
     }
 
@@ -322,7 +412,9 @@ public sealed class Chat
         {
             turns = [];
             changes.Clear();
+            answering.Clear();
             generation++;
+            changed?.Invoke();
         }
     }
 
@@ -330,6 +422,12 @@ public sealed class Chat
     /// The turn this run is answering, or null where there is none — a question whose chat has been
     /// put away, or a run that is not a question's at all.
     /// </summary>
-    /// <summary>Assumes the lock, where a caller changes something.</summary>
-    private ChatTurn? Answering(Guid runId) => turns.Find(turn => turn.Question.RunId == runId);
+    /// <summary>
+    /// The turn this run answers, or null where there is none — a question whose chat has been put
+    /// away, or a run that is not a question's at all. Assumes the lock.
+    /// </summary>
+    /// <remarks>
+    /// Read from what the chat was told, never from the board: see <see cref="answering"/>.
+    /// </remarks>
+    private ChatTurn? Answering(Guid runId) => answering.GetValueOrDefault(runId);
 }

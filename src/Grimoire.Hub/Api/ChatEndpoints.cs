@@ -59,6 +59,18 @@ public sealed record ChatTurnView(
     {
         ArgumentNullException.ThrowIfNull(turn);
 
+        return Of(new ChatTurnAsItWas(turn.Question, turn.Answer, turn.Steps));
+    }
+
+    /// <summary>
+    /// A turn as it stood when a snapshot was taken. The answer and the steps come from that instant;
+    /// the state and the figures are read now, because they are absolute and re-reading one says the
+    /// same thing rather than doubling anything (<c>Chat.Snapshot</c>).
+    /// </summary>
+    public static ChatTurnView Of(ChatTurnAsItWas turn)
+    {
+        ArgumentNullException.ThrowIfNull(turn);
+
         // One reading of the question's state, its reason, its acknowledgement and its figures, under the
         // board's one lock. Asked separately, a run ending between two answers would put `answering`
         // beside a final figure, or beside an offered acknowledgement — pairs that never existed
@@ -180,11 +192,19 @@ public static class ChatEndpoints
     /// </remarks>
     private static IEnumerable<SseItem<object>> Opening(Chat chat, Sent sent)
     {
-        sent.Generation = chat.Generation;
-        sent.Changes = chat.Changes.Count;
+        // The turns and the position in the change log, taken together. Read apart, a piece of an
+        // answer arriving between the two would be in this snapshot *and* past the position — so the
+        // next wake would send it again and the browser would show it twice.
+        var snapshot = chat.Snapshot();
+
+        sent.Generation = snapshot.Generation;
+        sent.Changes = snapshot.Changes;
 
         yield return new SseItem<object>(
-            new ChatView([.. chat.Turns.Select(ChatTurnView.Of)], chat.Total, Ceilings.Fixed.Cost),
+            new ChatView(
+                [.. snapshot.Turns.Select(ChatTurnView.Of)],
+                snapshot.Turns.Sum(turn => turn.Question.Figures?.CostSpent ?? 0),
+                Ceilings.Fixed.Cost),
             ChatEvents.Chat);
     }
 
@@ -233,13 +253,19 @@ public static class ChatEndpoints
 
         return change.Event switch
         {
+            // **Always `waiting`**, and not the state read now. This descriptor records a question
+            // joining the chat, and a question joins it waiting its turn (QUERY-001); by the time a
+            // subscriber consumes the descriptor its run may already have started, and carrying
+            // `answering` here would say the question arrived in a state it was never in — and draw it
+            // that way for the instant before the `question` event that actually reports the change
+            // (contracts/hub-http-api.md).
             ChatEvents.Asked => new SseItem<object>(
                 new
                 {
                     id,
                     text = turn.Question.Text,
                     askedAt = turn.Question.AskedAt,
-                    state = ChatTurnView.WireNameOf(turn.Question.State),
+                    state = ChatTurnView.WireNameOf(QuestionState.Waiting),
                 },
                 ChatEvents.Asked),
 

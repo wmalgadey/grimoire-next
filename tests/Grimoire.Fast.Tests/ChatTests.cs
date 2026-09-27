@@ -165,6 +165,52 @@ public sealed class ChatTests
         Assert.Equal(ToolGrant.ForQuestion, run.GrantedTools);
     }
 
+    [Fact]
+    [Trait("req", "ACCESS-007")]
+    public async Task Chat_IsWrittenTo_WhileAnotherThreadHoldsTheBoard()
+    {
+        var store = new InMemorySubmissionStore();
+        var locking = new FastHub(store, new HubJournal(), new InMemoryRunRecord());
+
+        var question = await locking.AskedAsync("What does the wiki say about Ada Lovelace?");
+        var run = question.RunId!.Value;
+
+        var token = TestContext.Current.CancellationToken;
+
+        using var boardIsHeld = new SemaphoreSlim(0, 1);
+        using var letTheBoardGo = new SemaphoreSlim(0, 1);
+
+        // A thread inside the board's lock, holding it. `WhileWriting` runs while whoever is writing
+        // still holds it, which is what makes this deterministic rather than a race to be won.
+        store.WhileWriting = () =>
+        {
+            store.WhileWriting = null;
+            boardIsHeld.Release();
+            letTheBoardGo.Wait(TimeSpan.FromSeconds(5), token);
+        };
+
+        var holding = Task.Run(() => locking.Harness.Spend(question.Id, 12_000), token);
+
+        Assert.True(
+            await boardIsHeld.WaitAsync(TimeSpan.FromSeconds(5), token), "the board's lock was never taken");
+
+        // **The chat is written to while that lock is held elsewhere.** It must not need the board: the
+        // board raises the chat's changes from inside its own lock, so a chat that took the board from
+        // inside its own would give the two an order each contradicts — one thread holding the chat and
+        // wanting the board, another holding the board and wanting the chat, and both waiting for ever
+        // (Chat.answering).
+        var written = Task.Run(() => locking.Chat.AgentSaid(run, "She wrote the first program."), token);
+
+        Assert.True(
+            await Task.WhenAny(written, Task.Delay(TimeSpan.FromSeconds(5), token)) == written,
+            "writing to the chat waited for the board's lock, which is the deadlock this ordering exists to prevent");
+
+        letTheBoardGo.Release();
+        await holding;
+
+        Assert.Equal("She wrote the first program.", Assert.Single(locking.Chat.Turns).Answer);
+    }
+
     private void Said(Question question, string text) =>
         hub.Harness.Did(question.Id, new TranscriptMoment(RunMomentKind.AgentSaid, null, text));
 

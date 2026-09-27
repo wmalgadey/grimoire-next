@@ -45,6 +45,7 @@ internal sealed class FastHub
         // The same one the composition root builds, so a test reads the streams the browser reads —
         // in process, as an IAsyncEnumerable, with no socket anywhere (research.md R-11).
         Live = new LiveUpdates();
+        Chat = new Chat(() => Live.Changed(LiveUpdates.Chat));
 
         // The same wiring the composition root ties, including that a question's change is recorded in
         // the chat before its subscribers are woken (HubApplication.Build).
@@ -52,8 +53,10 @@ internal sealed class FastHub
         {
             if (queued is Question)
             {
-                Chat.QuestionChanged(queued.Id);
-                Live.Changed(LiveUpdates.Chat);
+                // The run is read inside the board's lock and handed over: the chat never takes that
+                // lock from inside its own (HubApplication.Build, Chat.answering). The chat wakes its
+                // own readers.
+                Chat.QuestionChanged(queued.Id, queued.RunId);
                 return;
             }
 
@@ -111,8 +114,8 @@ internal sealed class FastHub
     /// <summary>What the browser would be sent (ACCESS-005, ACCESS-006, ACCESS-007).</summary>
     public LiveUpdates Live { get; }
 
-    /// <summary>The one chat this hub holds (QUERY-005).</summary>
-    public Chat Chat { get; } = new();
+    /// <summary>The one chat this hub holds (QUERY-005), waking its readers as the real one does.</summary>
+    public Chat Chat { get; }
 
     /// <summary>
     /// A question asked the way the chat's intake asks it, through the real

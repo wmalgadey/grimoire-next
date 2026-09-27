@@ -39,6 +39,11 @@ public sealed class ChatIntake(RunBoard board, Chat chat, RunQueue queue)
         // On the chat before the queue is pumped, so that the question is in the chat by the time
         // anything about its run can be reported into it — and before the user is answered, so the
         // turn they are given is one every browser reading the chat has too (ACCESS-007).
+        //
+        // The board raised its own change while this question was not yet on the chat, so that one
+        // reached no turn. This is the wake that draws it, and it matters most for the question that
+        // then **waits**: nothing else about it changes until the queue reaches it, so without this it
+        // would sit unanswered and undrawn. `Chat.Ask` raises it itself (Chat.Changed).
         chat.Ask(question);
 
         // An accepted question is one of the events that can let a run start (research.md R-03). The
