@@ -1,0 +1,345 @@
+#!/usr/bin/env bats
+# phasepr-loop.sh end to end, against the fake GitHub, claude and dotnet of tests/shims.
+
+load test_helper
+
+setup() {
+    setup_world
+}
+
+# --- the whole feature -------------------------------------------------------------------------
+
+@test "a feature runs to the end: draft PR, one merged PR per phase, mutation table, draft ready" {
+    run phasepr
+    echo "$output"
+    [ "$status" -eq 0 ]
+
+    # The draft PR: feature -> main, opened as a draft, body from the agent plus the checklist.
+    pr_json 101 | jq -e '.base.ref == "main" and .head.ref == "042-demo" and .draft == false'
+    pr_json 101 | jq -e '.title == "feat(042): A demo feature"'
+    pr_json 101 | jq -r .body | grep -qx 'The demo feature, as it is once merged.'
+    pr_json 101 | jq -r .body | grep -qx -- '- \[x\] Phase 1 — Setup (shared) (no tasks)'
+    pr_json 101 | jq -r .body | grep -qx -- '- \[x\] Phase 2 — Foundational — the base — #102'
+    pr_json 101 | jq -r .body | grep -qx -- '- \[x\] Phase 3 — User Story 1 — Use it — #103'
+
+    # One PR per phase with tasks, not a draft, into the feature branch, merged.
+    pr_json 102 | jq -e '.head.ref == "042-demo-phase-2-base" and .base.ref == "042-demo" and .draft == false and .merged_at != null'
+    pr_json 103 | jq -e '.head.ref == "042-demo-phase-3" and .base.ref == "042-demo" and .merged_at != null'
+    pr_json 102 | jq -e '.title == "feat(042): phase 2 — foundational — the base"'
+    pr_json 102 | jq -r .body | grep -q 'T001, T002'
+    pr_json 102 | jq -r .body | grep -q 'DEMO-001'
+    [ "$(count_calls '^pr merge 10[23] --merge --delete-branch$')" -eq 2 ]
+
+    # The feature branch has both phases, each through a merge commit, and the mutation record.
+    git fetch -q origin
+    git log --format=%s origin/042-demo | grep -q 'Merge pull request #102'
+    git log --format=%s origin/042-demo | grep -q 'Merge pull request #103'
+    git log -1 --format=%s origin/042-demo | grep -qx 'docs(042): record the mutation measurement'
+    git show origin/042-demo:specs/042-demo/mutation.md | grep -q '| Demo | 4 | 3 | 1 | 50% |'
+    run bash tools/phasepr/scripts/bash/tasks.sh phases specs/042-demo/tasks.md
+    [ "$(awk -F'\t' '$3 != $4' <<< "$output")" = "" ]
+
+    # Never merged to main.
+    [ "$(git rev-parse origin/main)" = "$(git rev-parse main)" ]
+    [ "$(count_calls 'pr merge 101')" -eq 0 ]
+    [ "$(state_value step)" = "done" ]
+}
+
+@test "every agent iteration is a fresh claude -p with the configured flags" {
+    run phasepr
+    [ "$status" -eq 0 ]
+    calls | grep '^claude ' | while read -r line; do
+        [[ "$line" == *"--dangerously-skip-permissions --output-format json --max-turns 200 --model test-model"* ]]
+    done
+    [ "$(count_calls '^claude implement-phase')" -eq 2 ]
+    [ "$(count_calls '^claude draft-body')" -eq 1 ]
+}
+
+@test "the implement prompt is /speckit-implement scoped to one phase" {
+    run phasepr
+    [ "$status" -eq 0 ]
+    prompt=$(ls specs/042-demo/phasepr/logs/*implement.prompt.md | head -n1)
+    head -c 19 "$prompt" | grep -qx '/speckit-implement '
+    grep -q 'Phase 2 — Foundational — the base' "$prompt"
+    grep -q 'Open tasks of Phase 2 right now: T001, T002.' "$prompt"
+}
+
+@test "a rerun of a finished feature opens nothing and runs no agent" {
+    run phasepr
+    [ "$status" -eq 0 ]
+    before=$(calls | grep -cE '^(claude|api -X POST)')
+    run phasepr
+    [ "$status" -eq 0 ]
+    [ "$(calls | grep -cE '^(claude|api -X POST)')" -eq "$before" ]
+}
+
+@test "state.md and memory.md stay out of git" {
+    run phasepr --phase 2
+    [ "$status" -eq 0 ]
+    [ -f specs/042-demo/phasepr/state.md ]
+    [ -f specs/042-demo/phasepr/memory.md ]
+    git check-ignore -q specs/042-demo/phasepr/state.md
+    ! git log --all --format= --name-only | grep -q '^specs/042-demo/phasepr/'
+}
+
+@test "--phase N runs that phase only and leaves the draft a draft" {
+    run phasepr --phase 3
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ ! -f "$FAKE_GH/pulls/103.json" ]
+    pr_json 102 | jq -e '.head.ref == "042-demo-phase-3" and .merged_at != null'
+    pr_json 101 | jq -e '.draft == true'
+    [ "$(count_calls '^claude implement-phase')" -eq 1 ]
+}
+
+@test "--dry-run prints the gh, git and claude calls and changes nothing" {
+    head_before=$(git rev-parse HEAD)
+    run phasepr --dry-run
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ -z "$(calls)" ]
+    [ "$(git rev-parse HEAD)" = "$head_before" ]
+    [ "$(git branch --show-current)" = "042-demo" ]
+    [ ! -e specs/042-demo/phasepr ]
+    grep -q '^\[dry-run\] gh api -X POST repos/owner/demo/pulls .*draft=true' <<< "$output"
+    grep -q '^\[dry-run\] git checkout -b 042-demo-phase-2-base' <<< "$output"
+    grep -q '^\[dry-run\] claude -p .* --max-turns 200 --model test-model' <<< "$output"
+    grep -q '^\[dry-run\] gh pr merge DRY --merge --delete-branch' <<< "$output"
+    grep -q '^\[dry-run\] gh pr ready' <<< "$output"
+    grep -q '^\[dry-run\] ./scripts/mutation.sh' <<< "$output"
+}
+
+# --- configuration -----------------------------------------------------------------------------
+
+@test "more than three review rounds is refused (Constitution I.11)" {
+    run phasepr --max-review-rounds 4
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"I.11"* ]]
+}
+
+@test "an agent CLI other than claude is refused" {
+    printf 'agent_cli: "codex"\n' >> tools/phasepr/phasepr-config.local.yml
+    run phasepr
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"only 'claude'"* ]]
+}
+
+@test "a branch that is not a feature branch needs --feature" {
+    git checkout -q main
+    run phasepr
+    [ "$status" -eq 2 ]
+    run phasepr --feature 042-demo --status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Phase 2 — Foundational — the base: 0/2 done"* ]]
+}
+
+# --- the review loop ---------------------------------------------------------------------------
+
+@test "accepted findings are pushed and re-reviewed; a clean review ends the loop" {
+    threads_for_review 1 1
+    scenario triage-review.1.sh '
+        echo "fix" >> src-phase-2.txt
+        git commit -qam "fix: rename the thing"
+        gh_review=$(grep -oE "bash [^ ]+/gh-review.sh" <<< "$PROMPT" | head -n1 | cut -d" " -f2)
+        "$gh_review" reply 102 101 "Fixed in $(git rev-parse --short HEAD): renamed."
+        "$gh_review" resolve T_1_1
+        echo "{\"changed\": true, \"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ "$(count_calls '^claude triage-review')" -eq 1 ]
+    [ "$(count_calls 'requested_reviewers -f reviewers\[\]=copilot-pull-request-reviewer\[bot\]')" -eq 1 ]
+    grep -q '^Fixed in ' "$FAKE_GH/replies.log"
+    git fetch -q origin
+    git log --format=%s origin/042-demo | grep -qx 'fix: rename the thing'
+    # The gates ran again before the fix was pushed.
+    [ "$(count_calls '^dotnet test')" -eq 2 ]
+}
+
+@test "declined findings are answered and resolved without a push" {
+    threads_for_review 1 2
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ "$(grep -c '^Declined' "$FAKE_GH/replies.log")" -eq 2 ]
+    [ "$(count_calls 'requested_reviewers')" -eq 0 ]
+}
+
+@test "a third round that still changes code halts with the open threads" {
+    threads_for_review 1 1
+    threads_for_review 2 1
+    threads_for_review 3 1
+    threads_for_review 4 1
+    scenario triage-review.sh '
+        echo "fix $CALL" >> src-phase-2.txt
+        git commit -qam "fix: round $CALL"
+        echo "{\"changed\": true, \"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [ "$(count_calls '^claude triage-review')" -eq 3 ]
+    [[ "$output" == *"phasepr halted: review-rounds"* ]]
+    [[ "$output" == *"Phase PR:       #102"* ]]
+    [[ "$output" == *"Open threads:   4"* ]]
+    [[ "$output" == *"Owner decision:"* ]]
+    [ "$(state_value halt)" = "review-rounds" ]
+    [ "$(count_calls 'pr merge')" -eq 0 ]
+}
+
+@test "after a rounds halt, a rerun merges once the owner has closed the threads" {
+    threads_for_review 1 1
+    threads_for_review 2 1
+    threads_for_review 3 1
+    threads_for_review 4 1
+    scenario triage-review.sh '
+        echo "fix $CALL" >> src-phase-2.txt
+        git commit -qam "fix: round $CALL"
+        echo "{\"changed\": true, \"halt\": null}"'
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    jq 'map(.isResolved = true)' "$FAKE_GH/threads/102.json" > "$FAKE_GH/t" && mv "$FAKE_GH/t" "$FAKE_GH/threads/102.json"
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ "$(count_calls '^claude triage-review')" -eq 3 ]
+    pr_json 102 | jq -e '.merged_at != null'
+}
+
+@test "no review within the timeout halts, and a rerun re-requests it" {
+    export FAKE_COPILOT=off
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: review-timeout"* ]]
+    export FAKE_COPILOT=on
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ "$(count_calls 'requested_reviewers')" -eq 1 ]
+    [ "$(count_calls '^claude implement-phase')" -eq 1 ]
+}
+
+@test "a triage that claims a change it did not commit halts" {
+    threads_for_review 1 1
+    scenario triage-review.sh 'echo "{\"changed\": true, \"halt\": null}"'
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: triage-mismatch"* ]]
+}
+
+# --- the gates ---------------------------------------------------------------------------------
+
+@test "red gates feed the failure to a new implement iteration, which fixes them" {
+    printf 'DemoTests.Base_Exists\npass\n' > "$FAKE_GH/test-failures"
+    scenario implement-phase.2.sh '
+        grep -q "The gates are red" <<< "$PROMPT"
+        grep -q "DemoTests.Base_Exists" <<< "$PROMPT"
+        echo fixed >> src-phase-2.txt
+        git commit -qam "fix: the base exists"
+        echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ "$(count_calls '^claude implement-phase')" -eq 2 ]
+    [ "$(count_calls '^dotnet test')" -eq 2 ]
+}
+
+@test "gates red twice in a row for the same reason halt" {
+    printf 'DemoTests.Base_Exists\nDemoTests.Base_Exists\n' > "$FAKE_GH/test-failures"
+    scenario implement-phase.2.sh '
+        echo try >> src-phase-2.txt
+        git commit -qam "fix: try"
+        echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: gates-red"* ]]
+    [[ "$output" == *"fast-suite"* ]]
+    [ ! -f "$FAKE_GH/pulls/102.json" ]
+}
+
+@test "gates red twice for different reasons do not halt" {
+    printf 'DemoTests.Base_Exists\nDemoTests.Base_IsWhole\npass\n' > "$FAKE_GH/test-failures"
+    scenario implement-phase.sh '
+        [ "$CALL" -eq 1 ] || { echo more >> src-phase-2.txt; git add -A; git commit -qm "fix: $CALL"; echo "{\"halt\": null}"; exit 0; }
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git commit -qam "feat: base"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ "$(count_calls '^claude implement-phase')" -eq 3 ]
+}
+
+# --- halts that protect history and scope ------------------------------------------------------
+
+@test "an agent halt stops the run with its reason as the owner decision" {
+    scenario implement-phase.sh 'echo "{\"halt\": \"T002 needs a requirement ID the spec does not have\"}"'
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: agent-halt"* ]]
+    [[ "$output" == *"Owner decision: T002 needs a requirement ID the spec does not have"* ]]
+}
+
+@test "three iterations in a row without progress trip the circuit breaker" {
+    scenario implement-phase.sh 'echo "nothing done"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: circuit-breaker"* ]]
+    [ "$(count_calls '^claude implement-phase')" -eq 3 ]
+}
+
+@test "an agent that checks a task of another phase halts the run" {
+    scenario implement-phase.sh '
+        sed "s/^- \[ \] T003 /- [X] T003 /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md
+        git commit -qam "feat: too much"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: protocol-violation"* ]]
+    [[ "$output" == *"outside phase 2"* ]]
+}
+
+@test "an agent that rewrites history below the snapshot halts the run, and nothing is reset" {
+    scenario implement-phase.sh '
+        git commit -q --amend -m "rewritten" --allow-empty
+        echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: protocol-violation"* ]]
+    [ "$(git log -1 --format=%s)" = "rewritten" ]
+}
+
+@test "a merge conflict halts before merging" {
+    export FAKE_CONFLICT=1
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: merge-conflict"* ]]
+    [[ "$output" == *"no rebase"* ]]
+}
+
+@test "red CI on the phase PR halts before merging" {
+    export FAKE_CHECKS_RC=1
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: ci-red"* ]]
+    [ "$(count_calls 'pr merge')" -eq 0 ]
+}
+
+@test "a phase that changes docs/decisions.md waits for the owner's approval (I.11)" {
+    scenario implement-phase.sh '
+        mkdir -p docs; echo "DEC-001" > docs/decisions.md
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git add -A; git commit -qm "docs: a decision"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: owner-review"* ]]
+    grep -q 'Constitution I.11' "$FAKE_GH/comments.log"
+    jq '. + [{user: {login: "owner", type: "User"}, state: "APPROVED", commit_id: "x"}]' \
+        "$FAKE_GH/reviews/102.json" > "$FAKE_GH/r" && mv "$FAKE_GH/r" "$FAKE_GH/reviews/102.json"
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    pr_json 102 | jq -e '.merged_at != null'
+    [ "$(grep -c 'Constitution I.11' "$FAKE_GH/comments.log")" -eq 1 ]
+}

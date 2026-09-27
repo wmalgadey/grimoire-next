@@ -1,0 +1,28 @@
+# phasepr configuration
+# No secrets here: gh uses its own login, claude its own OAuth sign-in.
+# Precedence: command-line flags > phasepr-config.local.yml > this file.
+
+# Model for every agent iteration, passed as `--model`. Empty: the agent CLI's own default.
+# Set a pinned model id here rather than an alias, so a run is reproducible.
+model: ""
+
+# Agent CLI. Only "claude" is implemented; phasepr-loop.sh refuses anything else.
+agent_cli: "claude"
+
+# --max-turns for one agent iteration. An implement iteration covers a whole phase.
+max_turns: 200
+
+# Implement iterations per phase before phasepr halts, whatever else happens.
+max_implement_iterations: 8
+
+# Review rounds per phase PR. A round is a push after findings. Constitution I.11 caps it at 3,
+# and phasepr refuses a higher value.
+max_review_rounds: 3
+
+# Seconds to wait for the reviewer's review of the current head, and between two polls.
+review_timeout: 600
+review_poll_interval: 20
+
+# The login that `requested_reviewers` accepts for a Copilot re-review, and that Copilot's reviews
+# carry. Verified against this repository (README, "Reviewer login").
+reviewer_login: "copilot-pull-request-reviewer[bot]"
