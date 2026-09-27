@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -451,6 +452,138 @@ public sealed class ChatStreamTests
         }
 
         return page.ToString();
+    }
+
+    [Fact]
+    [Trait("req", "QUERY-006")]
+    public async Task Stream_CarriesWhyAQuestionGotNoAnswer()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        hub.Agent.End(question, RunOutcome.Failed, RunEndedBecause.CostCeiling);
+
+        var turn = Assert.Single((await SnapshotAsync(hub)).Turns);
+
+        // The state and the reason together, in the words the chat shows: a question that got no
+        // answer without one would tell the user something went wrong and nothing about what
+        // (QUERY-006).
+        Assert.Equal("no-answer", turn.State);
+        Assert.Equal(ChatTurnView.ReasonFor(RunEndedBecause.CostCeiling), turn.Because);
+        Assert.NotEmpty(turn.Because!);
+    }
+
+    [Fact]
+    [Trait("req", "QUERY-006")]
+    [Trait("req", "ACCESS-003")]
+    public async Task Stream_OffersTheAcknowledgement_WhileTheFailureIsUnacknowledged()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        hub.Agent.End(question, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
+
+        // There, and always `true`: the chat offers the one control on the strength of this, and a
+        // failed question blocks the queue until it is used (ACCESS-003, RUNS-003).
+        Assert.Equal("true", ValueOf(Assert.Single(await SnapshotTurnsAsync(hub)), "awaitingAcknowledgement"));
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-003")]
+    public async Task Stream_OffersNoAcknowledgement_AfterTheFailureWasAcknowledged()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        hub.Agent.End(question, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
+        await AcknowledgeAsync(hub, question);
+
+        // The key is **absent**, read off the JSON rather than off a deserialised false: the chat
+        // either offers the control or says nothing about it, and a field standing there holding
+        // `false` would be one the browser had to interpret (ACCESS-003).
+        var turn = Assert.Single(await SnapshotTurnsAsync(hub));
+
+        Assert.DoesNotContain("awaitingAcknowledgement", FieldsOf(turn));
+
+        // And the question still reads *got no answer*, as an acknowledged submission still reads
+        // failed: acknowledging says the user has seen it and is not a state (QUERY-006).
+        Assert.Equal("no-answer", Read<QuestionSent>(turn).State);
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-003")]
+    public async Task Acknowledge_AnswersWithNothing_WhenItClearedAFailure()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        hub.Agent.End(question, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
+
+        // No body either way. What the user reads afterwards is the chat, which the stream has already
+        // been sent (contracts/hub-http-api.md).
+        Assert.Equal(HttpStatusCode.NoContent, (await AcknowledgeAsync(hub, question)).StatusCode);
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-003")]
+    public async Task Acknowledge_AnswersWithNothing_WhenItWasAcknowledgedAlready()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        hub.Agent.End(question, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
+        await AcknowledgeAsync(hub, question);
+
+        // The same answer for a request that cleared nothing: a page loaded before the last run failed
+        // sends this, and it did exactly what it should (QUERY-006, RUNS-003).
+        Assert.Equal(HttpStatusCode.NoContent, (await AcknowledgeAsync(hub, question)).StatusCode);
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-003")]
+    public async Task Acknowledge_AnswersWithNothing_WhenTheQuestionIsUnknown()
+    {
+        await using var hub = new HostedHub();
+
+        // A question of the chat that is gone, which is every question after a new chat is started: it
+        // is on no screen and on no disk, and answering with an error would put a failure on the user's
+        // screen for a request that did nothing (QUERY-005, contracts/hub-http-api.md).
+        Assert.Equal(HttpStatusCode.NoContent, (await AcknowledgeAsync(hub, Guid.NewGuid())).StatusCode);
+    }
+
+    /// <summary>The user has seen that this question got no answer (ACCESS-003).</summary>
+    private static Task<HttpResponseMessage> AcknowledgeAsync(HostedHub hub, Guid question) =>
+        hub.PostAsync($"/api/chat/questions/{question}/acknowledgement");
+
+    /// <summary>
+    /// The snapshot's turns, each still as the JSON it was sent as — which is how a field that is
+    /// absent is told from one sent holding nothing.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> SnapshotTurnsAsync(HostedHub hub)
+    {
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+
+        var (name, data) = await stream.NextAsync();
+
+        Assert.Equal(ChatEvents.Chat, name);
+
+        return TurnsOf(data);
+    }
+
+    /// <summary>
+    /// What one named field was sent as, read off the JSON — or null where it is absent. A field
+    /// carrying <c>true</c> is told from one carrying <c>false</c>, and both from one that is not there.
+    /// </summary>
+    private static string? ValueOf(string json, string field)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        return document.RootElement.TryGetProperty(field, out var value) ? value.GetRawText() : null;
     }
 
     private static void Said(HostedHub hub, Guid question, string text) =>
