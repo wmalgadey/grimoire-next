@@ -60,7 +60,7 @@ setup() {
     run phasepr
     [ "$status" -eq 0 ]
     calls | grep '^claude ' | while read -r line; do
-        [[ "$line" == *"--permission-mode auto --output-format json --max-turns 200 --model test-model --disallowedTools Bash(git push:*) Bash(git reset:*) Bash(git rebase:*) Bash(git merge:*) Bash(git commit --amend:*) Bash(gh pr merge:*)" ]]
+        [[ "$line" == *"--permission-mode auto --output-format json --max-turns 200 --model test-model --disallowedTools Bash(git push:*) Bash(git reset:*) Bash(git rebase:*) Bash(git merge:*) Bash(git commit --amend:*) Bash(gh api:*) Bash(gh pr:*)" ]]
     done
     [ "$(count_calls '^claude implement-phase')" -eq 2 ]
     [ "$(count_calls '^claude draft-body')" -eq 1 ]
@@ -466,6 +466,43 @@ setup() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"The draft-body agent changed the repository"* ]]
     [ ! -f "$FAKE_GH/pulls/101.json" ]
+}
+
+@test "a head on GitHub that is not the one phasepr pushed halts before it is merged" {
+    export FAKE_HEAD_SHA=0000000000000000000000000000000000000000
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: head-moved"* ]]
+    [ "$(count_calls '^pr merge')" -eq 0 ]
+}
+
+@test "a triage agent may answer its own PR's threads and do nothing else on GitHub" {
+    threads_for_review 1 1
+    scenario triage-review.sh '
+        gh_review=$(grep -oE "bash [^ ]+/gh-review.sh" <<< "$PROMPT" | head -n1 | cut -d" " -f2)
+        ! "$gh_review" merge 102 2>/dev/null
+        ! "$gh_review" ready 101 2>/dev/null
+        ! "$gh_review" reply 101 1 "elsewhere" 2>/dev/null
+        ! "$gh_review" resolve T_other 2>/dev/null
+        "$gh_review" reply 102 101 "Declined: a style preference."
+        "$gh_review" resolve T_1_1
+        echo "{\"changed\": false, \"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ "$(count_calls '^pr merge 102')" -eq 1 ]
+    [ "$(grep -c . "$FAKE_GH/replies.log")" -eq 1 ]
+}
+
+@test "an implement agent may not touch GitHub through gh-review.sh" {
+    scenario implement-phase.sh '
+        ! bash tools/phasepr/scripts/bash/gh-review.sh comment 101 "hello" 2>/dev/null
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git commit -qam "feat(042): base"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    [ "$status" -eq 0 ]
+    [ ! -s "$FAKE_GH/comments.log" ]
 }
 
 @test "a merge conflict halts before merging" {

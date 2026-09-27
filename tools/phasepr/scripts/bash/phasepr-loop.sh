@@ -447,7 +447,9 @@ AGENT_DENIED=""
 # may appear under its app name, which is not verified, so both are accepted.
 TRUSTED_REVIEW_AUTHORS='["Copilot", "copilot-pull-request-reviewer", "copilot-pull-request-reviewer[bot]"]'
 
-FORBIDDEN_COMMANDS=("git push" "git reset" "git rebase" "git merge" "git commit --amend" "gh pr merge")
+# `gh api` and `gh pr` are phasepr's: an agent reaches GitHub only through gh-review.sh, which
+# lets it answer the threads of its own PR and nothing else (PHASEPR_AGENT_PR).
+FORBIDDEN_COMMANDS=("git push" "git reset" "git rebase" "git merge" "git commit --amend" "gh api" "gh pr")
 
 invoke_agent() {
     local kind=$1 prompt=$2 base
@@ -483,7 +485,10 @@ invoke_claude() {
     set +e
     # The CLI's own OAuth sign-in, never an API key that happens to be exported: with one, every
     # iteration would be billed per token instead.
-    env -u ANTHROPIC_API_KEY "${cmd[@]}" > "$base.json" 2> "$base.err" < /dev/null
+    # Only a triage agent has a PR to answer on; the others may not touch GitHub at all.
+    local agent_pr=""
+    [[ "$kind" == "triage" ]] && agent_pr=$S_PHASE_PR
+    env -u ANTHROPIC_API_KEY PHASEPR_AGENT_PR="$agent_pr" "${cmd[@]}" > "$base.json" 2> "$base.err" < /dev/null
     AGENT_RC=$?
     set -e
     AGENT_RESULT=$(jq -r '.result // empty' "$base.json" 2>/dev/null || true)
@@ -744,6 +749,18 @@ triage_round() {
     TRIAGE_DONE=true
 }
 
+# The review phasepr accepts and the merge it makes are for the head it pushed. If the PR's head on
+# GitHub is anything else — someone pushed to the phase branch — that head is unreviewed.
+ensure_pr_head() {
+    local expected=$1 actual
+    [[ "$DRY_RUN" == "true" ]] && return 0
+    actual=$("$GH_REVIEW" head "$S_PHASE_PR") \
+        || halt github-error "Reading the head of PR #$S_PHASE_PR failed."
+    if [[ "$actual" != "$expected" ]]; then
+        halt head-moved "PR #$S_PHASE_PR's head on GitHub is ${actual:0:7}, not ${expected:0:7}, the commit phasepr pushed and had reviewed: someone else pushed to '$S_PHASE_BRANCH'. Pull it into the local branch, look at it, and rerun — the new head is reviewed before it merges."
+    fi
+}
+
 # Returns once a review of the current head leaves no open thread.
 review_loop() {
     local n=$1 head rc threads count owner strangers
@@ -767,6 +784,7 @@ review_loop() {
         elif [[ $rc -ne 0 ]]; then
             halt github-error "Waiting for the review of PR #$S_PHASE_PR failed (exit $rc)."
         fi
+        ensure_pr_head "$head"
         threads=$("$GH_REVIEW" threads "$S_PHASE_PR") \
             || halt github-error "Reading the review threads of PR #$S_PHASE_PR failed — more than 100 threads, or GitHub did not answer."
         count=$(jq length <<< "$threads")
@@ -812,6 +830,7 @@ merge_phase() {
     if ! "$GH_REVIEW" checks "$S_PHASE_PR"; then
         halt ci-red "CI is red on PR #$S_PHASE_PR though gates.sh was green here. Look at the failing check; fix it on '$S_PHASE_BRANCH' (or tell the agent in $MEMORY) and rerun."
     fi
+    ensure_pr_head "$(git rev-parse HEAD)"
     rc=0
     "$GH_REVIEW" merge "$S_PHASE_PR" || rc=$?
     if [[ $rc -eq 3 ]]; then

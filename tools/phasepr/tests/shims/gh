@@ -12,7 +12,8 @@
 #
 # Knobs: FAKE_COPILOT=off (never reviews), FAKE_CONFLICT=1 (every PR conflicts),
 #        FAKE_CHECKS_RC=<n> (exit code of `gh pr checks`), FAKE_THREADS_MORE=1 (threads have a next page),
-#        FAKE_GRAPHQL_ERROR=1 (the threads query answers with an error).
+#        FAKE_GRAPHQL_ERROR=1 (the threads query answers with an error),
+#        FAKE_HEAD_SHA=<sha> (what GitHub reports as every PR's head).
 
 set -euo pipefail
 shopt -s extglob
@@ -136,7 +137,11 @@ api() {
             cat "$(pr_file "$n")"
             ;;
         "GET repos/"*/pulls/+([0-9]))
-            cat "$(pr_file "${path##*/}")"
+            # The head's SHA is where the branch points on origin now (FAKE_HEAD_SHA overrides it).
+            local f sha
+            f=$(pr_file "${path##*/}")
+            sha=${FAKE_HEAD_SHA:-$(head_sha "$(jq -r .head.ref "$f")" 2>/dev/null || true)}
+            jq --arg sha "$sha" '.head.sha = $sha' "$f"
             ;;
         "PATCH repos/"*/pulls/+([0-9]))
             local f

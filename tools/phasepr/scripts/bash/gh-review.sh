@@ -14,6 +14,7 @@
 #   gh-review.sh resolve     <thread-id>              resolve a thread (GraphQL resolveReviewThread)
 #   gh-review.sh comment     <pr> <body>              a PR conversation comment
 #   gh-review.sh approved    <pr> <sha>               exit 0 when the owner approved exactly <sha>
+#   gh-review.sh head        <pr>                     the SHA the PR's head branch points at on GitHub
 #   gh-review.sh owner                                the owner's login (PHASEPR_OWNER_LOGIN, else
 #                                                     the owner part of the repository)
 #   gh-review.sh checks      <pr>                     wait for the PR's checks; exit != 0 when red
@@ -27,6 +28,8 @@
 #   PHASEPR_REPO            owner/name; default: parsed from the `origin` remote
 #   PHASEPR_OWNER_LOGIN     who owns the decisions (I.1, I.11); default: the repository's owner
 #   PHASEPR_DRY_RUN=1       print every gh call instead of running it
+#   PHASEPR_AGENT_PR        set by phasepr for an agent: the one PR it may touch, or empty for none.
+#                           Then only threads, reply, resolve and comment run, and only for that PR.
 #
 # REST wherever REST can do it; GraphQL only for review threads, which REST does not expose, and
 # for the three porcelain calls the orchestrator is specified to use (gh pr merge/ready/checks).
@@ -238,6 +241,25 @@ ready() {
 [[ $# -ge 1 ]] || { sed -n '3,27p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 cmd=$1
 shift
+
+# An agent gets this script's path to answer review threads. Everything else it can do — merge,
+# ready, open a PR, request reviews — is phasepr's alone, and the agent's PR is the only one it may
+# touch: a prompt-injected "merge #12" is refused here, outside the model.
+if [[ -n "${PHASEPR_AGENT_PR+set}" ]]; then
+    case "$cmd" in
+        threads|reply|comment)
+            [[ -n "$PHASEPR_AGENT_PR" && "${1:-}" == "$PHASEPR_AGENT_PR" ]] \
+                || die "an agent may only use '$cmd' on PR #${PHASEPR_AGENT_PR:-(none)}"
+            ;;
+        resolve)
+            if [[ -z "$PHASEPR_AGENT_PR" ]] || ! threads "$PHASEPR_AGENT_PR" \
+                    | jq -e --arg id "${1:-}" 'any(.[]; .thread_id == $id)' >/dev/null; then
+                die "an agent may only resolve an open thread of PR #${PHASEPR_AGENT_PR:-(none)}"
+            fi
+            ;;
+        *) die "an agent may not use '$cmd'" ;;
+    esac
+fi
 case "$cmd" in
     find)        pr_number_of "$1" "$2" "${3:-open}" ;;
     draft-open)  open_pr true "$@" ;;
@@ -257,6 +279,7 @@ case "$cmd" in
                  | length > 0' >/dev/null
         ;;
     owner)       owner ;;
+    head)        ghx api "repos/$(repo)/pulls/$1" | jq -r '.head.sha // empty' ;;
     checks)      checks "$1" ;;
     merge)       merge "$1" ;;
     tick)        tick "$@" ;;

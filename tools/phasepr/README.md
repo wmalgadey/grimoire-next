@@ -69,7 +69,7 @@ Every agent iteration is
 ```
 claude -p "<prompt>" --permission-mode auto --output-format json --max-turns N [--model ID] \
        --disallowedTools "Bash(git push:*)" "Bash(git reset:*)" "Bash(git rebase:*)" \
-                         "Bash(git merge:*)" "Bash(git commit --amend:*)" "Bash(gh pr merge:*)"
+                         "Bash(git merge:*)" "Bash(git commit --amend:*)" "Bash(gh api:*)" "Bash(gh pr:*)"
 ```
 
 with stdin closed; the JSON output and the prompt are kept in `specs/<feature>/phasepr/logs/`.
@@ -90,7 +90,12 @@ that never ask:
   unless `IS_SANDBOX=1` is set.
 
 In both modes the CLI refuses outright what phasepr alone does or forbids: `git push`, `git reset`,
-`git rebase`, `git merge`, `git commit --amend`, `gh pr merge`. An agent that tries one anyway is logged, not
+`git rebase`, `git merge`, `git commit --amend`, `gh api`, `gh pr`. An agent reaches GitHub only
+through `gh-review.sh`, which phasepr starts it with `PHASEPR_AGENT_PR` set: then the script runs
+`threads`, `reply`, `resolve` and `comment` for that one PR and refuses everything else — `merge`,
+`ready`, another PR — outside the model. Only a triage agent has a PR; implement and draft-body
+agents have none. The prefix rules are not a sandbox: a command wrapped in `bash -c` passes them,
+which is why auto mode's own check and phasepr's checks after each iteration stay. An agent that tries one anyway is logged, not
 halted — nothing happened. The history check below stays either way: auto mode let a
 `git commit --amend` through when it was not on that list.
 
@@ -217,6 +222,7 @@ owner has to make. Rerun it once that is decided.
 | `circuit-breaker` | three agent iterations in a row without progress | reads the logs and the handoff |
 | `protocol-violation` | history rewritten, branch switched, another branch moved, a merge commit, another phase's checkbox moved | repairs by hand; nothing was reset |
 | `owner-review` | the phase changes `instructions/`, `docs/decisions.md`, the constitution (I.11) or `docs/product.md` (I.1) | approves the PR's current head as the owner (the repository owner, or `PHASEPR_OWNER_LOGIN`) — another person's or an older head's approval does not count — or merges it |
+| `head-moved` | the PR's head on GitHub is not the commit phasepr pushed — someone else pushed to the phase branch — checked after the review and before the merge | pulls it, looks at it, reruns: the new head is reviewed first |
 | `untrusted-review` | an open thread has a comment — its first or a reply — by someone other than Copilot or the owner: its text would reach an agent that can commit and reply | answers and resolves it |
 | `commit-subject` | an agent commit is not `type(scope): subject` with the feature's number or a requirement ID as scope | rewords it on the branch, or reruns to accept it |
 | `ci-red` | the PR's checks are red although `gates.sh` was green | looks at the check |
