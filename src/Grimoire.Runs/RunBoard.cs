@@ -670,9 +670,16 @@ public sealed class RunBoard(
     /// in no conversation. <see cref="Ask"/> takes this same lock, so there is no such moment.
     /// </para>
     /// <para>
-    /// Every question is marked, not only the ones that have already failed. One still being answered
-    /// has not failed <em>yet</em> — and when its run ends, that failure would be as invisible and as
-    /// permanent as any other, because the turn that carried its control is long gone.
+    /// <b>A question that never started goes entirely.</b> It has no run to respect — there is nothing
+    /// to leave alone — and dispatched afterwards it would spend the one run slot and a whole ceiling
+    /// producing an answer no chat can show, while the questions of the new conversation waited behind
+    /// it. One that has <em>ended</em> goes with it, for the same reason and with nothing left to lose.
+    /// </para>
+    /// <para>
+    /// <b>One still being answered stays.</b> Its run is not a chat and goes on being a run
+    /// (QUERY-005), so it goes on holding the queue while it runs — and it is marked, so that when it
+    /// ends failed the failure does not hold the queue for ever: the turn carrying its only control is
+    /// long gone by then, and no browser could clear it (RUNS-003).
     /// </para>
     /// </remarks>
     public void StartANewChat(Action putTheChatAway)
@@ -681,6 +688,9 @@ public sealed class RunBoard(
 
         lock (gate)
         {
+            queued.RemoveAll(q => q is Question && !q.IsUnderWay);
+
+            // What is left of the old chat's questions is what is still being answered.
             foreach (var question in queued.OfType<Question>())
             {
                 question.TheChatIsGone();

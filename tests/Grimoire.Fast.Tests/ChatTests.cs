@@ -223,6 +223,32 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-002")]
+    public async Task NewChat_StartsNoQuestionThatWasStillWaitingWhenItWentAway()
+    {
+        var running = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+        var waiting = (await hub.AskAsync("What does the wiki say about Ada Lovelace?")).Accepted!;
+
+        Assert.Null(waiting.RunId);
+
+        // The conversation is put away while that question has **not started**. It has no run to
+        // respect — there is nothing to leave alone — and started afterwards it would spend the one run
+        // slot and a whole ceiling on an answer no chat can show, while the new conversation's
+        // questions waited behind it (QUERY-005, RUNS-002).
+        hub.Board.StartANewChat(hub.Chat.Start);
+
+        var asked = await hub.AskedAsync("And who was her mother?");
+
+        hub.Harness.End(running.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        // The new chat's question runs. The one that went away never does, and is on the board no more.
+        Assert.NotNull(asked.RunId);
+        Assert.Null(waiting.RunId);
+        Assert.Null(hub.Board.Find(waiting.Id));
+    }
+
+    [Fact]
     [Trait("req", "RUNS-003")]
     public async Task NewChat_LeavesASubmissionsFailureHoldingTheQueue()
     {
