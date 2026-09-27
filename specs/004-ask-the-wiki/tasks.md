@@ -155,14 +155,14 @@ introduces the chat.
 
 **Branch**: `004-ask-the-wiki-phase-3-a-question-is-a-run`
 
-- [ ] T016 Create `docs/capabilities/query.md` — QUERY's first capability file — and register
+- [X] T016 Create `docs/capabilities/query.md` — QUERY's first capability file — and register
       **QUERY-002** and **QUERY-005** with proof `test` and the notes the spec's Requirements section
       gives them; register **GUARD-005** in `docs/capabilities/guard.md` beside GUARD-002, with the
       spec's note that GUARD-002 is untouched. **This is the first task of the feature: it comes
       before any test is written.** The plan lists `query.md` under phase 4; QUERY-002 and QUERY-005
       move here because this phase's tests carry them and a requirement is registered before the first
       test that names it (Constitution IV.2) — **Req:** Principle IV.2
-- [ ] T017 Reword **RUNS-005, RUNS-007, RUNS-008 and RUNS-009** in `docs/capabilities/runs.md` to the
+- [X] T017 Reword **RUNS-005, RUNS-007, RUNS-008 and RUNS-009** in `docs/capabilities/runs.md` to the
       sentences the spec's "Changed in this feature" table gives, each keeping its ID. **One commit
       with T024 and T025**, the two tests for the cases that made them change: the IDs are kept so no
       existing test breaks on the rewording, and those two tests are what makes it real (Constitution
@@ -172,106 +172,106 @@ introduces the chat.
 
 > Written first and seen failing before the implementation below.
 
-- [ ] T018 [P] `RunBoardTests` in `tests/Grimoire.Fast.Tests/` (`QueueTests` renamed where it names
+- [X] T018 [P] `RunBoardTests` in `tests/Grimoire.Fast.Tests/` (`QueueTests` renamed where it names
       the board): waiting work starts in the order it was made **across both kinds** — a question
       asked after a submission waits behind it, a submission made after a question waits behind that —
       and the order is the list's position, never a clock (research.md R-03) — **Req:** RUNS-002 | **Level:** Fast — **Why not lower:** the queue rule is the board's own judgment, driven in-process under its lock
-- [ ] T019 [P] `RunBoardTests`: at most one run in progress across both kinds, and an unacknowledged
+- [X] T019 [P] `RunBoardTests`: at most one run in progress across both kinds, and an unacknowledged
       failure — of a question or of a submission — holds a question exactly as it holds a submission —
       **Req:** RUNS-002, RUNS-003 | **Level:** Fast — **Why not lower:** same; there is no lower level
-- [ ] T020 [P] `RunBoardTests`: `All` answers with **the submissions alone**, so the list of
+- [X] T020 [P] `RunBoardTests`: `All` answers with **the submissions alone**, so the list of
       submissions is exactly what it was and a question appears in none of the submission endpoints
       (research.md R-12) — **Req:** ACCESS-004 | **Level:** Fast — **Why not lower:** the board's answer is in-process; what the browser draws from it is ACCESS-005's E2E half
-- [ ] T021 [P] `QuestionGrantTests` in `tests/Grimoire.Fast.Tests/`: `ToolGrant.ForQuestion` is
+- [X] T021 [P] `QuestionGrantTests` in `tests/Grimoire.Fast.Tests/`: `ToolGrant.ForQuestion` is
       **exactly** `list_pages` and `read_page` — nothing written, nothing deleted, nothing moved — and
       it carries the `questions` endpoint segment, so the grant and the door that serves it are one
       value and cannot disagree — **Req:** GUARD-005 | **Level:** Fast — **Why not lower:** it is the hub's own half of the grant, as GUARD-002's Fast test already is
-- [ ] T022 [P] `QuestionGrantTests`: the tool type served at `/mcp/questions/{runId}` exposes those
+- [X] T022 [P] `QuestionGrantTests`: the tool type served at `/mcp/questions/{runId}` exposes those
       two names **and no others** — `write_page`, `write_index` and `append_log` are not registered
       there at all, so there is no flag that would turn one on (DEC-011, research.md R-06) — **Req:** GUARD-005 | **Level:** Fast — **Why not lower:** what a tool type exposes is readable in-process; that a real run then reports exactly it is GUARD-001's existing proof
-- [ ] T023 [P] `QuestionPromptTests` in `tests/Grimoire.Fast.Tests/`: the dispatch for a question
+- [X] T023 [P] `QuestionPromptTests` in `tests/Grimoire.Fast.Tests/`: the dispatch for a question
       carries, in order, the question instruction, the purpose description, the run's identifier, what
       has been asked and answered in this chat before it, and the question whole as the user typed it;
       on the model Grimoire was started with, pinned. **The steps are not included**, and nothing is
       trimmed — no cap, no window (contracts/question-run.md, research.md R-07) — **Req:** QUERY-002 | **Level:** Fast — **Why not lower:** the dispatch payload is assembled in-process, as `DispatchPayloadTests` already proves for a submission
-- [ ] T024 [P] `RunOutcomeTests` in `tests/Grimoire.Fast.Tests/`: a question's run that stops on its
+- [X] T024 [P] `RunOutcomeTests` in `tests/Grimoire.Fast.Tests/`: a question's run that stops on its
       own inside both ceilings having written nothing in the wiki **ends done**, **no nudge is sent**,
       and the wiki store is asked for nothing at all — not `log.md`. One commit with T017 — **Req:** RUNS-005 | **Level:** Fast — **Why not lower:** the in-memory wiki store is what can be asked what it was asked; nothing below it can
-- [ ] T025 [P] `RunRecordTests` in `tests/Grimoire.Fast.Tests/`: a question's run leaves **no record**
+- [X] T025 [P] `RunRecordTests` in `tests/Grimoire.Fast.Tests/`: a question's run leaves **no record**
       — no head, no moment, no tail, and `EntriesLost` zero — while a submission's run still leaves
       exactly one. One commit with T017 — **Req:** RUNS-007, RUNS-008, RUNS-009 | **Level:** Fast — **Why not lower:** the in-memory record adapter is what can be asked whether it was written to
-- [ ] T026 [P] `ChatTests` in `tests/Grimoire.Fast.Tests/`: the chat holds each question, the answer
+- [X] T026 [P] `ChatTests` in `tests/Grimoire.Fast.Tests/`: the chat holds each question, the answer
       appended in the order it arrived as one piece of prose, and the steps under it — **while no
       browser is subscribed**, so a reader who walked away comes back to what the run produced
       (research.md R-13) — **Req:** QUERY-005 | **Level:** Fast — **Why not lower:** the chat is memory and nothing about holding it needs a browser; the two-tabs half is QUERY-005's E2E
-- [ ] T027 [P] `ChatTests`: nothing of a chat reaches any store — not the submission store, not the
+- [X] T027 [P] `ChatTests`: nothing of a chat reaches any store — not the submission store, not the
       record port, not the wiki store. Held means held while Grimoire runs and written down nowhere,
       which is what makes "nothing is kept" reachable directly (research.md R-02) — **Req:** QUERY-005 | **Level:** Fast — **Why not lower:** the three in-memory adapters are what can be asked what they were asked
-- [ ] T028 `SqliteSubmissionStoreTests` in `tests/Grimoire.Contract.Tests/`: a run with **no
+- [X] T028 `SqliteSubmissionStoreTests` in `tests/Grimoire.Contract.Tests/`: a run with **no
       submission behind it** round-trips through a real file — its identifier, start, granted tools,
       model, agent process and figures — and is read back by `LoadRunsWithoutASubmission()`; a file
       written by the **older** schema comes back with its submissions intact — **Req:** RUNS-006, RUNS-010 | **Level:** Contract — **Why not lower:** what is being read is a real file an older Grimoire wrote, and only the real SQLite decides whether a null `submission_id` round-trips (III.4, DEC-031's precedent)
 
 ### Implementation for the foundation
 
-- [ ] T029 `src/Grimoire.Runs/Queued.cs`: the base of `Submission` and `Question`, holding only what
+- [X] T029 `src/Grimoire.Runs/Queued.cs`: the base of `Submission` and `Question`, holding only what
       `TakeNext` consults — `Id`, `RunId`, `IsWaiting`, `IsUnderWay`, `IsUnacknowledgedFailure`,
       `HandedTo(runId, model)`, `Ended(terminal)`. **No state field of its own beyond the terminal
       one**: the four values a submission shows and the four the chat shows are read from whether
       there is a run and whether it has ended, so the two can never disagree. An abstraction is
       allowed here because two real implementations exist (Constitution II.4, data-model.md) — **Req:** RUNS-002
-- [ ] T030 `src/Grimoire.Runs/Submission.cs`: derives from `Queued`. Its text, `SubmittedAt`,
+- [X] T030 `src/Grimoire.Runs/Submission.cs`: derives from `Queued`. Its text, `SubmittedAt`,
       `Excerpt`, the four states, the acknowledgement and the figures are exactly what
       `003-live-run-record` left — **Req:** RUNS-002
-- [ ] T031 [P] `src/Grimoire.Runs/Question.cs`: derives from `Queued`, with `Text` and `AskedAt`.
+- [X] T031 [P] `src/Grimoire.Runs/Question.cs`: derives from `Queued`, with `Text` and `AskedAt`.
       Created **only when a question is accepted**; a refused one becomes nothing. `AskedAt` is shown
       in the chat and is **not** what the queue is ordered by — that clock is not monotonic — **Req:** QUERY-001, QUERY-002
-- [ ] T032 `src/Grimoire.Runs/SubmissionBoard.cs` → `src/Grimoire.Runs/RunBoard.cs`: one ordered list
+- [X] T032 `src/Grimoire.Runs/SubmissionBoard.cs` → `src/Grimoire.Runs/RunBoard.cs`: one ordered list
       of `Queued` under the one lock it already has. The queue rule is unchanged and now reads that one
       list; `All` still answers with the submissions alone. One list rather than two, because RUNS-002
       orders across both kinds and a list carries that order intrinsically — two lists would need a
       sequence number of our own beside the ordering the list already is (research.md R-03) — **Req:** RUNS-002, RUNS-003
-- [ ] T033 `src/Grimoire.Runs/ISubmissionStore.cs`: `StoredRun.SubmissionId` → `QueuedId`, null where
+- [X] T033 `src/Grimoire.Runs/ISubmissionStore.cs`: `StoredRun.SubmissionId` → `QueuedId`, null where
       a question caused the run; `AddRun(StoredRun)` for a run with no submission behind it, written
       the moment the board hands the question out — for the same reason `AssignRun` is written first, a
       write that fails must leave the queue as it was; `LoadRunsWithoutASubmission()`; and `Ended(…)`
       keyed by the run, for a run with no submission state to set. `Load()` is unchanged — **Req:** RUNS-006, RUNS-010
-- [ ] T034 `src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs`: the `runs` table's `submission_id`
+- [X] T034 `src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs`: the `runs` table's `submission_id`
       becomes **nullable in meaning** — a null means a question caused the run — and the new reads.
       `PRAGMA table_info(runs)` then `ALTER TABLE` where something is missing: **no column is renamed
       and no table is rebuilt** (DEC-031, research.md R-04). **The only file in the tree that names
       SQLite** (DEC-023, Constitution V.2) — **Req:** RUNS-006, RUNS-010
-- [ ] T035 [P] `src/Grimoire.Agent/ToolGrant.cs`: `ForQuestion` with the two read tools, and
+- [X] T035 [P] `src/Grimoire.Agent/ToolGrant.cs`: `ForQuestion` with the two read tools, and
       `Endpoint` — `runs` or `questions` — beside the names, so the grant and the door that serves it
       are one value. GUARD-001's existing equality check then guards it for free (research.md R-06) — **Req:** GUARD-005
-- [ ] T036 `src/Grimoire.Hub/Mcp/WikiToolsServer.cs` and `src/Grimoire.Hub/Mcp/WikiReadToolsServer.cs`:
+- [X] T036 `src/Grimoire.Hub/Mcp/WikiToolsServer.cs` and `src/Grimoire.Hub/Mcp/WikiReadToolsServer.cs`:
       the two read tools' bodies live **once**, called by both attributed surfaces; the new type
       carries `list_pages` and `read_page` and nothing else exists there. The cost — two attributed
       methods, about a dozen lines — is carried openly in plan.md §Complexity Tracking rather than
       argued away (DEC-011) — **Req:** GUARD-005
-- [ ] T037 [P] `instructions/question.md`: what a question's run is told, stating QUERY-004's list and
+- [X] T037 [P] `instructions/question.md`: what a question's run is told, stating QUERY-004's list and
       nothing beyond it, plus the clause the owner decided — where the wiki holds nothing about the
       question, say so plainly, name what was looked at, and stop. **Grimoire's own instruction:
       creating it is an owner decision and is named in this phase's PR description** (Constitution
       I.11, V.1) — **Req:** QUERY-004
-- [ ] T038 `src/Grimoire.Hub/InstructionLoader.cs`: the question prompt assembled from the five parts
+- [X] T038 `src/Grimoire.Hub/InstructionLoader.cs`: the question prompt assembled from the five parts
       of contracts/question-run.md §2, and `StartUpInputs` gains `QuestionInstructionPresent` — read
       per acceptance as the other two already are, the instruction looked at before the purpose
       description so that a start with neither says one thing. **Still the only thing that puts text
       into a prompt** (Constitution V.1) — **Req:** QUERY-002, QUERY-003
-- [ ] T039 `src/Grimoire.Hub/Chat.cs`: the one chat, in memory — `Turns`, `Total`, `Ask(question)`,
+- [X] T039 `src/Grimoire.Hub/Chat.cs`: the one chat, in memory — `Turns`, `Total`, `Ask(question)`,
       `AgentSaid(runId, text)`, `StepHappened(runId, step)`, `Start()`. A plain class, not a port:
       nothing outside the process, and a persistent second implementation would contradict QUERY-005
       rather than serve it (Constitution II.4, research.md R-02) — **Req:** QUERY-005
-- [ ] T040 `src/Grimoire.Hub/RunConductor.cs`: a question's run gets **no record**, and its moments go
+- [X] T040 `src/Grimoire.Hub/RunConductor.cs`: a question's run gets **no record**, and its moments go
       to the chat instead — `AgentSaid` appended to the answer, `ToolCalled` and `ToolReturned` into
       the steps; `GrimoireSaid` never arises, because RUNS-005's nudge is asked only of a run that is
       to change the wiki. Nothing new is parsed: `AgentTranscript` already reports the three moments
       and stays the only reader of the protocol (DEC-028, Constitution V.2) — **Req:** RUNS-007, QUERY-005
-- [ ] T041 `src/Grimoire.Hub/RunQueue.cs`: dispatches a question at `/mcp/questions/{runId}` under
+- [X] T041 `src/Grimoire.Hub/RunQueue.cs`: dispatches a question at `/mcp/questions/{runId}` under
       `ToolGrant.ForQuestion`, and a submission where it already does — the grant's own `Endpoint`
       decides, so the two cannot be crossed — **Req:** GUARD-005, QUERY-002
-- [ ] T042 `src/Grimoire.Hub/HubApplication.cs` and `Program.cs`: the `Chat`, and the second MCP route
+- [X] T042 `src/Grimoire.Hub/HubApplication.cs` and `Program.cs`: the `Chat`, and the second MCP route
       serving `WikiReadToolsServer`; `--question-instruction <path>` with a default beside
       `--instruction`'s. At start-up, a question run read as having been in progress has its agent
       terminated where the recorded identity is live and is then marked ended failed — **no tail is

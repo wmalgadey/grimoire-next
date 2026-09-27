@@ -56,7 +56,7 @@ public sealed record SubmissionStatus(SubmissionState State, bool AwaitingAcknow
 /// </summary>
 /// <remarks>
 /// A value rather than the submission itself, because the whole list has to be one instant and not a
-/// row at a time: <see cref="SubmissionBoard.Snapshot"/> builds all of these in one pass of the one
+/// row at a time: <see cref="RunBoard.Snapshot"/> builds all of these in one pass of the one
 /// lock, and nothing can change between two of them. Handed the submissions instead, a caller reads
 /// each one's <see cref="Submission.Status"/> separately and a run ending between two rows would make
 /// a list that combines two instants.
@@ -82,11 +82,11 @@ public sealed record SubmissionSnapshot(
 /// carries no state (INGEST-003, INGEST-004).
 /// </summary>
 /// <remarks>
-/// Every state change is made through <see cref="SubmissionBoard"/> and under the board's lock,
+/// Every state change is made through <see cref="RunBoard"/> and under the board's lock,
 /// because the queue rule is decided by reading all of them together (RUNS-002). The members that
 /// make a change here are internal for that reason: they assume the caller holds that lock.
 /// </remarks>
-public sealed partial class Submission
+public sealed partial class Submission : Queued
 {
     /// <summary>
     /// How much of a submitted text the browser is given. The same length for every submission is
@@ -97,28 +97,19 @@ public sealed partial class Submission
     private const int ExcerptLength = 120;
 
     /// <summary>
-    /// The board's lock, shared with every submission on it. One lock rather than one per object:
-    /// the single-run rule is decided by reading the states of all of them together
-    /// (RUNS-002), so a state that could change while that read is under way would let two runs
-    /// start at once. The harness reports from whatever thread its adapter reads on, which is why
-    /// this is not theoretical.
+    /// Whether the agent of its run has reported in — the <c>system/init</c> of
+    /// <c>contracts/agent-cli-protocol.md</c>. The one thing about a submission's state that
+    /// <see cref="Queued"/> cannot answer from the run alone: <c>submitted</c> and <c>running</c>
+    /// are both "has a run that has not ended", and this is what tells them apart (RUNS-001).
     /// </summary>
-    private readonly Lock gate;
-
-    private SubmissionState state = SubmissionState.Submitted;
-    private Guid? runId;
-    private DateTimeOffset? acknowledgedAt;
-    private RunFigures? figures;
+    private bool reportedIn;
 
     internal Submission(Guid id, string text, DateTimeOffset submittedAt, Lock gate)
+        : base(id, gate)
     {
-        Id = id;
         Text = text;
         SubmittedAt = submittedAt;
-        this.gate = gate;
     }
-
-    public Guid Id { get; }
 
     /// <summary>
     /// The text as the user gave it. INGEST-004 refuses one that is empty after trimming, but what
@@ -131,7 +122,7 @@ public sealed partial class Submission
     /// When the submission was made, and shown in the browser (ACCESS-004). <b>Not</b> what the
     /// queue is ordered by: this clock is not monotonic, so a correction can leave a later
     /// submission with an earlier stamp. The order is the order they were accepted — the board's
-    /// own list, and `rowid` in the store (RUNS-002, <see cref="SubmissionBoard.TakeNext"/>).
+    /// own list, and `rowid` in the store (RUNS-002, <see cref="RunBoard.TakeNext"/>).
     /// </summary>
     public DateTimeOffset SubmittedAt { get; }
 
@@ -142,32 +133,19 @@ public sealed partial class Submission
     /// </summary>
     public string Excerpt => ExcerptOf(Text);
 
-    /// <summary>Exactly one state at a time (RUNS-001).</summary>
+    /// <summary>
+    /// Exactly one state at a time (RUNS-001), and <b>read</b> rather than stored: done and failed
+    /// are the run's ending, running is its agent having reported in, and submitted is everything
+    /// before that. Stored beside those facts it could disagree with the queue rule, which reads
+    /// them (<see cref="Queued"/>).
+    /// </summary>
     public SubmissionState State
     {
         get
         {
-            lock (gate)
+            lock (Gate)
             {
-                return state;
-            }
-        }
-    }
-
-    /// <summary>
-    /// The run this submission was given, or null while it waits its turn. Not a state — RUNS-001's
-    /// four stay four — but what tells a submission waiting its turn apart from one whose agent has
-    /// not yet reported in, since both read <c>submitted</c> (research.md R-04). It does not reach
-    /// the browser: the record endpoint addresses the submission, which has exactly one run
-    /// (INGEST-002), so nothing needs it — a design property now rather than a requirement.
-    /// </summary>
-    public Guid? RunId
-    {
-        get
-        {
-            lock (gate)
-            {
-                return runId;
+                return StateNow;
             }
         }
     }
@@ -188,22 +166,27 @@ public sealed partial class Submission
     {
         get
         {
-            lock (gate)
+            lock (Gate)
             {
-                return new SubmissionStatus(
-                    state,
-                    state == SubmissionState.Failed && acknowledgedAt is null,
-                    figures);
+                return new SubmissionStatus(StateNow, FailureIsWaitingToBeSeen, Figures);
             }
         }
     }
+
+    /// <summary>Assumes the board's lock.</summary>
+    private SubmissionState StateNow => Terminal switch
+    {
+        RunOutcome.Done => SubmissionState.Done,
+        RunOutcome.Failed => SubmissionState.Failed,
+        _ => reportedIn ? SubmissionState.Running : SubmissionState.Submitted,
+    };
 
     /// <summary>
     /// This one submission as the browser is told it, at one instant.
     /// </summary>
     /// <remarks>
     /// For the one answer that is about a single submission — the accepted one, answered to whoever
-    /// submitted it. A list is read through <see cref="SubmissionBoard.Snapshot"/> instead, because
+    /// submitted it. A list is read through <see cref="RunBoard.Snapshot"/> instead, because
     /// there the instant has to span every row.
     /// </remarks>
     public SubmissionSnapshot Snapshot => SubmissionSnapshot.Of(this);
@@ -235,93 +218,33 @@ public sealed partial class Submission
     private static partial Regex Whitespace();
 
     /// <summary>
-    /// Blocking: a failure nobody has acknowledged. Assumes the board's lock.
-    /// </summary>
-    internal bool IsUnacknowledgedFailure => state == SubmissionState.Failed && acknowledgedAt is null;
-
-    /// <summary>
-    /// The user has seen that this submission's run failed. Not a state, and no state changes: the
-    /// acknowledged run still reads failed (RUNS-003). Assumes the board's lock.
-    /// </summary>
-    internal void Acknowledged(DateTimeOffset at) => acknowledgedAt = at;
-
-    /// <summary>
-    /// Under way: the board has handed this submission out and its run has not ended. The one
-    /// condition that stops another run starting (RUNS-002). Assumes the board's lock.
-    /// </summary>
-    internal bool IsUnderWay => runId is not null && state is not (SubmissionState.Done or SubmissionState.Failed);
-
-    /// <summary>
-    /// Waiting its turn: accepted, never handed out. Assumes the board's lock.
-    /// </summary>
-    internal bool IsWaiting => runId is null && state == SubmissionState.Submitted;
-
-    /// <summary>
     /// What the store held, put back as it was. The rule that turns it into a state — a run that
     /// was in progress reads failed — is the board's, and is applied after this (RUNS-004).
     /// Assumes the board's lock.
     /// </summary>
     internal void Restored(StoredSubmission held)
     {
-        state = held.State;
-        runId = held.Run?.Id;
-        acknowledgedAt = held.AcknowledgedAt;
+        ArgumentNullException.ThrowIfNull(held);
 
         // The figures come back with the run, which is what makes a run cut off by a stop read failed
         // and still carry what it spent (RUNS-010, RUNS-004).
-        figures = held.Run is { } run
-            ? new RunFigures(run.Model, run.CostSpent, run.Tokens, run.ToolCalls, run.EntriesLost)
-            : null;
-    }
+        RestoredTo(
+            held.Run?.Id,
+            held.State switch
+            {
+                SubmissionState.Done => RunOutcome.Done,
+                SubmissionState.Failed => RunOutcome.Failed,
+                _ => null,
+            },
+            held.AcknowledgedAt,
+            held.Run is { } run
+                ? new RunFigures(run.Model, run.CostSpent, run.Tokens, run.ToolCalls, run.EntriesLost)
+                : null);
 
-    /// <summary>
-    /// The board has handed this submission out to a run. Assumes the board's lock, which is what
-    /// makes handing the same submission out twice impossible rather than unlikely.
-    /// </summary>
-    internal void HandedTo(Guid run, string model)
-    {
-        if (runId is not null)
-        {
-            throw new InvalidOperationException($"submission {Id} already has run {runId}");
-        }
-
-        runId = run;
-
-        // The model is known the moment the run exists, and the three figures start at nothing. From
-        // here on the submission has a run, which is what the browser reads the fields off
-        // (ACCESS-005).
-        figures = new RunFigures(model, CostSpent: 0, Tokens: default, ToolCalls: 0, EntriesLost: 0);
-    }
-
-    /// <summary>
-    /// The run's figures as they now stand. Returns whether any of them actually changed, so that the
-    /// board writes the store only where one has risen (RUNS-010, research.md R-06). Assumes the
-    /// board's lock.
-    /// </summary>
-    internal bool FiguresAre(long costSpent, ModelTokens tokens, int toolCalls, int entriesLost)
-    {
-        if (figures is not { } held)
-        {
-            // No run, so there are no figures to be. A report for a run this submission does not have
-            // is a report about something else.
-            return false;
-        }
-
-        var risen = held with
-        {
-            CostSpent = costSpent,
-            Tokens = tokens,
-            ToolCalls = toolCalls,
-            EntriesLost = entriesLost,
-        };
-
-        if (risen == held)
-        {
-            return false;
-        }
-
-        figures = risen;
-        return true;
+        // A submission the store read as `running` had reported in before the stop, and one that reads
+        // done or failed had too — a run does not end before its agent starts. Read back rather than
+        // stored, so nothing new goes on disk for it (RUNS-004).
+        reportedIn = held.State is not SubmissionState.Submitted;
     }
 
     /// <summary>
@@ -332,34 +255,11 @@ public sealed partial class Submission
     /// </summary>
     internal void ReportedIn()
     {
-        if (state != SubmissionState.Submitted)
+        if (StateNow != SubmissionState.Submitted)
         {
-            throw new InvalidOperationException($"a submission reading {state} cannot start running");
+            throw new InvalidOperationException($"a submission reading {StateNow} cannot start running");
         }
 
-        state = SubmissionState.Running;
-    }
-
-    /// <summary>
-    /// The run ended. A run can end before the agent ever reports in — that is where the grant is
-    /// checked, and a surface that is not the grant ends the run failed there (GUARD-001). Assumes
-    /// the board's lock.
-    /// </summary>
-    internal void Ended(SubmissionState terminal)
-    {
-        if (terminal is not (SubmissionState.Done or SubmissionState.Failed))
-        {
-            throw new ArgumentOutOfRangeException(nameof(terminal), terminal, "a run ends done or failed");
-        }
-
-        // Guard and write under the one lock: read separately, a report-in and an end racing on a
-        // submission still reading Submitted would both pass, and the later write could put a
-        // terminal submission back to Running.
-        if (state is SubmissionState.Done or SubmissionState.Failed)
-        {
-            throw new InvalidOperationException($"{state} is terminal; a submission does not leave it");
-        }
-
-        state = terminal;
+        reportedIn = true;
     }
 }

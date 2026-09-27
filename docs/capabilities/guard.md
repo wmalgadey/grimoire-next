@@ -14,10 +14,35 @@ What an agent may do and reach: tool grants, the safety ceilings, reach limits.
 | GUARD-002 | The grant for an ingest run MUST allow reading anything inside the wiki and creating and changing pages, indexes and the log, and nothing else. Deleting and moving MUST NOT be granted. | test |
 | GUARD-003 | The tools granted MUST be recorded for every run. | test |
 | GUARD-004 | A run MUST have a fixed ceiling on elapsed time and a fixed ceiling on cost counted in input-token equivalents — the four token classes a model call reports, each weighted by what it is billed at relative to an input token. When either ceiling is reached, Grimoire MUST stop the run at once, a model call in flight included, and the run MUST end failed. | test |
+| GUARD-005 | The grant for a question's run MUST allow reading anything inside the wiki and nothing else: no page, index or log written, nothing deleted and nothing moved. | test |
 
 GUARD-001 and GUARD-002 are proven at two levels: Fast against the hub's own half of the grant, and
 Contract against the real `claude` CLI. The deny-by-default configuration is a decision we made
 rather than framework behaviour, so III.8 does not exclude it.
+
+**GUARD-002 is untouched by GUARD-005.** An ingest run's grant is the same five tools it has always
+been; GUARD-005 is a second grant beside it, for a second kind of run.
+
+GUARD-005 is enforced by the door and not by a list of permitted names. The hub serves two MCP tool
+types — the one it already served, and a second carrying only `list_pages` and `read_page` — and a
+question's run is dispatched at `/mcp/questions/{runId}`, where `write_page`, `write_index` and
+`append_log` are not registered at all. There is no flag that would turn them on and no name that
+would reach them. That is DEC-011's standing decision applied rather than repeated: tools are
+deny-by-default **by construction**, and narrowing `--allowed-tools` to two of five would have left
+the write tools served at that run's own endpoint, one flag away — precisely the allow-list over a
+larger surface DEC-011 rejected.
+
+GUARD-001 then guards it for free. `system/init` reports the run's whole tool surface and the
+comparison is by **equality**, not containment, so a question's run whose endpoint served anything
+beyond the two ends failed before its first model call — and the chat says that question got no
+answer and why (QUERY-006). The endpoint segment lives on the grant beside the names, so the grant
+and the door that serves it are one value and cannot disagree.
+
+The two read tools are the same two tools: same names, same arguments, same answers, serving the same
+`IWikiStore`, with their bodies living once. Nothing about reading the wiki is different for a
+question. What a question's run therefore cannot do is write a page, write an index, append to the
+log, delete anything or move anything — so after it has ended the wiki is byte for byte what it was
+before, by construction and not because the instruction asked nicely.
 
 GUARD-004's cost is **not** a token count. An input token, an output token, a cache read and a cache
 write are billed at ratios of 1 : 5 : 0.1 : 2, so summing the four raw counts measures turns times

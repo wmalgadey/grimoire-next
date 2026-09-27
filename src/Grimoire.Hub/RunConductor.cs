@@ -11,10 +11,11 @@ namespace Grimoire.Hub;
 /// (<c>contracts/agent-cli-protocol.md</c>).
 /// </summary>
 public sealed class RunConductor(
-    SubmissionBoard board,
+    RunBoard board,
     IAgentHarness harness,
     IWikiStore wiki,
     IRunRecord record,
+    Chat chat,
     LiveUpdates live,
     TimeProvider clock,
     string model,
@@ -112,54 +113,87 @@ public sealed class RunConductor(
     }
 
     /// <summary>
-    /// A run for this submission, with its grant and both ceilings recorded on it. Called by the
-    /// board, under its lock, at the moment it hands the submission out: the run it returns is the
-    /// one the submission is marked with and the one recorded in the store (research.md R-04).
+    /// A run for this submission or question, with its grant and both ceilings recorded on it. Called
+    /// by the board, under its lock, at the moment it hands the thing out: the run it returns is the
+    /// one that thing is marked with and the one recorded in the store (research.md R-04).
     /// </summary>
-    public Run Begin(Guid submissionId)
+    /// <remarks>
+    /// <b>Which grant, and so which door, follows from which kind it is</b> — and the endpoint travels
+    /// on the grant, so the two cannot be crossed (GUARD-005, research.md R-06).
+    /// <para>
+    /// It <b>only makes the run</b>. Nothing is written, no ceiling is armed and the conductor does not
+    /// yet own it — that is <see cref="Watching"/>, which the board calls once the run is on disk. Doing
+    /// both here put an armed timer and a watched run in place before the store was written, and a write
+    /// that failed then left the queue thinking nothing had been handed out while this still held a run
+    /// under that id.
+    /// </para>
+    /// </remarks>
+    public Run Begin(Queued queued)
     {
-        var run = new Run(
+        ArgumentNullException.ThrowIfNull(queued);
+
+        var question = queued is Question;
+
+        return new Run(
             Guid.NewGuid(),
-            submissionId,
+            queued.Id,
             clock.GetUtcNow(),
-            ToolGrant.Ingest(clock),
+            question ? ToolGrant.Question(clock) : ToolGrant.Ingest(clock),
             Ceilings.Fixed,
-            model);
+            model,
+            question ? RunCause.AQuestion : RunCause.ASubmission);
+    }
 
-        // The head before the agent. This runs inside the board's lock, at the moment the submission
-        // is handed out and before the dispatch — so a run whose dispatch fails still has a record,
-        // and its tail says the agent's process died (RUNS-007, contracts/run-record.md).
-        record.Begin(new RunFrameHead(
-            run.Id,
-            run.SubmissionId,
-            run.Model,
-            run.Grant.ToolNames,
-            run.Grant.RecordedAt,
-            run.Ceilings,
-            run.StartedAt));
+    /// <summary>
+    /// The run is the queue's: its record opened, its elapsed ceiling armed, and the conductor watching
+    /// it. Called by the board, under its lock, once the run is on disk (RUNS-006, GUARD-004).
+    /// </summary>
+    /// <remarks>
+    /// A question's run gets <b>no record</b>: RUNS-007 gives one to a run a submission causes, because
+    /// a record exists for a run that is handed over and reviewed afterwards, and a chat is read as it
+    /// happens.
+    /// </remarks>
+    public void Watching(Run run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
 
-        // Published after the call that wrote it, at the place that already knows the record grew —
-        // here, that is the head, which is what a page opened in this same instant reads (ACCESS-006,
-        // research.md R-05). A subscriber that is not there yet is told nothing and needs to be:
-        // its stream opens with the record so far.
-        live.Changed(LiveUpdates.RecordOf(run.Id));
+        if (run.IsToChangeTheWiki)
+        {
+            // The head before the agent. This runs inside the board's lock, at the moment the
+            // submission is handed out and before the dispatch — so a run whose dispatch fails still
+            // has a record, and its tail says the agent's process died (RUNS-007,
+            // contracts/run-record.md).
+            record.Begin(new RunFrameHead(
+                run.Id,
+                run.QueuedId,
+                run.Model,
+                run.Grant.ToolNames,
+                run.Grant.RecordedAt,
+                run.Ceilings,
+                run.StartedAt));
+
+            // Published after the call that wrote it, at the place that already knows the record grew —
+            // here, that is the head, which is what a page opened in this same instant reads
+            // (ACCESS-006, research.md R-05). A subscriber that is not there yet is told nothing and
+            // needs to be: its stream opens with the record so far.
+            live.Changed(LiveUpdates.RecordOf(run.Id));
+        }
 
         // GUARD-004's elapsed ceiling has to be able to fire while the agent says nothing at all —
         // a model call that hangs, or a tool call that never comes back, is exactly the run the
         // ceiling exists for, and such a run reports no cost to read the clock against. So it is
         // the clock that raises it here, and not a line of the CLI's.
         var deadline = clock.CreateTimer(
-            _ => ElapsedCeilingReached(submissionId),
+            _ => ElapsedCeilingReached(run.QueuedId),
             state: null,
             dueTime: run.Ceilings.Elapsed,
             period: Timeout.InfiniteTimeSpan);
 
-        runs[submissionId] = new Watched(run, deadline, new SemaphoreSlim(1, 1));
-        return run;
+        runs[run.QueuedId] = new Watched(run, deadline, new SemaphoreSlim(1, 1));
     }
 
     /// <summary>The run this submission is being worked by, or null once it is over.</summary>
-    public Run? Of(Guid submissionId) => runs.GetValueOrDefault(submissionId)?.Run;
+    public Run? Of(Guid queuedId) => runs.GetValueOrDefault(queuedId)?.Run;
 
     public RunReport Report() => new(
         AgentReportedIn: AgentReportedIn,
@@ -201,15 +235,15 @@ public sealed class RunConductor(
         }
     }
 
-    private void AgentReportedIn(Guid submissionId) => board.ReportedIn(submissionId);
+    private void AgentReportedIn(Guid queuedId) => board.ReportedIn(queuedId);
 
     /// <summary>
     /// The cost ceiling, watched as the run spends. At either ceiling the run is stopped at once,
     /// a model call in flight included, and it ends failed (GUARD-004).
     /// </summary>
-    private void CostSoFar(Guid submissionId, RunSpend spend)
+    private void CostSoFar(Guid queuedId, RunSpend spend)
     {
-        if (Reporting(submissionId) is not { } watched)
+        if (Reporting(queuedId) is not { } watched)
         {
             return;
         }
@@ -219,7 +253,7 @@ public sealed class RunConductor(
 
         using (watched.Held())
         {
-            if (HasEnded(submissionId))
+            if (HasEnded(queuedId))
             {
                 return;
             }
@@ -239,7 +273,7 @@ public sealed class RunConductor(
         // Outside the lock: stopping ends the run, and ending it takes this same lock.
         if (run.Ceilings.ReachedBy(elapsed, run.CostSpent))
         {
-            _ = StopAsync(run, submissionId, run.CeilingReachedBy(elapsed));
+            _ = StopAsync(run, queuedId, run.CeilingReachedBy(elapsed));
         }
     }
 
@@ -252,9 +286,9 @@ public sealed class RunConductor(
     /// call also raises the run's count, which is the second of the two figures the list shows
     /// (RUNS-010).
     /// </remarks>
-    private void MomentHappened(Guid submissionId, TranscriptMoment moment)
+    private void MomentHappened(Guid queuedId, TranscriptMoment moment)
     {
-        if (Reporting(submissionId) is not { } watched)
+        if (Reporting(queuedId) is not { } watched)
         {
             return;
         }
@@ -265,7 +299,7 @@ public sealed class RunConductor(
             // and a moment that arrives after the ending belongs to neither the record nor the count:
             // accounted for on one side of the ending and not the other, the row and the record would
             // disagree about what the run did (RUNS-009, RUNS-010).
-            if (HasEnded(submissionId))
+            if (HasEnded(queuedId))
             {
                 return;
             }
@@ -275,6 +309,20 @@ public sealed class RunConductor(
             // same tool, and the only call still waiting. A turn that makes several calls at once
             // breaks that adjacency, so each of its results sits beside the calls instead, and the
             // order is what attributes them.
+            // A question's run has no record, so none of the record's nesting applies to it: its
+            // moments go to the chat, where the agent's own text is the answer and the two tool kinds
+            // are the steps (ACCESS-007, research.md R-08). Nothing new is parsed — `AgentTranscript`
+            // already reports the three, and stays the only reader of the protocol (DEC-028, V.2).
+            if (!watched.Run.IsToChangeTheWiki)
+            {
+                Said(watched, moment);
+
+                // The figures still rise, and the chat shows this question's cost from them
+                // (RUNS-010, ACCESS-008, DEC-030).
+                FiguresRose(watched.Run);
+                return;
+            }
+
             var callDepth = watched.TurnIsOpen ? 1 : 0;
 
             var depth = moment.Kind switch
@@ -319,11 +367,48 @@ public sealed class RunConductor(
         }
     }
 
+    /// <summary>
+    /// One moment of a question's run, into the chat (ACCESS-007).
+    /// </summary>
+    /// <remarks>
+    /// The chat is addressed by the run rather than by the question, because that is what the moment
+    /// carries and because a chat that has been put away has no turn for it — which is exactly what
+    /// should happen to it then (QUERY-005). <c>GrimoireSaid</c> cannot arrive: it carries only
+    /// RUNS-005's nudge, and that is asked of a run that is to change the wiki.
+    /// </remarks>
+    private void Said(Watched watched, TranscriptMoment moment)
+    {
+        var run = watched.Run.Id;
+
+        switch (moment.Kind)
+        {
+            case RunMomentKind.AgentSaid:
+                chat.AgentSaid(run, moment.Content ?? string.Empty);
+                break;
+
+            case RunMomentKind.ToolCalled:
+                // The count is the run's own, exactly as it is for a submission's run: RUNS-010 keeps
+                // it for every run, and it is one of the two figures a chat's cost is read beside.
+                watched.Run.ToolCalled();
+                chat.StepHappened(run, new ChatStep(ChatStep.Called, moment.Tool, moment.Content));
+                break;
+
+            case RunMomentKind.ToolReturned:
+                chat.StepHappened(run, new ChatStep(ChatStep.Returned, moment.Tool, moment.Content));
+                break;
+
+            default:
+                break;
+        }
+
+        live.Changed(LiveUpdates.Chat);
+    }
+
     /// <summary>The run this report is about, or null once it is over.</summary>
-    private Watched? Reporting(Guid submissionId) => runs.GetValueOrDefault(submissionId);
+    private Watched? Reporting(Guid queuedId) => runs.GetValueOrDefault(queuedId);
 
     /// <summary>Whether the run is already over. Read inside that run's lock.</summary>
-    private bool HasEnded(Guid submissionId) => !runs.ContainsKey(submissionId);
+    private bool HasEnded(Guid queuedId) => !runs.ContainsKey(queuedId);
 
     /// <summary>
     /// The run's figures as they now stand, offered to the board, which writes them only where one has
@@ -336,7 +421,14 @@ public sealed class RunConductor(
     /// </remarks>
     private void FiguresRose(Run run) =>
         board.RunFiguresAre(
-            run.SubmissionId, run.CostSpent, run.Tokens, run.ToolCalls, record.EntriesLost(run.Id));
+            run.QueuedId,
+            run.CostSpent,
+            run.Tokens,
+            run.ToolCalls,
+
+            // Always zero for a question's run: it has no record, so there is nothing for it to lose
+            // entries from (RUNS-007).
+            run.IsToChangeTheWiki ? record.EntriesLost(run.Id) : 0);
 
     /// <summary>
     /// The decision RUNS-005 rests on. The wiki's log is read for the run's identifier and nothing
@@ -347,9 +439,9 @@ public sealed class RunConductor(
     /// one nudge, or nothing at all. A run ends at its process's exit or at the interrupt, and the
     /// verdict is taken there with the exit code in it.
     /// </remarks>
-    private async Task AgentStoppedAsync(Guid submissionId, bool endedAbnormally)
+    private async Task AgentStoppedAsync(Guid queuedId, bool endedAbnormally)
     {
-        if (Reporting(submissionId) is not { } watched)
+        if (Reporting(queuedId) is not { } watched)
         {
             return;
         }
@@ -357,7 +449,14 @@ public sealed class RunConductor(
         // Read outside the run's lock. It is the one call on this path that leaves the process, and a
         // run whose lock was held across it could not be ended while the wiki was slow — the elapsed
         // ceiling exists for exactly that run (GUARD-004).
-        var log = await wiki.ReadAsync(WikiFile.Log, CancellationToken.None).ConfigureAwait(false);
+        //
+        // **Not read at all for a run that is not to change the wiki.** RUNS-005 asks for the log entry
+        // only of a run that is, and its last clause — Grimoire reads nothing else in the wiki to
+        // decide this — is what makes "nothing in the wiki is read on a question's behalf" true rather
+        // than nearly true (QUERY-005, GUARD-005).
+        var log = watched.Run.IsToChangeTheWiki
+            ? await wiki.ReadAsync(WikiFile.Log, CancellationToken.None).ConfigureAwait(false)
+            : null;
 
         RunDecision decision;
 
@@ -368,7 +467,7 @@ public sealed class RunConductor(
         {
             // The run may have ended while the log was being read — a ceiling reached, or Grimoire
             // stopped. Deciding anything now would judge a run that is already judged.
-            if (HasEnded(submissionId))
+            if (HasEnded(queuedId))
             {
                 return;
             }
@@ -411,9 +510,9 @@ public sealed class RunConductor(
     /// Where a run ends. The result, the log entry and the exit code are read together, which is
     /// the protocol's decision table whole — its "or a non-zero exit" row included.
     /// </summary>
-    private void AgentExited(Guid submissionId, int exitCode)
+    private void AgentExited(Guid queuedId, int exitCode)
     {
-        if (Reporting(submissionId) is not { } watched)
+        if (Reporting(queuedId) is not { } watched)
         {
             return;
         }
@@ -422,7 +521,7 @@ public sealed class RunConductor(
         // tail. Computed in one pass and used in another, a cost report landing in between could push
         // the run past a ceiling after a clean exit had already been judged done — and that stale
         // verdict would be the one written down.
-        Ended(submissionId, run => run.Exited(exitCode, clock.GetUtcNow() - run.StartedAt));
+        Ended(queuedId, run => run.Exited(exitCode, clock.GetUtcNow() - run.StartedAt));
     }
 
     /// <summary>
@@ -434,8 +533,8 @@ public sealed class RunConductor(
     /// Whatever the run had already written stays in the wiki, in every failed case: nothing here
     /// reaches back into it (WIKI-003).
     /// </remarks>
-    private void RunEnded(Guid submissionId, RunOutcome outcome, RunEndedBecause because) =>
-        Ended(submissionId, _ => new RunEnding(outcome, because));
+    private void RunEnded(Guid queuedId, RunOutcome outcome, RunEndedBecause because) =>
+        Ended(queuedId, _ => new RunEnding(outcome, because));
 
     /// <summary>
     /// The run ends: the verdict taken, the run removed, and the tail and the final figures written —
@@ -448,16 +547,16 @@ public sealed class RunConductor(
     /// run; removing inside the lock is also what makes two endings racing — a ceiling and an exit —
     /// end the run once.
     /// </remarks>
-    private void Ended(Guid submissionId, Func<Run, RunEnding> verdict)
+    private void Ended(Guid queuedId, Func<Run, RunEnding> verdict)
     {
-        if (Reporting(submissionId) is not { } watched)
+        if (Reporting(queuedId) is not { } watched)
         {
             return;
         }
 
         using (watched.Held())
         {
-            if (!runs.TryRemove(submissionId, out _))
+            if (!runs.TryRemove(queuedId, out _))
             {
                 return;
             }
@@ -482,36 +581,49 @@ public sealed class RunConductor(
 
         var run = watched.Run;
 
-        // The tail where the verdict is taken, and with the final figures beside it. Written before
-        // the board is told, so that a record is complete by the time the browser can read the row as
-        // ended — the two views are fed from the same two writes, in this order (RUNS-007, RUNS-008).
-        record.Ended(new RunFrameTail(
-            run.Id,
-            clock.GetUtcNow(),
+        if (run.IsToChangeTheWiki)
+        {
+            // The tail where the verdict is taken, and with the final figures beside it. Written before
+            // the board is told, so that a record is complete by the time the browser can read the row
+            // as ended — the two views are fed from the same two writes, in this order (RUNS-007,
+            // RUNS-008).
+            record.Ended(new RunFrameTail(
+                run.Id,
+                clock.GetUtcNow(),
+                outcome,
+                because,
+                clock.GetUtcNow() - run.StartedAt,
+                run.CostSpent,
+                run.Tokens,
+                run.Ceilings,
+                run.TokensPerModel));
+
+            // The tail, before the board is told — the same order the record and the row are written
+            // in, and now the same order the browser is sent them in: a row that reads ended must not
+            // reach a page whose record does not say the run ended (RUNS-007, RUNS-008).
+            live.Changed(LiveUpdates.RecordOf(run.Id));
+        }
+
+        // The ending, the reason and the final figures in one pass of the board's lock. Told
+        // separately, an event going out between them would carry `running` beside a final figure — and
+        // a tail whose write just failed would raise the count of lost entries on a row still reading
+        // `running` (ACCESS-005). The reason travels with the ending because the chat says against a
+        // question that it got no answer *and why* (QUERY-006).
+        board.Ended(
+            run.QueuedId,
             outcome,
             because,
-            clock.GetUtcNow() - run.StartedAt,
-            run.CostSpent,
-            run.Tokens,
-            run.Ceilings,
-            run.TokensPerModel));
-
-        // The tail, before the board is told — the same order the record and the row are written in,
-        // and now the same order the browser is sent them in: a row that reads ended must not reach a
-        // page whose record does not say the run ended (RUNS-007, RUNS-008).
-        live.Changed(LiveUpdates.RecordOf(run.Id));
-
-        // The terminal state and the final figures in one pass of the board's lock. Told separately, an
-        // event going out between them would carry `running` beside a final figure — and a tail whose
-        // write just failed would raise the count of lost entries on a row still reading `running`
-        // (ACCESS-005).
-        board.Ended(
-            run.SubmissionId,
-            outcome == RunOutcome.Done ? SubmissionState.Done : SubmissionState.Failed,
             run.CostSpent,
             run.Tokens,
             run.ToolCalls,
-            record.EntriesLost(run.Id));
+            run.IsToChangeTheWiki ? record.EntriesLost(run.Id) : 0);
+
+        // And the chat, whose question has just changed state and carries its final figure (ACCESS-007,
+        // ACCESS-008). Said after the board, because that is where the state it draws comes from.
+        if (!run.IsToChangeTheWiki)
+        {
+            live.Changed(LiveUpdates.Chat);
+        }
     }
 
     /// <summary>
@@ -526,14 +638,14 @@ public sealed class RunConductor(
     /// not in doubt either way — a run at a ceiling ends failed — and <see cref="RunEnded"/> is a
     /// no-op if the stop got the agent to report after all.
     /// </remarks>
-    private void ElapsedCeilingReached(Guid submissionId)
+    private void ElapsedCeilingReached(Guid queuedId)
     {
-        if (runs.GetValueOrDefault(submissionId)?.Run is not { } run)
+        if (runs.GetValueOrDefault(queuedId)?.Run is not { } run)
         {
             return;
         }
 
-        _ = StopAsync(run, submissionId, RunEndedBecause.TimeCeiling);
+        _ = StopAsync(run, queuedId, RunEndedBecause.TimeCeiling);
     }
 
     /// <summary>
@@ -543,7 +655,7 @@ public sealed class RunConductor(
     /// otherwise leave the submission reading running, and the board refuses every later text while
     /// one does (GUARD-004, RUNS-002, RUNS-006).
     /// </summary>
-    private async Task StopAsync(Run run, Guid submissionId, RunEndedBecause because)
+    private async Task StopAsync(Run run, Guid queuedId, RunEndedBecause because)
     {
         try
         {
@@ -557,7 +669,7 @@ public sealed class RunConductor(
         }
         finally
         {
-            RunEnded(submissionId, RunOutcome.Failed, because);
+            RunEnded(queuedId, RunOutcome.Failed, because);
         }
     }
 }

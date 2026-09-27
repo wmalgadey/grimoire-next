@@ -37,15 +37,17 @@ internal sealed class HostedHub : IAsyncDisposable
         directory = Directory.CreateTempSubdirectory("grimoire-fast-hub-").FullName;
 
         var instruction = Path.Combine(directory, "ingest.md");
+        var questionInstruction = Path.Combine(directory, "question.md");
         var purpose = Path.Combine(directory, "purpose.md");
         File.WriteAllText(instruction, "# Instruction");
+        File.WriteAllText(questionInstruction, "# Question");
         File.WriteAllText(purpose, "# Purpose");
 
         Record.FailWrites = recordEverythingFails;
 
         app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, purpose, WikiRoot: directory, Model: FastHub.Model),
+            new HubOptions(instruction, questionInstruction, purpose, WikiRoot: directory, Model: FastHub.Model),
             Agent,
             Wiki,
             Store,

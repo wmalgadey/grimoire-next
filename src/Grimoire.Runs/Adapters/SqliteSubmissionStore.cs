@@ -45,6 +45,9 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
 
     private readonly string connectionString;
 
+    /// <summary>The file itself, so that a refusal can name it and the owner knows what to delete.</summary>
+    private string DataSource => new SqliteConnectionStringBuilder(connectionString).DataSource;
+
     /// <summary>
     /// Creates the file and its two tables where they are not there yet. The directory is
     /// Grimoire's own and never the wiki: the queue writes nothing into the wiki, and Grimoire's
@@ -73,7 +76,7 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
 
             CREATE TABLE IF NOT EXISTS runs (
                 id                       TEXT PRIMARY KEY,
-                submission_id            TEXT NOT NULL,
+                submission_id            TEXT NULL,
                 started_at               TEXT NOT NULL,
                 granted_tools            TEXT NOT NULL,
                 grant_recorded_at        TEXT NOT NULL,
@@ -82,7 +85,51 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             );
             """);
 
+        RefuseAFileThatCannotHoldAQuestionsRun();
         BringTheRunTableUpToDate();
+    }
+
+    /// <summary>
+    /// A file whose <c>runs</c> table cannot hold a run with no submission behind it is refused rather
+    /// than worked around (RUNS-006, QUERY-005).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A question's run is written with a null <c>submission_id</c>, and a table declared
+    /// <c>NOT NULL</c> will not take one. <c>CREATE TABLE IF NOT EXISTS</c> does not alter a table that
+    /// is already there and <see cref="BringTheRunTableUpToDate"/> only <em>adds</em> columns, so a file
+    /// an older Grimoire wrote keeps that constraint — and the first question asked against it would
+    /// fail on the insert, which is a failure the user can do nothing about and would not understand.
+    /// </para>
+    /// <para>
+    /// <b>Refused, and not migrated.</b> Dropping a <c>NOT NULL</c> constraint in SQLite means
+    /// rebuilding the table, and <c>research.md</c> R-04 asked for a change that does not rebuild one —
+    /// which turns out to be impossible, so one of the two had to give. OWNER DECISION: the file goes.
+    /// Nothing runs Grimoire in production yet, so the rows such a file holds are the owner's own test
+    /// ingests, and a rebuild would be machinery carried for ever to save a file nobody needs. The
+    /// first Grimoire that has users to keep files for revisits this.
+    /// </para>
+    /// <para>
+    /// Refusing to start is what this adapter already does with a file it cannot read — a state value it
+    /// does not know throws rather than being guessed at, for the same reason: every submission the user
+    /// made is in that file, and reading one of them wrongly is worse than not starting.
+    /// </para>
+    /// </remarks>
+    private void RefuseAFileThatCannotHoldAQuestionsRun()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText =
+            "SELECT 1 FROM pragma_table_info('runs') WHERE name = 'submission_id' AND \"notnull\" = 1";
+
+        if (command.ExecuteScalar() is not null)
+        {
+            throw new InvalidOperationException(
+                $"The state file at \"{DataSource}\" was written by a Grimoire that had no questions, "
+                + "and its runs table cannot hold one. Delete it and start again; nothing in it is "
+                + "needed by this Grimoire.");
+        }
     }
 
     /// <summary>
@@ -114,6 +161,12 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             ("cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"),
             ("tool_calls", "INTEGER NOT NULL DEFAULT 0"),
             ("entries_lost", "INTEGER NOT NULL DEFAULT 0"),
+
+            // Whether a run with no submission behind it has ended. Null means it has not, which is
+            // what a start-up reads it back for (RUNS-006). A submission's run needs no such column —
+            // its submission's state says so — so this is null for every row an older file holds, and
+            // that is correct: those rows all have a submission (research.md R-04).
+            ("ended_at", "TEXT NULL"),
         };
 
         var present = ColumnsOfTheRunTable();
@@ -186,7 +239,10 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
 
     private static StoredRun RunIn(SqliteDataReader rows) => new(
         Guid.Parse(rows.GetString(5)),
-        Guid.Parse(rows.GetString(6)),
+
+        // Null where a question caused the run: nothing of a question is on disk, so there is nothing
+        // for this to point at (QUERY-005, research.md R-04).
+        rows.IsDBNull(6) ? null : Guid.Parse(rows.GetString(6)),
         Moment(rows.GetString(7)),
         rows.GetString(8).Split(ToolSeparator, StringSplitOptions.RemoveEmptyEntries),
         Moment(rows.GetString(9)),
@@ -201,6 +257,102 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
         new ModelTokens(rows.GetInt64(16), rows.GetInt64(17), rows.GetInt64(18), rows.GetInt64(19)),
         rows.GetInt32(14),
         rows.GetInt32(15));
+
+    /// <summary>
+    /// The runs with no submission behind them that were in progress when Grimoire stopped
+    /// (RUNS-006, research.md R-04).
+    /// </summary>
+    /// <remarks>
+    /// In progress is read off the file and not judged here: no submission, and no ending written —
+    /// which is what <c>ended_at</c> records, and it is the one column that exists for no other
+    /// reason. A submission's run needs none, because its submission's state says whether it ended;
+    /// a question's has no submission to say so.
+    /// </remarks>
+    public IReadOnlyList<StoredRun> LoadRunsWithoutASubmission()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = """
+            SELECT NULL, NULL, NULL, NULL, NULL,
+                   r.id, r.submission_id, r.started_at, r.granted_tools, r.grant_recorded_at,
+                   r.agent_process_id, r.agent_process_started_at,
+                   r.model, r.cost_spent, r.tool_calls, r.entries_lost,
+                   r.input_tokens, r.output_tokens, r.cache_read_tokens, r.cache_write_tokens
+            FROM runs r
+            WHERE r.submission_id IS NULL AND r.ended_at IS NULL
+            ORDER BY r.rowid
+            """;
+
+        using var rows = command.ExecuteReader();
+        var held = new List<StoredRun>();
+
+        while (rows.Read())
+        {
+            held.Add(RunIn(rows));
+        }
+
+        return held;
+    }
+
+    /// <summary>
+    /// A run with no submission behind it. One statement, because there is no submission row to point
+    /// at it (RUNS-006, RUNS-010).
+    /// </summary>
+    public void AddRun(StoredRun run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+
+        Execute(
+            """
+            INSERT INTO runs (id, submission_id, started_at, granted_tools, grant_recorded_at,
+                              agent_process_id, agent_process_started_at,
+                              model, cost_spent, tool_calls, entries_lost,
+                              input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+            VALUES ($run, NULL, $started_at, $tools, $recorded_at, NULL, NULL,
+                    $model, $cost, $calls, $lost, $in, $out, $read, $written);
+            """,
+            ("$run", run.Id.ToString()),
+            ("$started_at", Text(run.StartedAt)),
+            ("$tools", string.Join(ToolSeparator, run.GrantedTools)),
+            ("$recorded_at", Text(run.GrantRecordedAt)),
+            ("$model", run.Model),
+            ("$cost", run.CostSpent),
+            ("$calls", run.ToolCalls),
+            ("$lost", run.EntriesLost),
+            ("$in", run.Tokens.InputTokens),
+            ("$out", run.Tokens.OutputTokens),
+            ("$read", run.Tokens.CacheReadInputTokens),
+            ("$written", run.Tokens.CacheCreationInputTokens));
+    }
+
+    /// <summary>
+    /// A run that has no submission state to set has ended: its final figures, and the moment that
+    /// marks it as no longer in progress (RUNS-010, RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// One statement, so that the figures and the ending cannot be apart: a stop between them would
+    /// leave a run a start-up reads as still in progress beside the figures it ended on, and the
+    /// start-up would go looking for an agent that is finished.
+    /// </remarks>
+    public void RunEnded(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost) =>
+        Execute(
+            """
+            UPDATE runs SET ended_at = $ended_at,
+                            cost_spent = $cost, tool_calls = $calls, entries_lost = $lost,
+                            input_tokens = $in, output_tokens = $out,
+                            cache_read_tokens = $read, cache_write_tokens = $written
+            WHERE id = $run
+            """,
+            ("$ended_at", Text(DateTimeOffset.UtcNow)),
+            ("$cost", costSpent),
+            ("$calls", toolCalls),
+            ("$lost", entriesLost),
+            ("$in", tokens.InputTokens),
+            ("$out", tokens.OutputTokens),
+            ("$read", tokens.CacheReadInputTokens),
+            ("$written", tokens.CacheCreationInputTokens),
+            ("$run", runId.ToString()));
 
     public void Add(StoredSubmission submission)
     {

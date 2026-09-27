@@ -42,6 +42,19 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     private static StoredRun ARun(Guid submissionId, DateTimeOffset startedAt) =>
         new(Guid.NewGuid(), submissionId, startedAt, ToolGrant.ForIngest, startedAt, PinnedModel, AgentProcess: null);
 
+    /// <summary>
+    /// A run with <b>no submission behind it</b> — one a question caused. Its grant is the read-only one,
+    /// because that is what such a run is served (GUARD-005).
+    /// </summary>
+    private static StoredRun AQuestionsRun() => new(
+        Guid.NewGuid(),
+        QueuedId: null,
+        Noon,
+        ToolGrant.ForQuestion,
+        Noon,
+        PinnedModel,
+        AgentProcess: null);
+
     /// <summary>The model a run is recorded against (DEC-010).</summary>
     private const string PinnedModel = "claude-opus-4-5-20251101";
 
@@ -93,7 +106,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         var held = Assert.Single(Reopened().Load()).Run;
         Assert.NotNull(held);
         Assert.Equal(run.Id, held!.Id);
-        Assert.Equal(submission.Id, held.SubmissionId);
+        Assert.Equal(submission.Id, held.QueuedId);
         Assert.Equal(Noon.AddSeconds(2), held.StartedAt);
 
         // The grant is recorded for every run (GUARD-003), and once the submission outlives the
@@ -245,29 +258,122 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-006")]
     [Trait("req", "RUNS-010")]
-    public void OlderFile_ComesBackWithItsSubmissionsIntactAndItsFiguresAtZero()
+    public void RunWithoutASubmission_RoundTripsThroughTheFile()
+    {
+        var store = Reopened();
+        var run = AQuestionsRun();
+
+        store.AddRun(run);
+        store.RecordAgentProcess(run.Id, new AgentProcessIdentity(4_711, Noon));
+        store.RecordFigures(run.Id, costSpent: 148_233, Spent, toolCalls: 3, entriesLost: 0);
+
+        // Read back through a store built afresh over the same file, because a store answering from
+        // what it still held in memory would prove nothing about the file. Only the real SQLite decides
+        // whether a null `submission_id` round-trips at all (Constitution III.4).
+        var read = Assert.Single(Reopened().LoadRunsWithoutASubmission());
+
+        Assert.Equal(run.Id, read.Id);
+
+        // The null is the point: nothing of the question is on disk, so there is nothing for this to
+        // point at (QUERY-005, research.md R-04).
+        Assert.Null(read.QueuedId);
+
+        Assert.Equal(Noon, read.StartedAt);
+        Assert.Equal(ToolGrant.ForQuestion, read.GrantedTools);
+        Assert.Equal(PinnedModel, read.Model);
+        Assert.Equal(new AgentProcessIdentity(4_711, Noon), read.AgentProcess);
+        Assert.Equal(148_233, read.CostSpent);
+        Assert.Equal(Spent, read.Tokens);
+        Assert.Equal(3, read.ToolCalls);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public void RunWithoutASubmission_IsReadBackAsInProgress_UntilItHasEnded()
+    {
+        var store = Reopened();
+        var run = AQuestionsRun();
+
+        store.AddRun(run);
+
+        // In progress, which is what a start-up reads these back for: it terminates the agent of every
+        // run it finds in that state before anything else runs, and a run with nothing on disk would
+        // leave an orphaned `claude` holding the granted tools with no ceiling on it (RUNS-006).
+        Assert.Single(Reopened().LoadRunsWithoutASubmission());
+
+        store.RunEnded(run.Id, costSpent: 148_233, Spent, toolCalls: 3, entriesLost: 0);
+
+        // And gone from that reading once it has ended, so the next start-up does not go looking for an
+        // agent that is finished. The ending and the figures are one statement: a stop between them
+        // would leave a run read as in progress beside the figures it ended on.
+        Assert.Empty(Reopened().LoadRunsWithoutASubmission());
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-004")]
+    public void RunWithoutASubmission_IsInNoListOfSubmissions()
+    {
+        var store = Reopened();
+
+        store.Add(ASubmission("Ada Lovelace wrote the first program.", Noon));
+        store.AddRun(AQuestionsRun());
+
+        // A question is not a submission, and its run hangs off none: `Load` answers with the
+        // submissions and what they were given, and a question's run is in neither (research.md R-12).
+        var read = Assert.Single(Reopened().Load());
+
+        Assert.Null(read.Run);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public void OlderFile_IsRefused_BecauseItsRunTableCannotHoldAQuestionsRun()
+    {
+        // A file an older Grimoire wrote declares `submission_id` NOT NULL, and a question's run is
+        // written with a null there. `CREATE TABLE IF NOT EXISTS` does not alter a table that is
+        // already present, and dropping a NOT NULL constraint in SQLite means rebuilding the table —
+        // which `research.md` R-04 asked not to happen, so one of the two had to give.
+        WriteAFileOfTheOlderSchema(Guid.NewGuid(), Guid.NewGuid());
+
+        // OWNER DECISION: the file goes. Nothing runs Grimoire in production yet, so the rows such a
+        // file holds are the owner's own test ingests, and a rebuild would be machinery carried for
+        // ever to keep a file nobody needs.
+        //
+        // Refused at construction and not at the first question, because the first question is the
+        // wrong place to learn it: the insert would fail on a constraint, which is a failure the user
+        // can do nothing about and would not understand. Refusing to start is what this adapter already
+        // does with a state value it cannot read, and for the same reason.
+        var refused = Assert.Throws<InvalidOperationException>(() => Reopened());
+
+        // And it names the file, so the owner knows what to delete.
+        Assert.Contains("submissions.db", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-010")]
+    public void FileWithoutThisVersionsColumns_ComesBackWithItsSubmissionsIntactAndItsFiguresAtZero()
     {
         var submissionId = Guid.NewGuid();
         var runId = Guid.NewGuid();
 
-        // The four columns this Grimoire wants are not there, because the Grimoire that wrote this file
-        // did not have them. The owner's own `submissions.db` is exactly this file, and the alternative
-        // to reading it is asking them to delete the list of everything they ever submitted
-        // (research.md R-07).
-        WriteAFileOfTheOlderSchema(submissionId, runId);
+        // A file whose `runs` table can hold a question's run but is missing columns this Grimoire
+        // added — which is what a database written by an earlier commit of this very feature is. This
+        // is what keeps DEC-031's `PRAGMA table_info` + `ALTER TABLE` a mechanism with a consumer.
+        WriteAFileMissingThisVersionsColumns(submissionId, runId);
 
         var read = Assert.Single(Reopened().Load());
 
         Assert.Equal(submissionId, read.Id);
-        Assert.Equal("An older Grimoire wrote this.", read.Text);
+        Assert.Equal("A Grimoire without the later columns wrote this.", read.Text);
         Assert.Equal(SubmissionState.Done, read.State);
         Assert.Equal(runId, read.Run!.Id);
         Assert.Equal(ToolGrant.ForIngest, read.Run.GrantedTools);
 
-        // Nothing is known about what an older run spent, and zero is the only honest answer a column
-        // can give. The model is left empty rather than guessed at: the current `--model` would claim
-        // the run had used one it may never have seen.
+        // Nothing is known about what such a run spent, and zero is the only honest answer a column can
+        // give. The model is left empty rather than guessed at: the current `--model` would claim the
+        // run had used one it may never have seen.
         Assert.Equal(string.Empty, read.Run.Model);
         Assert.Equal(0, read.Run.CostSpent);
         Assert.Equal(0, read.Run.ToolCalls);
@@ -275,10 +381,32 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     /// <summary>
+    /// A file whose <c>runs</c> table takes a null <c>submission_id</c> but has none of the columns
+    /// added after it — a database an earlier commit of <c>004-ask-the-wiki</c> wrote.
+    /// </summary>
+    private void WriteAFileMissingThisVersionsColumns(Guid submissionId, Guid runId) =>
+        WriteAFile(
+            submissionId,
+            runId,
+            "A Grimoire without the later columns wrote this.",
+            submissionIdColumn: "submission_id            TEXT NULL,");
+
+    /// <summary>
     /// A file with the schema <c>002-ingest-queue</c> left, written with no help from the adapter under
     /// test — a fixture the adapter built would not be an older file at all.
     /// </summary>
-    private void WriteAFileOfTheOlderSchema(Guid submissionId, Guid runId)
+    private void WriteAFileOfTheOlderSchema(Guid submissionId, Guid runId) =>
+        WriteAFile(
+            submissionId,
+            runId,
+            "An older Grimoire wrote this.",
+            submissionIdColumn: "submission_id            TEXT NOT NULL,");
+
+    /// <summary>
+    /// One writer for both fixtures, so that the only difference between them is the one column the
+    /// tests are about.
+    /// </summary>
+    private void WriteAFile(Guid submissionId, Guid runId, string text, string submissionIdColumn)
     {
         using var connection = new SqliteConnection(
             new SqliteConnectionStringBuilder
@@ -302,7 +430,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
 
             CREATE TABLE runs (
                 id                       TEXT PRIMARY KEY,
-                submission_id            TEXT NOT NULL,
+                {submissionIdColumn}
                 started_at               TEXT NOT NULL,
                 granted_tools            TEXT NOT NULL,
                 grant_recorded_at        TEXT NOT NULL,
@@ -311,7 +439,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
             );
 
             INSERT INTO submissions VALUES
-                ('{submissionId}', 'An older Grimoire wrote this.', '{Noon:O}', 'done', '{runId}', NULL);
+                ('{submissionId}', '{text}', '{Noon:O}', 'done', '{runId}', NULL);
 
             INSERT INTO runs VALUES
                 ('{runId}', '{submissionId}', '{Noon:O}',

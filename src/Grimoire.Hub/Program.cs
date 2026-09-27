@@ -37,8 +37,8 @@ return 0;
 
 /// <summary>
 /// What the owner starts the hub with. Three inputs are theirs — the wiki, the purpose description
-/// and the model — and the instruction is Grimoire's own, versioned in this repository, so it has a
-/// default and changing it is an owner decision named in the PR (Constitution V.1).
+/// and the model — and the two instructions are Grimoire's own, versioned in this repository, so each
+/// has a default and changing either is an owner decision named in the PR (Constitution V.1).
 /// </summary>
 internal sealed record StartUp(HubOptions Options, Uri Address, string StateDirectory)
 {
@@ -61,7 +61,11 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
           --wiki <path>         the wiki this Grimoire writes into                     (required)
           --purpose <path>      the hand-written description of what the wiki is for   (required)
           --model <id>          a pinned model id, never an alias                      (required)
-          --instruction <path>  Grimoire's own instruction  (default: instructions/ingest.md)
+          --instruction <path>  Grimoire's own ingest instruction
+                                (default: instructions/ingest.md)
+          --question-instruction <path>
+                                Grimoire's own question instruction
+                                (default: instructions/question.md)
           --state <path>        where the queue is kept, so that it survives a stop
                                 (default: state/ beside the hub)
           --urls <url>          where the hub listens; loopback only
@@ -81,6 +85,10 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
 
         var instruction = given.GetValueOrDefault("instruction")
             ?? Path.Combine(AppContext.BaseDirectory, "instructions", "ingest.md");
+
+        // The same shape, because both are Grimoire's own and versioned here (QUERY-004, V.1).
+        var questionInstruction = given.GetValueOrDefault("question-instruction")
+            ?? Path.Combine(AppContext.BaseDirectory, "instructions", "question.md");
 
         if (!Uri.TryCreate(given.GetValueOrDefault("urls") ?? DefaultAddress, UriKind.Absolute, out var address)
             || !address.IsLoopback)
@@ -114,7 +122,7 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
         }
 
         return new StartUp(
-            new HubOptions(instruction, purpose, wiki, model),
+            new HubOptions(instruction, questionInstruction, purpose, wiki, model),
             address,
             state);
     }

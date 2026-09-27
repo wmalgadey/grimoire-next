@@ -68,7 +68,7 @@ public sealed record SubmissionView(
         // list. Asked separately, a run ending between two answers would put `running` beside an
         // offered acknowledgement — a pair this contract says cannot occur — or beside a final figure,
         // a pair that never existed; and asked one row at a time, the list itself would combine two
-        // instants (ACCESS-005, SubmissionBoard.Snapshot).
+        // instants (ACCESS-005, RunBoard.Snapshot).
         var status = submission.Status;
 
         return new SubmissionView(
@@ -144,7 +144,7 @@ public static class SubmissionsEndpoints
     public static IEndpointRouteBuilder MapSubmissions(
         this IEndpointRouteBuilder endpoints,
         SubmissionIntake intake,
-        SubmissionBoard board,
+        RunBoard board,
         RunQueue queue,
         StartUpInputsCheck startUpInputs,
         LiveUpdates live)
@@ -217,7 +217,7 @@ public static class SubmissionsEndpoints
     /// <summary>
     /// The list as both the endpoint and the stream answer with it, so the two cannot drift apart.
     /// </summary>
-    private static SubmissionListView List(SubmissionBoard board) =>
+    private static SubmissionListView List(RunBoard board) =>
         new([.. board.Snapshot().Select(SubmissionView.Of)], Ceilings.Fixed.Cost);
 
     private static IResult Refused(Refusal refusal)

@@ -24,7 +24,7 @@ public sealed class RestartTests
         return accepted;
     }
 
-    private static Submission In(FastHub hub, Guid id) => hub.Board.Find(id)!;
+    private static Submission In(FastHub hub, Guid id) => (Submission)hub.Board.Find(id)!;
 
     [Fact]
     [Trait("req", "RUNS-004")]

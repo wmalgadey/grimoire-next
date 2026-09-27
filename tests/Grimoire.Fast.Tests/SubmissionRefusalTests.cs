@@ -13,10 +13,10 @@ public sealed class SubmissionRefusalTests
     private readonly FastHub hub = new();
 
     private static readonly StartUpInputs NoInstruction =
-        new(InstructionPresent: false, PurposeDescriptionPresent: true);
+        new(InstructionPresent: false, QuestionInstructionPresent: true, PurposeDescriptionPresent: true);
 
     private static readonly StartUpInputs NoPurposeDescription =
-        new(InstructionPresent: true, PurposeDescriptionPresent: false);
+        new(InstructionPresent: true, QuestionInstructionPresent: true, PurposeDescriptionPresent: false);
 
     [Fact]
     [Trait("req", "INGEST-003")]
@@ -92,7 +92,7 @@ public sealed class SubmissionRefusalTests
     [Trait("req", "INGEST-004")]
     public async Task Submit_NamesTheInstructionFirst_WhenSeveralAreMissing()
     {
-        var neither = new StartUpInputs(InstructionPresent: false, PurposeDescriptionPresent: false);
+        var neither = new StartUpInputs(InstructionPresent: false, QuestionInstructionPresent: true, PurposeDescriptionPresent: false);
 
         // An empty text with neither file in place is refused with instruction-missing: the two
         // start-up inputs come before the text, and the instruction before the purpose

@@ -110,6 +110,67 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
         }
     }
 
+    /// <summary>
+    /// A run with no submission behind it — one a question caused (RUNS-006, RUNS-010).
+    /// </summary>
+    /// <remarks>
+    /// It goes into the same <c>runs</c> map and into no submission, which is what the real adapter
+    /// does with a null <c>submission_id</c>. <c>Load</c> therefore never hands it back: a question is
+    /// not a submission and appears in no list of them.
+    /// </remarks>
+    public void AddRun(StoredRun run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+
+        lock (gate)
+        {
+            WhileWriting?.Invoke();
+            runs[run.Id] = run;
+            journal?.Record($"handed out run {run.Id}");
+        }
+    }
+
+    /// <summary>
+    /// The runs with no submission behind them that have not ended (RUNS-006).
+    /// </summary>
+    /// <remarks>
+    /// Cut on the same facts the real adapter reads off the file: no submission, and no ending
+    /// written. A double that decided "in progress" some other way would prove something the adapter
+    /// does not do.
+    /// </remarks>
+    public IReadOnlyList<StoredRun> LoadRunsWithoutASubmission()
+    {
+        lock (gate)
+        {
+            return [.. runs.Values.Where(r => r.QueuedId is null && !ended.Contains(r.Id))];
+        }
+    }
+
+    /// <summary>The runs with no submission that have ended. Assumes nothing; guarded by the lock.</summary>
+    private readonly HashSet<Guid> ended = [];
+
+    public void RunEnded(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost)
+    {
+        lock (gate)
+        {
+            WhileWriting?.Invoke();
+            ended.Add(runId);
+
+            if (runs.TryGetValue(runId, out var run))
+            {
+                runs[runId] = run with
+                {
+                    CostSpent = costSpent,
+                    Tokens = tokens,
+                    ToolCalls = toolCalls,
+                    EntriesLost = entriesLost,
+                };
+            }
+
+            journal?.Record($"run {runId} ended");
+        }
+    }
+
     public void RecordAgentProcess(Guid runId, AgentProcessIdentity identity)
     {
         lock (gate)
