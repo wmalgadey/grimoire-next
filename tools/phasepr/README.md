@@ -112,6 +112,23 @@ the flags.
 | `reviewer_login` | `copilot-pull-request-reviewer[bot]` | see below |
 | `run_mutation` | `true` | `false` (or `--skip-mutation` for one run) leaves the measurement to CI's `mutation` job on the PR to main |
 
+### Repository settings phasepr relies on
+
+Read on 2026-09-27. `GET …/branches/{branch}/protection` answers 403 to the token that could read
+everything else, so what follows comes from `GET …/branches/{branch}` and `GET …/rulesets`:
+
+- No classic branch protection: `main`, the feature branches and the phase branches all report
+  `protected: false`.
+- One ruleset, "main", targets only the default branch and is **disabled** (`enforcement:
+  disabled`). Its rules, if it were enabled: no deletion, no force-push, changes through a pull
+  request with 0 required approvals; merge, squash and rebase allowed.
+- Hence the assumption phasepr is built on: **feature and phase branches have no required reviews
+  and no required checks.** `gh pr merge --merge` on a phase PR is gated only by phasepr's own
+  checks (CI green via `gh pr checks`, no open thread, the owner's approval where it stops for one).
+  Should a feature branch ever require an approval, the merge fails and phasepr halts with
+  `github-error`.
+- `delete_branch_on_merge` is on, which makes `--delete-branch` redundant but harmless.
+
 ### Reviewer login
 
 Verified on 2026-09-27 against this repository with a throwaway PR (#55):
