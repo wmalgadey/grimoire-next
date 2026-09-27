@@ -166,6 +166,35 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
+    public async Task Chat_HoldsTheAnswer_WhenAnotherRunsEndingIsWhatStartedTheQuestion()
+    {
+        // The question waits behind a submission, so the run it is eventually given is handed out by
+        // **that submission's ending**, on the harness's thread and not on the asking one. This is the
+        // path the run-to-turn mapping used to be lost on: the question existed on the board before it
+        // existed in the chat, so a pump that reached it in that window found no turn to map its run
+        // to — and every word of the answer that followed went nowhere.
+        var blocking = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+        var question = (await hub.AskAsync("What does the wiki say about Ada Lovelace?")).Accepted!;
+
+        Assert.Null(question.RunId);
+
+        hub.Harness.End(blocking.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        Assert.NotNull(question.RunId);
+
+        Said(question, "She wrote the first program.");
+        hub.Harness.Called(question.Id, "read_page", """{"path":"people/ada-lovelace.md"}""");
+
+        // The answer and the step reached the turn, which is only true if the run was mapped to it.
+        var turn = Assert.Single(hub.Chat.Turns);
+
+        Assert.Equal("She wrote the first program.", turn.Answer);
+        Assert.Single(turn.Steps);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-002")]
     [Trait("req", "QUERY-002")]
     public async Task Chat_ShowsTheQuestionsInTheOrderTheyWillRun_WhenSeveralAreAskedAtOnce()

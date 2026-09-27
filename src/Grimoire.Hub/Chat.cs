@@ -157,9 +157,13 @@ public sealed record ChatTurnAsItWas(Question Question, string Answer, IReadOnly
 /// <summary>
 /// The chat at one instant, with the position in its change log that goes with it (ACCESS-007).
 /// </summary>
+/// <param name="Changes">
+/// The whole change log as it stood, so that a reader of it and the turns it refers to are the same
+/// instant. Its <c>Count</c> is the position a subscriber is left at.
+/// </param>
 public sealed record ChatSnapshot(
     IReadOnlyList<ChatTurnAsItWas> Turns,
-    int Changes,
+    IReadOnlyList<ChatChange> Changes,
     int Generation);
 
 /// <summary>
@@ -262,33 +266,6 @@ public sealed class Chat(Chat.Changed? changed = null)
         }
     }
 
-    /// <summary>
-    /// What has changed in this chat, in the order it changed, for a stream to read forward
-    /// (ACCESS-007).
-    /// </summary>
-    /// <remarks>
-    /// <b>Not a replay buffer.</b> Nothing here is ever sent to a subscriber that was not already
-    /// reading forward from it: a browser that connects — or reconnects — is given the snapshot and
-    /// starts at the <em>end</em> of this list, which is what answers ACCESS-007's reconnect clause with
-    /// nothing replayed. What it is for is the opposite problem: a subscriber that <em>is</em> connected
-    /// has to be told the one thing that changed, and "the one thing" is only knowable against what it
-    /// has already been told.
-    /// <para>
-    /// It holds descriptors rather than content, so it is a handful of integers per event, and it goes
-    /// with the chat when a new one is started.
-    /// </para>
-    /// </remarks>
-    public IReadOnlyList<ChatChange> Changes
-    {
-        get
-        {
-            lock (gate)
-            {
-                return [.. changes];
-            }
-        }
-    }
-
     /// <summary>A question joined the chat, reading <em>waiting its turn</em> (QUERY-001).</summary>
     public void Ask(Question question)
     {
@@ -371,13 +348,29 @@ public sealed class Chat(Chat.Changed? changed = null)
     }
 
     /// <summary>
-    /// Everything a stream's opening event needs, read at <b>one</b> instant (ACCESS-007).
+    /// Everything a stream needs, read at <b>one</b> instant: the turns, and the log of what has
+    /// changed in the order it changed (ACCESS-007).
+    /// </summary>
+    /// <remarks>
+    /// <b>The change log is not a replay buffer.</b> Nothing in it is ever sent to a subscriber that was
+    /// not already reading forward from it: a browser that connects — or reconnects — is given the
+    /// snapshot and starts at the <em>end</em> of the log, which answers ACCESS-007's reconnect clause
+    /// with nothing replayed. What it is for is the opposite problem: a subscriber that <em>is</em>
+    /// connected has to be told the one thing that changed, and "the one thing" is only knowable against
+    /// what it has already been told. It holds descriptors rather than content, so it is a handful of
+    /// integers per event, and it goes with the chat when a new one is started.
     /// </summary>
     /// <remarks>
     /// The answer and the steps are <b>copied</b> here rather than read from the turns afterwards, and
     /// the position in the change log is taken in the same breath. Read apart, a piece of an answer
     /// arriving between the two would be in the snapshot <em>and</em> past the subscriber's position —
     /// so the next wake would send it again and the browser would show it twice.
+    /// <para>
+    /// The change log comes with them, because a reader of the two has to read one instant: a question
+    /// joining the chat between a reading of the changes and a reading of the turns would leave a
+    /// descriptor pointing at a turn that is not there — skipped, and then skipped past for good, so
+    /// the browser would never be told about that question at all.
+    /// </para>
     /// <para>
     /// A turn's state and figures are deliberately <em>not</em> captured: reading them takes the board's
     /// lock, which this must never do while holding its own. They do not need to be — every change to
@@ -391,7 +384,7 @@ public sealed class Chat(Chat.Changed? changed = null)
         {
             return new ChatSnapshot(
                 [.. turns.Select(turn => new ChatTurnAsItWas(turn.Question, turn.Answer, turn.Steps))],
-                changes.Count,
+                [.. changes],
                 generation);
         }
     }

@@ -49,7 +49,10 @@ internal sealed class FastHub
 
         // The same wiring the composition root ties, including that a question's change is recorded in
         // the chat before its subscribers are woken (HubApplication.Build).
-        Board = new RunBoard(Clock, store, queued =>
+        Board = new RunBoard(
+            Clock,
+            store,
+            queued =>
         {
             if (queued is Question)
             {
@@ -61,7 +64,17 @@ internal sealed class FastHub
             }
 
             Live.Changed(LiveUpdates.Submissions);
-        });
+        },
+
+            // The same as the composition root: a question joins the chat inside the board's lock, in
+            // the same breath as it was accepted (RunBoard.Accepted).
+            queued =>
+            {
+                if (queued is Question asked)
+                {
+                    Chat.Ask(asked);
+                }
+            });
 
         // The same knot the composition root ties: a run that ends lets the next one start
         // (HubApplication.Build).
@@ -71,7 +84,7 @@ internal sealed class FastHub
         queue = new RunQueue(Board, Conductor, Harness, Prompt, QuestionPrompt);
         Queue = queue;
         Intake = new SubmissionIntake(Board, Queue);
-        Asking = new ChatIntake(Board, Chat, Queue);
+        Asking = new ChatIntake(Board, Queue);
 
         HubApplication.RestoreAfterAStop(store, Board, Harness, Record, Clock);
 

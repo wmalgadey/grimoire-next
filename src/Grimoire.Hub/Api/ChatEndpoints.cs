@@ -198,7 +198,7 @@ public static class ChatEndpoints
         var snapshot = chat.Snapshot();
 
         sent.Generation = snapshot.Generation;
-        sent.Changes = snapshot.Changes;
+        sent.Changes = snapshot.Changes.Count;
 
         yield return new SseItem<object>(
             new ChatView(
@@ -227,16 +227,20 @@ public static class ChatEndpoints
             yield break;
         }
 
-        var changes = chat.Changes;
-        var turns = chat.Turns;
+        // The changes and the turns they refer to, from **one** reading. Taken apart, a question
+        // joining the chat between them would leave a descriptor pointing at a turn that is not there:
+        // skipped, and then skipped past for good, so that browser would never be told about the
+        // question at all (Chat.Snapshot).
+        var snapshot = chat.Snapshot();
 
-        for (var at = sent.Changes; at < changes.Count; at++)
+        for (var at = sent.Changes; at < snapshot.Changes.Count; at++)
         {
-            var change = changes[at];
+            var change = snapshot.Changes[at];
 
-            // The turn the change is about. Gone only if a new chat started between the two readings
-            // above, which the next wake answers with a snapshot.
-            if (turns.FirstOrDefault(turn => turn.Question.Id == change.Question) is not { } turn)
+            // A turn a descriptor names is always in the same snapshot, so this cannot be missed — only
+            // a new chat starting between the generation check above and this reading takes one away,
+            // and the next wake answers that with a snapshot of its own.
+            if (snapshot.Turns.FirstOrDefault(turn => turn.Question.Id == change.Question) is not { } turn)
             {
                 continue;
             }
@@ -244,10 +248,10 @@ public static class ChatEndpoints
             yield return Increment(chat, turn, change);
         }
 
-        sent.Changes = changes.Count;
+        sent.Changes = snapshot.Changes.Count;
     }
 
-    private static SseItem<object> Increment(Chat chat, ChatTurn turn, ChatChange change)
+    private static SseItem<object> Increment(Chat chat, ChatTurnAsItWas turn, ChatChange change)
     {
         var id = turn.Question.Id.ToString();
 
@@ -294,7 +298,7 @@ public static class ChatEndpoints
         };
     }
 
-    private static object QuestionChanged(Chat chat, ChatTurn turn)
+    private static object QuestionChanged(Chat chat, ChatTurnAsItWas turn)
     {
         var view = ChatTurnView.Of(turn);
 
@@ -310,7 +314,7 @@ public static class ChatEndpoints
 
     /// <summary>The accepted question's turn, as the stream's snapshot carries one.</summary>
     private static ChatTurnView TurnFor(Chat chat, Question accepted) =>
-        chat.Turns.FirstOrDefault(turn => turn.Question.Id == accepted.Id) is { } turn
+        chat.Snapshot().Turns.FirstOrDefault(turn => turn.Question.Id == accepted.Id) is { } turn
             ? ChatTurnView.Of(turn)
             : throw new InvalidOperationException($"question {accepted.Id} was accepted but is in no chat");
 
