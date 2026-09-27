@@ -21,8 +21,10 @@ You start in a fresh context; what earlier iterations learned is in the memory f
 - Only tasks of Phase {{PHASE}}. Never start, edit, check or uncheck a task of another phase, and
   never add tasks to another phase. phasepr compares every other phase's checkboxes before and
   after this run and halts the feature when one has moved.
-- Stay on branch `{{PHASE_BRANCH}}`. Commit your work there in conventional commits, in the style
-  `git log` shows. Mark a task `[X]` only once its result passes the checks below, and commit the
+- Stay on branch `{{PHASE_BRANCH}}`. Commit your work there as `type(scope): subject` — type one
+  of feat, fix, docs, test, refactor, chore, build, ci, perf, style, revert; scope `{{FEATURE_NUM}}`
+  or the requirement ID the commit serves in lower case, as `git log` shows (`feat({{FEATURE_NUM}}): …`,
+  `test(runs-008): …`). phasepr halts on any other subject. Mark a task `[X]` only once its result passes the checks below, and commit the
   checkbox together with that work.
 - Never amend, rebase, reset, force-push, push, switch branch, merge or open a pull request.
   phasepr validates only the commits made on top of the HEAD it recorded before this run, and it
@@ -41,7 +43,8 @@ Some things are not yours to decide. Halt — leave the work committed as far as
 - a checklist in `{{FEATURE_DIR}}/checklists/` has unchecked items, where the outline above would
   ask whether to proceed: there is nobody to ask;
 - a task is the owner's: exercising the outcome by hand, a statement only the owner can make, or an
-  outcome status in `docs/product.md` that waits on either (I.9, IV.4);
+  outcome status in `docs/product.md` that waits on either (I.9, IV.4). Any change to
+  `docs/product.md` waits for the owner's review before its phase merges (I.1);
 - a task would change an instruction under `instructions/` (V.1), the constitution, or make a
   decision that neither the plan nor `docs/decisions.md` already makes (II.6);
 - spec, plan and tasks disagree, or a task cannot be done as written without a requirement ID the

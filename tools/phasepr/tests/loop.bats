@@ -46,6 +46,16 @@ setup() {
     [ "$(state_value step)" = "done" ]
 }
 
+@test "--skip-mutation finishes the feature without the mutation measurement" {
+    run phasepr --skip-mutation
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [ ! -d StrykerOutput ]
+    git fetch -q origin
+    ! git log --format=%s origin/042-demo | grep -q 'record the mutation measurement'
+    pr_json 101 | jq -e '.draft == false'
+}
+
 @test "every agent iteration is a fresh claude -p with the configured flags" {
     run phasepr
     [ "$status" -eq 0 ]
@@ -155,7 +165,7 @@ setup() {
     threads_for_review 1 1
     scenario triage-review.1.sh '
         echo "fix" >> src-phase-2.txt
-        git commit -qam "fix: rename the thing"
+        git commit -qam "fix(042): rename the thing"
         gh_review=$(grep -oE "bash [^ ]+/gh-review.sh" <<< "$PROMPT" | head -n1 | cut -d" " -f2)
         "$gh_review" reply 102 101 "Fixed in $(git rev-parse --short HEAD): renamed."
         "$gh_review" resolve T_1_1
@@ -167,7 +177,7 @@ setup() {
     [ "$(count_calls 'requested_reviewers -f reviewers\[\]=copilot-pull-request-reviewer\[bot\]')" -eq 1 ]
     grep -q '^Fixed in ' "$FAKE_GH/replies.log"
     git fetch -q origin
-    git log --format=%s origin/042-demo | grep -qx 'fix: rename the thing'
+    git log --format=%s origin/042-demo | grep -qx 'fix(042): rename the thing'
     # The gates ran again before the fix was pushed.
     [ "$(count_calls '^dotnet test')" -eq 2 ]
 }
@@ -188,7 +198,7 @@ setup() {
     threads_for_review 4 1
     scenario triage-review.sh '
         echo "fix $CALL" >> src-phase-2.txt
-        git commit -qam "fix: round $CALL"
+        git commit -qam "fix(042): round $CALL"
         echo "{\"changed\": true, \"halt\": null}"'
     run phasepr --phase 2
     echo "$output"
@@ -209,7 +219,7 @@ setup() {
     threads_for_review 4 1
     scenario triage-review.sh '
         echo "fix $CALL" >> src-phase-2.txt
-        git commit -qam "fix: round $CALL"
+        git commit -qam "fix(042): round $CALL"
         echo "{\"changed\": true, \"halt\": null}"'
     run phasepr --phase 2
     [ "$status" -eq 1 ]
@@ -251,7 +261,7 @@ setup() {
         grep -q "The gates are red" <<< "$PROMPT"
         grep -q "DemoTests.Base_Exists" <<< "$PROMPT"
         echo fixed >> src-phase-2.txt
-        git commit -qam "fix: the base exists"
+        git commit -qam "fix(demo-001): the base exists"
         echo "{\"halt\": null}"'
     run phasepr --phase 2
     echo "$output"
@@ -264,7 +274,7 @@ setup() {
     printf 'DemoTests.Base_Exists\nDemoTests.Base_Exists\n' > "$FAKE_GH/test-failures"
     scenario implement-phase.2.sh '
         echo try >> src-phase-2.txt
-        git commit -qam "fix: try"
+        git commit -qam "fix(042): try"
         echo "{\"halt\": null}"'
     run phasepr --phase 2
     echo "$output"
@@ -277,9 +287,9 @@ setup() {
 @test "gates red twice for different reasons do not halt" {
     printf 'DemoTests.Base_Exists\nDemoTests.Base_IsWhole\npass\n' > "$FAKE_GH/test-failures"
     scenario implement-phase.sh '
-        [ "$CALL" -eq 1 ] || { echo more >> src-phase-2.txt; git add -A; git commit -qm "fix: $CALL"; echo "{\"halt\": null}"; exit 0; }
+        [ "$CALL" -eq 1 ] || { echo more >> src-phase-2.txt; git add -A; git commit -qm "fix(042): $CALL"; echo "{\"halt\": null}"; exit 0; }
         for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
-        git commit -qam "feat: base"; echo "{\"halt\": null}"'
+        git commit -qam "feat(042): base"; echo "{\"halt\": null}"'
     run phasepr --phase 2
     echo "$output"
     [ "$status" -eq 0 ]
@@ -294,6 +304,35 @@ setup() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"phasepr halted: agent-halt"* ]]
     [[ "$output" == *"Owner decision: T002 needs a requirement ID the spec does not have"* ]]
+}
+
+@test "an agent commit whose subject is not type(scope): subject halts, and nothing is rewritten" {
+    scenario implement-phase.sh '
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git commit -qam "test(demo-001): the base exists"
+        echo more >> src-phase-2.txt; git add -A; git commit -qm "T002: Build the base"
+        echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: commit-subject"* ]]
+    [[ "$output" == *"T002: Build the base"* ]]
+    [[ "$output" != *"the base exists;"* ]]
+    [ "$(git log -1 --format=%s)" = "T002: Build the base" ]
+    [ ! -f "$FAKE_GH/pulls/102.json" ]
+}
+
+@test "a rerun after a commit-subject halt judges only the commits it makes itself" {
+    scenario implement-phase.1.sh '
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git add -A; git commit -qm "Build the base"
+        echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    pr_json 102 | jq -e '.merged_at != null'
 }
 
 @test "an agent refused something it needed halts the run and names it" {
@@ -312,7 +351,7 @@ setup() {
     scenario implement-phase.sh '
         cp "$BATS_TEST_TMPDIR/push.json" "$FAKE_GH/denials.json"
         for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
-        git commit -qam "feat: base"; echo "{\"halt\": null}"'
+        git commit -qam "feat(042): base"; echo "{\"halt\": null}"'
     run phasepr --phase 2
     echo "$output"
     [ "$status" -eq 0 ]
@@ -331,7 +370,7 @@ setup() {
 @test "an agent that checks a task of another phase halts the run" {
     scenario implement-phase.sh '
         sed "s/^- \[ \] T003 /- [X] T003 /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md
-        git commit -qam "feat: too much"; echo "{\"halt\": null}"'
+        git commit -qam "feat(042): too much"; echo "{\"halt\": null}"'
     run phasepr --phase 2
     [ "$status" -eq 1 ]
     [[ "$output" == *"phasepr halted: protocol-violation"* ]]
@@ -364,11 +403,24 @@ setup() {
     [ "$(count_calls '^pr merge')" -eq 0 ]
 }
 
+@test "a phase that changes docs/product.md waits for the owner's approval (I.1)" {
+    scenario implement-phase.sh '
+        mkdir -p docs; echo "OUT-99 Done" > docs/product.md
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git add -A; git commit -qm "docs(042): the outcome is done"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: owner-review"* ]]
+    [[ "$output" == *"docs/product.md"* ]]
+    [ "$(count_calls '^pr merge')" -eq 0 ]
+}
+
 @test "a phase that changes docs/decisions.md waits for the owner's approval (I.11)" {
     scenario implement-phase.sh '
         mkdir -p docs; echo "DEC-001" > docs/decisions.md
         for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
-        git add -A; git commit -qm "docs: a decision"; echo "{\"halt\": null}"'
+        git add -A; git commit -qm "docs(042): a decision"; echo "{\"halt\": null}"'
     run phasepr --phase 2
     echo "$output"
     [ "$status" -eq 1 ]

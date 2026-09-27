@@ -37,7 +37,7 @@ default_implement() {
     done
     printf 'phase %s, call %s\n' "$phase" "$CALL" >> "src-phase-$phase.txt"
     git add -A
-    git commit -q -m "feat: phase $phase work ($CALL)"
+    git commit -q -m "feat(042): phase $phase work ($CALL)"
     printf 'Done.\n{"halt": null}\n'
 }
 

@@ -44,7 +44,7 @@ bash tools/phasepr/scripts/bash/phasepr-loop.sh --status     # where it stands; 
 ```
 
 Flags: `--feature NNN-slug`, `--phase N`, `--dry-run`, `--status`, `--model ID`,
-`--max-review-rounds N`, `--review-timeout S`, `--max-turns N`.
+`--max-review-rounds N`, `--review-timeout S`, `--max-turns N`, `--skip-mutation`.
 
 A run takes hours. Start it in a terminal you can leave open (or with `nohup`), and rerun it after
 a halt or a Ctrl+C: it carries on where it stopped.
@@ -58,7 +58,8 @@ started) and `/speckit.phasepr.status`. That installation has **not** been tried
 - bash 4 or newer (macOS: `brew install bash`), git, jq.
 - `gh`, logged in with rights to push, open, review-request and merge. Review threads, resolving a
   thread, `gh pr merge`, `gh pr ready` and `gh pr checks` go through GitHub's GraphQL API; the rest
-  is REST.
+  is REST. A Claude Code cloud session blocks GraphQL at its proxy, so phasepr does not run there as
+  it stands; run it on a machine with a normal `gh` login.
 - `claude`, signed in through its own OAuth login. No `ANTHROPIC_API_KEY`: every iteration uses the
   CLI's existing sign-in.
 - `dotnet` for the gates, and whatever `scripts/mutation.sh` needs.
@@ -100,7 +101,7 @@ the flags.
 
 | Key | Default | |
 | --- | --- | --- |
-| `model` | empty — the CLI's default | set a pinned model id |
+| `model` | `claude-opus-5-5` | a pinned id that supports auto mode |
 | `agent_cli` | `claude` | the only one implemented; `invoke_agent` is where another would go |
 | `permission_mode` | `auto` | `auto` or `bypassPermissions`; see "Permissions" |
 | `max_turns` | 200 | per iteration |
@@ -109,6 +110,7 @@ the flags.
 | `review_timeout` | 600 | seconds to wait for the review of the current head |
 | `review_poll_interval` | 20 | seconds between two polls |
 | `reviewer_login` | `copilot-pull-request-reviewer[bot]` | see below |
+| `run_mutation` | `true` | `false` (or `--skip-mutation` for one run) leaves the measurement to CI's `mutation` job on the PR to main |
 
 ### Reviewer login
 
@@ -128,8 +130,29 @@ Verified on 2026-09-27 against this repository with a throwaway PR (#55):
 - Copilot's reviews carry the login `copilot-pull-request-reviewer[bot]`; its review comments carry
   the login `Copilot`.
 
-Not verified: `gh pr edit --add-reviewer copilot`. It goes through GraphQL, which the session that
-built this could not reach, and older `gh` releases do not know the name. phasepr does not use it.
+Not verified: `gh pr edit --add-reviewer copilot`. phasepr does not use it.
+
+### Verified against GitHub
+
+On 2026-09-27, with `gh` 2.101.0 and a normal login, every `gh-review.sh` subcommand ran against
+this repository on a throwaway PR (#59, into a throwaway base branch; both deleted afterwards):
+`phase-open`; `wait` (Copilot's review on opening, 102 s); `threads` (GraphQL — the one open thread
+with its node id, comment id, path and line; GraphQL reports the author as
+`copilot-pull-request-reviewer`, without `[bot]`); `reply`; `resolve` (GraphQL — no open thread
+left); `rerequest` and `wait` again (review of the new head, 119 s); `ready` (draft → ready, and a
+no-op on a ready PR); `checks` (`gh pr checks --watch`, exit 0 with every check green); `merge`
+(`gh pr merge --merge --delete-branch`: a merge commit with two parents, the head branch deleted,
+no local checkout touched).
+
+Not seen for real: `checks` while checks are still running or not yet registered, `merge` on a
+conflict, `find … merged`, `tick` and `draft-open` — the fake GitHub of the tests covers them.
+
+### Branch protection
+
+Read on 2026-09-27: `main` and the feature branch `004-ask-the-wiki` are not protected, and the one
+ruleset (`main`) is disabled. phasepr assumes feature branches carry no required reviews or checks:
+it merges a phase PR itself once its checks are green. A protection that requires an approval makes
+`gh pr merge` fail, and phasepr halts with `github-error`.
 
 ## Branches
 
@@ -148,7 +171,11 @@ phase. Afterwards, from git alone:
 - no checkbox outside the phase moved;
 - progress is a new commit or a newly checked task; three iterations in a row without either trip
   the circuit breaker;
-- a triage's `{"changed": …}` must agree with whether it committed.
+- a triage's `{"changed": …}` must agree with whether it committed;
+- every new commit's subject reads `type(scope): subject`, the scope the feature's number or a
+  requirement ID in lower case (`feat(003): …`, `test(runs-008): …`), as this repository's history
+  does. A commit that does not halts the run with `commit-subject`; phasepr never rewords it. A rerun
+  judges only the commits made after it starts, so rerunning accepts the flagged ones as they are.
 
 A phase is done when its tasks are checked, the tree is clean and `gates.sh` — run by phasepr —
 is green on that exact commit: `dotnet build`, the Fast suite under its 15 s session timeout
@@ -170,7 +197,8 @@ owner has to make. Rerun it once that is decided.
 | `merge-conflict` | the phase PR conflicts with the feature branch | merges the feature branch in (no rebase) |
 | `circuit-breaker` | three agent iterations in a row without progress | reads the logs and the handoff |
 | `protocol-violation` | history rewritten, branch switched, another phase's checkbox moved | repairs by hand; nothing was reset |
-| `owner-review` | the phase changes `instructions/`, `docs/decisions.md` or the constitution (I.11) | approves the PR (phasepr then merges) or merges it |
+| `owner-review` | the phase changes `instructions/`, `docs/decisions.md`, the constitution (I.11) or `docs/product.md` (I.1) | approves the PR (phasepr then merges) or merges it |
+| `commit-subject` | an agent commit is not `type(scope): subject` with the feature's number or a requirement ID as scope | rewords it on the branch, or reruns to accept it |
 | `ci-red` | the PR's checks are red although `gates.sh` was green | looks at the check |
 | `permission-denied` | the permission mode refused an agent something it needed | allows it in `.claude/settings.json`, changes model or mode, or takes it out of the task |
 | `triage-mismatch` | a triage claimed a change it did not commit, or the reverse | checks its replies |
@@ -209,7 +237,8 @@ item 4).
 bats tools/phasepr/tests
 ```
 
-bats-core, git and jq; about a minute. `tests/shims/` puts fakes first on `PATH`: `gh` is a small
+bats-core, git and jq; about a minute on Linux, several on macOS. CI runs them, with shellcheck,
+in `.github/workflows/tooling.yml` whenever `tools/phasepr/` changes — not a required check. `tests/shims/` puts fakes first on `PATH`: `gh` is a small
 file-backed GitHub (PRs, reviews, GraphQL threads, merges into a local bare `origin`, a Copilot that
 reviews on opening and on request), `claude` runs a per-test scenario script per iteration, and
 `dotnet` fails `dotnet test` on cue. Every test builds its own repository from

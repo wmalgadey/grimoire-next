@@ -25,6 +25,7 @@
 # Usage:
 #   phasepr-loop.sh [--feature NNN-slug] [--phase N] [--dry-run] [--status]
 #                   [--model ID] [--max-review-rounds N] [--review-timeout S] [--max-turns N]
+#                   [--skip-mutation]
 
 # shellcheck disable=SC2016 # backticks and $vars in single quotes are Markdown and GraphQL
 set -euo pipefail
@@ -57,6 +58,7 @@ CFG_REVIEW_TIMEOUT=600
 CFG_POLL=20
 CFG_REVIEWER="copilot-pull-request-reviewer[bot]"
 CFG_PERMISSION_MODE="auto"
+CFG_RUN_MUTATION="true"
 
 FEATURE=""
 ONLY_PHASE=""
@@ -103,6 +105,7 @@ load_config() {
             review_poll_interval) CFG_POLL=$value ;;
             reviewer_login) CFG_REVIEWER=$value ;;
             permission_mode) CFG_PERMISSION_MODE=$value ;;
+            run_mutation) CFG_RUN_MUTATION=$value ;;
             *) die_usage "unknown key '$key' in $file" ;;
         esac
     done < "$file"
@@ -119,6 +122,7 @@ while [[ $# -gt 0 ]]; do
         --phase) need_value "$@"; ONLY_PHASE=$2; shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
         --status) STATUS_ONLY=true; shift ;;
+        --skip-mutation) CFG_RUN_MUTATION=false; shift ;;
         --model) need_value "$@"; CFG_MODEL=$2; shift 2 ;;
         --max-review-rounds) need_value "$@"; CFG_MAX_ROUNDS=$2; shift 2 ;;
         --review-timeout) need_value "$@"; CFG_REVIEW_TIMEOUT=$2; shift 2 ;;
@@ -140,6 +144,10 @@ fi
 case "$CFG_AGENT_CLI" in
     claude) ;;
     *) die_usage "agent_cli '$CFG_AGENT_CLI' is not implemented; only 'claude' is" ;;
+esac
+case "$CFG_RUN_MUTATION" in
+    true|false) ;;
+    *) die_usage "run_mutation must be true or false, got '$CFG_RUN_MUTATION'" ;;
 esac
 # Headless, a permission prompt has nobody to answer it: only the modes that never ask will do.
 case "$CFG_PERMISSION_MODE" in
@@ -313,7 +321,7 @@ EOF
     exit 1
 }
 
-# shellcheck disable=SC2317 # invoked by the trap
+# shellcheck disable=SC2317,SC2329 # invoked by the trap
 on_interrupt() {
     trap - INT TERM
     log "interrupted during step '$S_STEP'; state kept in $STATE"
@@ -340,6 +348,19 @@ validate_history() {
     if ! git merge-base --is-ancestor "$before" HEAD; then
         halt protocol-violation "The agent rewrote history below the recorded HEAD $before (amend, reset or rebase). Nothing was reset; restore the history by hand and rerun."
     fi
+}
+
+# The commits an agent made read like this repository's own: type(scope): subject, the scope this
+# feature's number or a requirement ID in lower case — feat(003): …, test(runs-008): …. A commit
+# that does not is the owner's to reword or accept; phasepr never rewrites history.
+check_commit_subjects() {
+    local before=$1 bad
+    bad=$(git log --no-merges --format='%h %s' "$before..HEAD" | while IFS=' ' read -r hash subject; do
+        [[ "$subject" =~ ^(feat|fix|docs|test|refactor|chore|build|ci|perf|style|revert)\(($FEATURE_NUM|[a-z]+-[0-9]{3})\)!?:\ [^[:space:]] ]] \
+            || printf '%s %s\n' "$hash" "$subject"
+    done)
+    [[ -z "$bad" ]] && return 0
+    halt commit-subject "Commit(s) not in the form type($FEATURE_NUM|<capability>-nnn): subject — $(paste -sd';' - <<< "$bad" | sed 's/;/; /g'). phasepr rewrites nothing: reword them on the branch yourself, or accept them as they are; a rerun judges only commits made after it starts."
 }
 
 other_phases_unchanged() {
@@ -528,7 +549,7 @@ implement_iteration() {
     prompt="/speckit-implement $(render "$EXT_ROOT/prompts/implement-phase.md" \
         "PHASE=$n" "PHASE_TITLE=$(phase_title "$n")" "FEATURE_DIR=$FEATURE_DIR" \
         "PHASE_BRANCH=$S_PHASE_BRANCH" "MEMORY_PATH=$MEMORY" "GATES_SCRIPT=$GATES_SH" \
-        "OPEN_TASKS=$("$TASKS_SH" open "$TASKS" "$n" | paste -sd, - | sed 's/,/, /g')" \
+        "FEATURE_NUM=$FEATURE_NUM" "OPEN_TASKS=$("$TASKS_SH" open "$TASKS" "$n" | paste -sd, - | sed 's/,/, /g')" \
         "GATE_FAILURE=$failure")"
     log "phase $n: implement iteration $S_ITER"
     invoke_agent implement "$prompt"
@@ -537,6 +558,7 @@ implement_iteration() {
     validate_history "$before" "$S_PHASE_BRANCH"
     other_phases_unchanged "$others" "$n"
     check_denials implement
+    check_commit_subjects "$before"
     halt_reason=$(json_tail "$AGENT_RESULT" | jq -r '.halt // empty' 2>/dev/null || true)
     [[ -n "$halt_reason" ]] && halt agent-halt "$halt_reason"
 
@@ -634,7 +656,8 @@ triage_round() {
     prompt=$(render "$EXT_ROOT/prompts/triage-review.md" \
         "PR=$S_PHASE_PR" "PHASE=$n" "PHASE_TITLE=$(phase_title "$n")" "FEATURE_DIR=$FEATURE_DIR" \
         "PHASE_BRANCH=$S_PHASE_BRANCH" "ROUND=$((S_REVIEW_ROUND + 1))" "MAX_ROUNDS=$CFG_MAX_ROUNDS" \
-        "THREADS_JSON=$threads" "GH_REVIEW=$GH_REVIEW" "MEMORY_PATH=$MEMORY" "GATES_SCRIPT=$GATES_SH")
+        "THREADS_JSON=$threads" "GH_REVIEW=$GH_REVIEW" "MEMORY_PATH=$MEMORY" "GATES_SCRIPT=$GATES_SH" \
+        "FEATURE_NUM=$FEATURE_NUM")
     log "phase $n: triage of $(jq length <<< "$threads") thread(s), round $((S_REVIEW_ROUND + 1))"
     TRIAGE_DONE=false
     invoke_agent triage "$prompt"
@@ -646,6 +669,7 @@ triage_round() {
     validate_history "$before" "$S_PHASE_BRANCH"
     other_phases_unchanged "$others" "$n"
     check_denials triage
+    check_commit_subjects "$before"
     json=$(json_tail "$AGENT_RESULT")
     if [[ -z "$json" ]] || ! jq -e 'has("changed")' <<< "$json" >/dev/null; then
         record_progress false "triage (no {\"changed\", \"halt\"} line)"
@@ -727,14 +751,17 @@ merge_phase() {
     S_STEP=merge
     state_write
     run git fetch origin "$FEATURE"
+    # What the owner reviews before a merge: an instruction, a decision, the constitution (I.11),
+    # and the product file, which the owner writes (I.1).
     owner_paths=$(git diff --name-only "origin/$FEATURE...HEAD" 2>/dev/null \
-        | grep -E '^(instructions/|docs/decisions\.md$|\.specify/memory/constitution\.md$)' | paste -sd' ' - || true)
+        | grep -E '^(instructions/|docs/decisions\.md$|docs/product\.md$|\.specify/memory/constitution\.md$)' \
+        | paste -sd' ' - || true)
     if [[ -n "$owner_paths" ]] && ! "$GH_REVIEW" approved "$S_PHASE_PR"; then
         if [[ "$S_OWNER_ASKED" != "$S_PHASE_PR" ]]; then
-            "$GH_REVIEW" comment "$S_PHASE_PR" "phasepr stops before merging: this PR changes $owner_paths, and Constitution I.11 asks for the owner's review of an instruction, a design invariant or a decision. An approving review lets phasepr merge it on its next run."
+            "$GH_REVIEW" comment "$S_PHASE_PR" "phasepr stops before merging: this PR changes $owner_paths, and the owner reviews those before they merge: an instruction, a decision or the constitution (I.11), or the product file (I.1). An approving review lets phasepr merge it on its next run."
             S_OWNER_ASKED=$S_PHASE_PR
         fi
-        halt owner-review "PR #$S_PHASE_PR changes $owner_paths (I.11). Review it: approve it and rerun (phasepr merges), or merge it yourself and rerun."
+        halt owner-review "PR #$S_PHASE_PR changes $owner_paths (I.1, I.11). Review it: approve it and rerun (phasepr merges), or merge it yourself and rerun."
     fi
     if ! "$GH_REVIEW" checks "$S_PHASE_PR"; then
         halt ci-red "CI is red on PR #$S_PHASE_PR though gates.sh was green here. Look at the failing check; fix it on '$S_PHASE_BRANCH' (or tell the agent in $MEMORY) and rerun."
@@ -922,7 +949,11 @@ finish() {
         halt phases-open "Not every phase of $TASKS is checked on '$FEATURE' although phasepr went through all of them. Check tasks.md on the feature branch and rerun."
     fi
     run git checkout "$FEATURE"
-    record_mutation
+    if [[ "$CFG_RUN_MUTATION" == "true" ]]; then
+        record_mutation
+    else
+        log "mutation measurement skipped (run_mutation: false or --skip-mutation)"
+    fi
     S_STEP=ready
     state_write
     "$GH_REVIEW" ready "$S_DRAFT_PR"

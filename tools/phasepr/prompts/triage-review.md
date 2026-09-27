@@ -30,13 +30,15 @@ Decide first, then act.
   widens the scope of this phase, or when it is wrong. Say which, in one or two sentences, citing
   the rule or the code that shows it.
 - **Halt** when the answer is a new mechanism (Governance 3), or when answering it would change an
-  instruction under `instructions/`, a design invariant (constitution V) or a decision in
-  `docs/decisions.md` (I.11). Leave that thread open and unanswered: it is the owner's.
+  instruction under `instructions/`, a design invariant (constitution V), a decision in
+  `docs/decisions.md` (I.11) or the owner-written `docs/product.md` (I.1). Leave that thread open
+  and unanswered: it is the owner's.
 
 Then:
 
-1. Commit each accepted fix on `{{PHASE_BRANCH}}` in a conventional commit, in the style
-   `git log` shows. If you changed code, run `{{GATES_SCRIPT}}` before you finish.
+1. Commit each accepted fix on `{{PHASE_BRANCH}}` as `type(scope): subject`, the scope
+   `{{FEATURE_NUM}}` or the requirement ID the fix serves in lower case, as `git log` shows
+   (`fix({{FEATURE_NUM}}): …`). phasepr halts on any other subject. If you changed code, run `{{GATES_SCRIPT}}` before you finish.
 2. Reply to every thread you accepted or declined — accepted: `Fixed in <short hash>: <what
    changed>`; declined: the reason:
 
