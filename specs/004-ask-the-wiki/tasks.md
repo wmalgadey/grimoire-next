@@ -299,74 +299,74 @@ cost stands beside it against its ceiling. Needs no follow-up and no failure.
 **This is the first point at which OUT-03 is exercisable by hand**, and the first place the owner
 could stop and still have what they asked for.
 
-- [ ] T043 [US1] Register **QUERY-001** and **QUERY-003** in `docs/capabilities/query.md`, and
+- [X] T043 [US1] Register **QUERY-001** and **QUERY-003** in `docs/capabilities/query.md`, and
       **ACCESS-007**, **ACCESS-008** and **ACCESS-010** in `docs/capabilities/access.md`, with the
       notes the spec gives them — including why ACCESS-008 stands apart from ACCESS-005 rather than
       extending it. Before any test of this phase (Constitution IV.2) — **Req:** Principle IV.2
 
 ### Tests for User Story 1
 
-- [ ] T044 [P] [US1] `QuestionAcceptanceTests` in `tests/Grimoire.Fast.Tests/`: a question is accepted
+- [X] T044 [P] [US1] `QuestionAcceptanceTests` in `tests/Grimoire.Fast.Tests/`: a question is accepted
       and answered with the turn as the stream carries one, **before its run has produced anything** —
       the user waits for no part of the answer; and a question asked while something else runs is
       accepted, not refused — **Req:** QUERY-001 | **Level:** Fast — **Why not lower:** there is no lower level; acceptance is an in-process decision through `HubApplication.Build`
-- [ ] T045 [P] [US1] `QuestionRefusalTests` in `tests/Grimoire.Fast.Tests/`: the three refusals in the
+- [X] T045 [P] [US1] `QuestionRefusalTests` in `tests/Grimoire.Fast.Tests/`: the three refusals in the
       order contracts/hub-http-api.md gives — `question-instruction-missing`,
       `purpose-description-missing`, `question-empty` — each naming **exactly one** thing; no run
       starts, nothing is stored and the refused question carries no state — **Req:** QUERY-003 | **Level:** Fast — **Why not lower:** the refusal is the intake's own judgment, with the in-memory adapters at every port
-- [ ] T046 [P] [US1] `ChatStreamTests` in `tests/Grimoire.Fast.Tests/`: the opening `chat` event
+- [X] T046 [P] [US1] `ChatStreamTests` in `tests/Grimoire.Fast.Tests/`: the opening `chat` event
       carries every turn, the total and the cost ceiling; then `asked`, `answer`, `step` and `question`
       events carry **the one thing that changed** and nothing else — one more field would be a
       mechanism with no consumer — **Req:** ACCESS-007 | **Level:** Fast — **Why not lower:** what is put on the stream is an in-process assertion; what the browser does with it is this story's E2E half
-- [ ] T047 [P] [US1] `ChatStreamTests`: a turn's `state` is **exactly one** of `waiting`,
+- [X] T047 [P] [US1] `ChatStreamTests`: a turn's `state` is **exactly one** of `waiting`,
       `answering`, `answered`, `no-answer`, read from whether there is a run and whether it has ended —
       four values inside one requirement, never one requirement per value (Constitution IV.7) — **Req:** ACCESS-007 | **Level:** Fast — **Why not lower:** the mapping is read from domain objects the Fast suite already drives
-- [ ] T048 [P] [US1] `ChatStreamTests`: a question that has a run carries `costSpent`, the same
+- [X] T048 [P] [US1] `ChatStreamTests`: a question that has a run carries `costSpent`, the same
       quantity the cost ceiling counts; a question **waiting its turn carries no `costSpent` at all** —
       not a zero — because it has no run and there is nothing true to say about one; and `total` is
       carried with **no ceiling beside it** — **Req:** ACCESS-008, RUNS-010 | **Level:** Fast — **Why not lower:** the figures are the run's own, read through the in-memory store
-- [ ] T049 [P] [US1] `ChatStreamTests`: a browser that subscribes again is given a fresh snapshot
+- [X] T049 [P] [US1] `ChatStreamTests`: a browser that subscribes again is given a fresh snapshot
       carrying what arrived while it was away, and nothing is replayed from a buffer and no
       `Last-Event-ID` is read — **Req:** ACCESS-007 | **Level:** Fast — **Why not lower:** subscribing twice is in-process; that `EventSource` reconnects by itself is browser behaviour and is not tested (III.8)
-- [ ] T050 [US1] `AskingTheWikiTests` in `tests/Grimoire.E2E.Tests/`: the owner reaches the chat,
+- [X] T050 [US1] `AskingTheWikiTests` in `tests/Grimoire.E2E.Tests/`: the owner reaches the chat,
       sends a question and the answer **grows in place** as the agent writes — text appears while the
       run is under way, and the question above it and everything already drawn stay exactly where they
       were — **Req:** ACCESS-007 | **Level:** E2E — **Why not lower:** "content arriving must not move what the user is already reading" is geometry, and only a real browser has a layout (DEC-020)
-- [ ] T051 [US1] `AskingTheWikiTests`: what the question has spent stands beside it against its
+- [X] T051 [US1] `AskingTheWikiTests`: what the question has spent stands beside it against its
       ceiling and rises while the run is under way; the chat's total stands with **no ceiling beside
       it** and no currency anywhere; and a figure rising moves nothing — **Req:** ACCESS-008 | **Level:** E2E — **Why not lower:** same; a figure changing without moving the page is only observable in a browser
-- [ ] T052 [P] [US1] `NavigationTests` in `tests/Grimoire.E2E.Tests/`: from each of the three pages
+- [X] T052 [P] [US1] `NavigationTests` in `tests/Grimoire.E2E.Tests/`: from each of the three pages
       the other two are reachable — submitting a source, reading a submission's run, and asking the
       wiki — **Req:** ACCESS-010 | **Level:** E2E — **Why not lower:** a link the user follows between three served pages exists only in a browser
-- [ ] T053 [US1] `AskingTheWikiTests`: after a question has been answered through the real hub, the
+- [X] T053 [US1] `AskingTheWikiTests`: after a question has been answered through the real hub, the
       wiki directory is **byte for byte** what it was — no page, no index, no log entry — and the
       hub's question endpoint answers with the two read tools and no other — **Req:** GUARD-005 | **Level:** E2E — **Why not lower:** "the wiki is unchanged after a real question" is a claim about a real directory a real hub served, which no unit can make (research.md R-11)
 
 ### Implementation for User Story 1
 
-- [ ] T054 [US1] `src/Grimoire.Hub/ChatIntake.cs`: a question accepted or refused against the three
+- [X] T054 [US1] `src/Grimoire.Hub/ChatIntake.cs`: a question accepted or refused against the three
       conditions in order, and dispatched **without the user waiting** — the shape `SubmissionIntake`
       already has, because a question queues by the same rule — **Req:** QUERY-001, QUERY-003
-- [ ] T055 [US1] `src/Grimoire.Hub/Api/ChatEndpoints.cs`: `POST /api/chat/questions` answering `202`
+- [X] T055 [US1] `src/Grimoire.Hub/Api/ChatEndpoints.cs`: `POST /api/chat/questions` answering `202`
       with the turn, or `422` with the one `reason`; and `GET /api/chat/events` with the snapshot and
       the four increment events of contracts/hub-http-api.md. **No run identifier reaches the
       browser** — the chat addresses the question — **Req:** QUERY-001, QUERY-003, ACCESS-007
-- [ ] T056 [US1] `src/Grimoire.Hub/Chat.cs` and `RunConductor.cs`: each turn carries `CostSpent` and
+- [X] T056 [US1] `src/Grimoire.Hub/Chat.cs` and `RunConductor.cs`: each turn carries `CostSpent` and
       `CostCeiling` read from the run's own figure (DEC-030, RUNS-010) and the chat's `Total` is the
       sum over the turns — **nothing is counted a second time**, which is why a failed question's spend
       is in the total — **Req:** ACCESS-008
-- [ ] T057 [P] [US1] `src/Grimoire.Hub/wwwroot/chat.html`: the conversation — text-first, the answer as
+- [X] T057 [P] [US1] `src/Grimoire.Hub/wwwroot/chat.html`: the conversation — text-first, the answer as
       prose, a step in monospace where it is a log or a file (`docs/ux.md`). Each figure in its own
       element with tabular figures and a reserved width, so a rising figure moves nothing — **Req:** ACCESS-007, ACCESS-008
-- [ ] T058 [US1] `src/Grimoire.Hub/wwwroot/chat.js`: `EventSource` on `GET /api/chat/events`; the
+- [X] T058 [US1] `src/Grimoire.Hub/wwwroot/chat.js`: `EventSource` on `GET /api/chat/events`; the
       answer grows by **appending to the text node that is already there** and an element once drawn is
       never replaced, which is what keeps the scroll and everything read where the user put it. No
       poll anywhere — **Req:** ACCESS-007, ACCESS-008
-- [ ] T059 [P] [US1] `src/Grimoire.Hub/wwwroot/index.html`, `run.html` and `chat.html`: a line of links
+- [X] T059 [P] [US1] `src/Grimoire.Hub/wwwroot/index.html`, `run.html` and `chat.html`: a line of links
       to the other two jobs on each of the three pages. `docs/ux.md` withholds navigation chrome
       "until a second job exists" and a third exists now; it stays a line of links — no bar, no menu
       (research.md R-14) — **Req:** ACCESS-010
-- [ ] T060 [US1] `src/Grimoire.Hub/HubApplication.cs`: the chat endpoints and `chat.html` served, so
+- [X] T060 [US1] `src/Grimoire.Hub/HubApplication.cs`: the chat endpoints and `chat.html` served, so
       every suite reaches the chat the browser reaches (Constitution III.9) — **Req:** Principle V.2
 
 **Checkpoint**: OUT-03 is exercisable by hand. A question can be asked in the browser and its answer
