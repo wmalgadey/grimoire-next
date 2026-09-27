@@ -60,7 +60,7 @@ setup() {
     run phasepr
     [ "$status" -eq 0 ]
     calls | grep '^claude ' | while read -r line; do
-        [[ "$line" == *"--permission-mode auto --output-format json --max-turns 200 --model test-model --disallowedTools Bash(git push:*) Bash(git reset:*) Bash(git rebase:*) Bash(git commit --amend:*) Bash(gh pr merge:*)" ]]
+        [[ "$line" == *"--permission-mode auto --output-format json --max-turns 200 --model test-model --disallowedTools Bash(git push:*) Bash(git reset:*) Bash(git rebase:*) Bash(git merge:*) Bash(git commit --amend:*) Bash(gh pr merge:*)" ]]
     done
     [ "$(count_calls '^claude implement-phase')" -eq 2 ]
     [ "$(count_calls '^claude draft-body')" -eq 1 ]
@@ -387,6 +387,52 @@ setup() {
     [ "$(git log -1 --format=%s)" = "rewritten" ]
 }
 
+@test "an agent that commits on another branch and comes back halts the run" {
+    scenario implement-phase.sh '
+        git checkout -q 042-demo; git commit -q --allow-empty -m "feat(042): on the side"
+        git checkout -q 042-demo-phase-2-base
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git commit -qam "feat(042): base"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: protocol-violation"* ]]
+    [[ "$output" == *"moved a branch other than '042-demo-phase-2-base' (042-demo)"* ]]
+}
+
+@test "an agent that makes a merge commit halts the run" {
+    git checkout -q -b side; git commit -q --allow-empty -m "feat(042): side"; git checkout -q 042-demo
+    scenario implement-phase.sh '
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git commit -qam "feat(042): base"
+        git merge -q --no-ff side -m "feat(042): bring in side"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"The agent made a merge commit"* ]]
+}
+
+@test "a thread by someone other than Copilot or the owner never reaches an agent" {
+    threads_for_review 1 1
+    jq 'map(.comments.nodes[0].author.login = "mallory")' "$FAKE_GH/review-queue/1.json" > "$FAKE_GH/q" \
+        && mv "$FAKE_GH/q" "$FAKE_GH/review-queue/1.json"
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: untrusted-review"* ]]
+    [[ "$output" == *"open threads by mallory"* ]]
+    [ "$(count_calls '^claude triage-review')" -eq 0 ]
+}
+
+@test "more review threads than one page halts instead of reading them as fewer" {
+    export FAKE_THREADS_MORE=1
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: github-error"* ]]
+    [[ "$output" == *"more than 100 threads"* ]]
+}
+
 @test "a merge conflict halts before merging" {
     export FAKE_CONFLICT=1
     run phasepr --phase 2
@@ -426,7 +472,16 @@ setup() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"phasepr halted: owner-review"* ]]
     grep -q 'phasepr stops before merging' "$FAKE_GH/comments.log"
-    jq '. + [{user: {login: "owner", type: "User"}, state: "APPROVED", commit_id: "x"}]' \
+    head=$(git rev-parse 042-demo-phase-2-base)
+    # Neither another person's approval nor the owner's of an older head lets it merge.
+    jq --arg head "$head" '. + [{user: {login: "someone", type: "User"}, state: "APPROVED", commit_id: $head},
+                               {user: {login: "owner", type: "User"}, state: "APPROVED", commit_id: "0ld"}]' \
+        "$FAKE_GH/reviews/102.json" > "$FAKE_GH/r" && mv "$FAKE_GH/r" "$FAKE_GH/reviews/102.json"
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: owner-review"* ]]
+    [[ "$output" == *"approve its head as owner"* ]]
+    jq --arg head "$head" '. + [{user: {login: "owner", type: "User"}, state: "APPROVED", commit_id: $head}]' \
         "$FAKE_GH/reviews/102.json" > "$FAKE_GH/r" && mv "$FAKE_GH/r" "$FAKE_GH/reviews/102.json"
     run phasepr --phase 2
     echo "$output"

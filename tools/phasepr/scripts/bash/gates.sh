@@ -2,7 +2,8 @@
 #
 # gates.sh - what phasepr checks itself before a phase branch is pushed
 #
-# The same commands CI runs (.github/workflows/ci.yml), in the order a failure is cheapest:
+# The same commands CI runs (.github/workflows/ci.yml), in Release as CI builds them, in the order
+# a failure is cheapest:
 #   build          warnings are errors (Directory.Build.props)
 #   fast-suite     the Fast suite under its 15 s session timeout: the time-budget gate (III.7)
 #   trace-check    `check`, not `check --complete`, which holds only where a feature lands on main
@@ -24,7 +25,7 @@ gate() {
     fi
 }
 
-gate build dotnet build Grimoire.slnx
-gate fast-suite dotnet test tests/Grimoire.Fast.Tests --no-build -- --timeout 15s
-gate trace-check dotnet run --project tools/Grimoire.Trace --no-build -- check
+gate build dotnet build Grimoire.slnx --configuration Release
+gate fast-suite dotnet test tests/Grimoire.Fast.Tests --no-build --configuration Release -- --timeout 15s
+gate trace-check dotnet run --project tools/Grimoire.Trace --no-build --configuration Release -- check --configuration Release
 printf '=== gates green\n'

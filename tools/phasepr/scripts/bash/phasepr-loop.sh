@@ -337,16 +337,31 @@ tree_clean() { [[ -z "$(git status --porcelain --untracked-files=all)" ]]; }
 
 remote_has_branch() { git ls-remote --exit-code --heads origin "$1" >/dev/null 2>&1; }
 
+# Every local branch but the phase branch, with where it points: an agent that commits elsewhere
+# and comes back would otherwise slip that commit into a later phase without its review.
+other_branches() {
+    git for-each-ref --format='%(refname) %(objectname)' refs/heads \
+        | grep -v "^refs/heads/$S_PHASE_BRANCH " || true
+}
+
 # Validates what an agent iteration did to history: judged are only the commits on top of the
 # HEAD recorded before it ran.
 validate_history() {
-    local before=$1 branch=$2 now
+    local before=$1 branch=$2 branches=$3 now
     now=$(current_branch)
     if [[ "$now" != "$branch" ]]; then
         halt protocol-violation "The agent left branch '$branch' (now on '${now:-detached HEAD}'). Nothing was reset; inspect both branches, move the work back by hand, and rerun."
     fi
     if ! git merge-base --is-ancestor "$before" HEAD; then
         halt protocol-violation "The agent rewrote history below the recorded HEAD $before (amend, reset or rebase). Nothing was reset; restore the history by hand and rerun."
+    fi
+    if [[ "$(other_branches)" != "$branches" ]]; then
+        halt protocol-violation "The agent moved a branch other than '$branch' ($(diff <(printf '%s\n' "$branches") <(other_branches) | sed -n 's/^> refs\/heads\///p' | cut -d' ' -f1 | paste -sd' ' -)). Nothing was reset; look at what it committed there and rerun."
+    fi
+    # A merge brings in another branch's commits unreviewed; the agent never merges (the prompt says
+    # so, and the CLI refuses `git merge`), so a merge commit here means something went around both.
+    if [[ -n "$(git rev-list --merges "$before..HEAD")" ]]; then
+        halt protocol-violation "The agent made a merge commit on '$branch'. Nothing was reset; undo the merge by hand and rerun."
     fi
 }
 
@@ -355,7 +370,7 @@ validate_history() {
 # that does not is the owner's to reword or accept; phasepr never rewrites history.
 check_commit_subjects() {
     local before=$1 bad
-    bad=$(git log --no-merges --format='%h %s' "$before..HEAD" | while IFS=' ' read -r hash subject; do
+    bad=$(git log --format='%h %s' "$before..HEAD" | while IFS=' ' read -r hash subject; do
         [[ "$subject" =~ ^(feat|fix|docs|test|refactor|chore|build|ci|perf|style|revert)\(($FEATURE_NUM|[a-z]+-[0-9]{3})\)!?:\ [^[:space:]] ]] \
             || printf '%s %s\n' "$hash" "$subject"
     done)
@@ -419,7 +434,11 @@ AGENT_DENIED=""
 # itself, and judges history against its snapshot. The CLI refuses these outright
 # (--disallowedTools); an agent that tries one anyway has done no harm, so such a refusal is only
 # logged. Any other refusal means the agent could not do its work, and phasepr halts on it.
-FORBIDDEN_COMMANDS=("git push" "git reset" "git rebase" "git commit --amend" "gh pr merge")
+# The logins Copilot's review comments carry: `Copilot` over REST (verified); over GraphQL the bot
+# may appear under its app name, which is not verified, so both are accepted.
+TRUSTED_REVIEW_AUTHORS='["Copilot", "copilot-pull-request-reviewer", "copilot-pull-request-reviewer[bot]"]'
+
+FORBIDDEN_COMMANDS=("git push" "git reset" "git rebase" "git merge" "git commit --amend" "gh pr merge")
 
 invoke_agent() {
     local kind=$1 prompt=$2 base
@@ -536,7 +555,7 @@ gate_failure_block() {
 #region Phase steps
 
 implement_iteration() {
-    local n=$1 failure=$2 before others done_before prompt halt_reason progressed
+    local n=$1 failure=$2 before branches others done_before prompt halt_reason progressed
     if (( S_ITER >= CFG_MAX_IMPL )); then
         halt iteration-limit "Phase $n used all $CFG_MAX_IMPL implement iterations without being done (tasks checked, tree clean, gates green). Read $MEMORY and the logs in $LOG_DIR, then rerun or finish the phase by hand."
     fi
@@ -544,6 +563,7 @@ implement_iteration() {
     S_STEP=implement
     state_write
     before=$(git rev-parse HEAD)
+    branches=$(other_branches)
     others=$("$TASKS_SH" others "$TASKS" "$n")
     done_before=$(done_count "$n")
     prompt="/speckit-implement $(render "$EXT_ROOT/prompts/implement-phase.md" \
@@ -555,7 +575,7 @@ implement_iteration() {
     invoke_agent implement "$prompt"
     [[ "$DRY_RUN" == "true" ]] && return 0
 
-    validate_history "$before" "$S_PHASE_BRANCH"
+    validate_history "$before" "$S_PHASE_BRANCH" "$branches"
     other_phases_unchanged "$others" "$n"
     check_denials implement
     check_commit_subjects "$before"
@@ -648,10 +668,11 @@ open_phase_pr() {
 }
 
 triage_round() {
-    local n=$1 threads=$2 before others prompt json halt_reason changed_json changed_git remaining
+    local n=$1 threads=$2 before branches others prompt json halt_reason changed_json changed_git remaining
     S_STEP=triage
     state_write
     before=$(git rev-parse HEAD)
+    branches=$(other_branches)
     others=$("$TASKS_SH" others "$TASKS" "$n")
     prompt=$(render "$EXT_ROOT/prompts/triage-review.md" \
         "PR=$S_PHASE_PR" "PHASE=$n" "PHASE_TITLE=$(phase_title "$n")" "FEATURE_DIR=$FEATURE_DIR" \
@@ -666,7 +687,7 @@ triage_round() {
         return 0
     fi
 
-    validate_history "$before" "$S_PHASE_BRANCH"
+    validate_history "$before" "$S_PHASE_BRANCH" "$branches"
     other_phases_unchanged "$others" "$n"
     check_denials triage
     check_commit_subjects "$before"
@@ -712,7 +733,8 @@ triage_round() {
 
 # Returns once a review of the current head leaves no open thread.
 review_loop() {
-    local n=$1 head rc threads count
+    local n=$1 head rc threads count owner strangers
+    owner=$("$GH_REVIEW" owner)
     while :; do
         head=$(git rev-parse HEAD)
         S_STEP=review
@@ -732,7 +754,8 @@ review_loop() {
         elif [[ $rc -ne 0 ]]; then
             halt github-error "Waiting for the review of PR #$S_PHASE_PR failed (exit $rc)."
         fi
-        threads=$("$GH_REVIEW" threads "$S_PHASE_PR")
+        threads=$("$GH_REVIEW" threads "$S_PHASE_PR") \
+            || halt github-error "Reading the review threads of PR #$S_PHASE_PR failed — more than 100 threads, or GitHub did not answer."
         count=$(jq length <<< "$threads")
         if (( count == 0 )); then
             log "phase $n: the review of the head left no open thread"
@@ -740,6 +763,14 @@ review_loop() {
         fi
         if (( S_REVIEW_ROUND >= CFG_MAX_ROUNDS )); then
             halt review-rounds "$count thread(s) are open after the last of $CFG_MAX_ROUNDS review rounds (I.11). Answer and resolve them on PR #$S_PHASE_PR, then rerun."
+        fi
+        # What a thread says goes into the agent's prompt, and the agent can commit and reply. Only
+        # the reviewer's and the owner's threads get there; anyone else's the owner answers first.
+        strangers=$(jq -r --arg owner "$owner" --argjson trusted "$TRUSTED_REVIEW_AUTHORS" \
+            '[.[] | select(.author as $a | ($trusted + [$owner]) | index($a) | not) | .author] | unique | join(", ")' \
+            <<< "$threads")
+        if [[ -n "$strangers" ]]; then
+            halt untrusted-review "PR #$S_PHASE_PR has open threads by $strangers. phasepr hands an agent only the reviewer's and the owner's threads; answer and resolve those yourself, then rerun."
         fi
         triage_round "$n" "$threads"
         [[ "$TRIAGE_DONE" == "true" ]] && return 0
@@ -756,12 +787,12 @@ merge_phase() {
     owner_paths=$(git diff --name-only "origin/$FEATURE...HEAD" 2>/dev/null \
         | grep -E '^(instructions/|docs/decisions\.md$|docs/product\.md$|\.specify/memory/constitution\.md$)' \
         | paste -sd' ' - || true)
-    if [[ -n "$owner_paths" ]] && ! "$GH_REVIEW" approved "$S_PHASE_PR"; then
+    if [[ -n "$owner_paths" ]] && ! "$GH_REVIEW" approved "$S_PHASE_PR" "$(git rev-parse HEAD)"; then
         if [[ "$S_OWNER_ASKED" != "$S_PHASE_PR" ]]; then
             "$GH_REVIEW" comment "$S_PHASE_PR" "phasepr stops before merging: this PR changes $owner_paths, and the owner reviews those before they merge: an instruction, a decision or the constitution (I.11), or the product file (I.1). An approving review lets phasepr merge it on its next run."
             S_OWNER_ASKED=$S_PHASE_PR
         fi
-        halt owner-review "PR #$S_PHASE_PR changes $owner_paths (I.1, I.11). Review it: approve it and rerun (phasepr merges), or merge it yourself and rerun."
+        halt owner-review "PR #$S_PHASE_PR changes $owner_paths (I.1, I.11). Review it: approve its head as $("$GH_REVIEW" owner) and rerun (phasepr merges), or merge it yourself and rerun."
     fi
     if ! "$GH_REVIEW" checks "$S_PHASE_PR"; then
         halt ci-red "CI is red on PR #$S_PHASE_PR though gates.sh was green here. Look at the failing check; fix it on '$S_PHASE_BRANCH' (or tell the agent in $MEMORY) and rerun."

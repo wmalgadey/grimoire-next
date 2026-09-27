@@ -11,7 +11,7 @@
 # GitHub does. Its k-th review adds the threads in $FAKE_GH/review-queue/<k>.json, when that exists.
 #
 # Knobs: FAKE_COPILOT=off (never reviews), FAKE_CONFLICT=1 (every PR conflicts),
-#        FAKE_CHECKS_RC=<n> (exit code of `gh pr checks`).
+#        FAKE_CHECKS_RC=<n> (exit code of `gh pr checks`), FAKE_THREADS_MORE=1 (threads have a next page).
 
 set -euo pipefail
 shopt -s extglob
@@ -99,7 +99,9 @@ api() {
             elif [[ "$q" == *reviewThreads* ]]; then
                 local n
                 n=$(field number)
-                jq '{data: {repository: {pullRequest: {reviewThreads: {nodes: .}}}}}' \
+                jq --argjson more "${FAKE_THREADS_MORE:-0}" \
+                    '{data: {repository: {pullRequest: {reviewThreads:
+                        {pageInfo: {hasNextPage: ($more == 1)}, nodes: .}}}}}' \
                     "$FAKE_GH/threads/$n.json" 2>/dev/null \
                     || printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}\n'
             else

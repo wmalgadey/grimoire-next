@@ -13,7 +13,9 @@
 #   gh-review.sh reply       <pr> <comment-id> <body> answer a thread (comment-id = its first comment)
 #   gh-review.sh resolve     <thread-id>              resolve a thread (GraphQL resolveReviewThread)
 #   gh-review.sh comment     <pr> <body>              a PR conversation comment
-#   gh-review.sh approved    <pr>                     exit 0 when a person (not a bot) approved it
+#   gh-review.sh approved    <pr> <sha>               exit 0 when the owner approved exactly <sha>
+#   gh-review.sh owner                                the owner's login (PHASEPR_OWNER_LOGIN, else
+#                                                     the owner part of the repository)
 #   gh-review.sh checks      <pr>                     wait for the PR's checks; exit != 0 when red
 #   gh-review.sh merge       <pr>                     merge commit + delete branch; exit 3 on conflict
 #   gh-review.sh tick        <draft-pr> <phase> <phase-pr>   tick the phase in the draft PR checklist
@@ -23,6 +25,7 @@
 #   PHASEPR_REVIEWER_LOGIN  the reviewer that `wait` waits for and `rerequest` asks
 #                           (default copilot-pull-request-reviewer[bot]; see README, "Reviewer login")
 #   PHASEPR_REPO            owner/name; default: parsed from the `origin` remote
+#   PHASEPR_OWNER_LOGIN     who owns the decisions (I.1, I.11); default: the repository's owner
 #   PHASEPR_DRY_RUN=1       print every gh call instead of running it
 #
 # REST wherever REST can do it; GraphQL only for review threads, which REST does not expose, and
@@ -48,6 +51,12 @@ repo() {
     # https://github.com/o/r, git@github.com:o/r and proxied http://host/git/o/r all end in o/r.
     url=${url//://}
     printf '%s/%s\n' "$(basename "$(dirname "$url")")" "$(basename "$url")"
+}
+
+owner() {
+    local r
+    r=$(repo)
+    printf '%s\n' "${PHASEPR_OWNER_LOGIN:-${r%%/*}}"
 }
 
 # gh, or in dry-run its command line on stderr and no output.
@@ -121,12 +130,13 @@ wait_review() {
     done
 }
 
-# The first 100 threads of a PR and the first 50 comments of each; a phase PR that outgrows that
-# has a problem no pagination would solve.
+# The first 100 threads of a PR and the first 50 comments of each. A PR with more threads than
+# that fails here rather than being read as having fewer: a truncated list could look closed.
 THREADS_QUERY='query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       reviewThreads(first: 100) {
+        pageInfo { hasNextPage }
         nodes {
           id isResolved isOutdated path line
           comments(first: 50) { nodes { databaseId author { login } body url } }
@@ -145,7 +155,9 @@ threads() {
         return
     fi
     ghx api graphql -f "query=$THREADS_QUERY" -F "owner=${r%%/*}" -F "name=${r#*/}" -F "number=$pr" \
-        | jq '[.data.repository.pullRequest.reviewThreads.nodes[]
+        | jq '.data.repository.pullRequest.reviewThreads
+               | if .pageInfo.hasNextPage then error("more than 100 review threads") else . end
+               | [.nodes[]
                | select(.isResolved | not)
                | {thread_id: .id, path, line, outdated: .isOutdated,
                   comment_id: .comments.nodes[0].databaseId,
@@ -236,10 +248,14 @@ case "$cmd" in
     resolve)     resolve "$1" ;;
     comment)     ghx api -X POST "repos/$(repo)/issues/$1/comments" -f "body=$2" >/dev/null ;;
     approved)
+        # The owner's approval of the head being merged: not another reviewer's, not an older head's.
         [[ "$DRY_RUN" == "1" ]] && { get_all "repos/$(repo)/pulls/$1/reviews?per_page=100" >/dev/null; exit 1; }
         get_all "repos/$(repo)/pulls/$1/reviews?per_page=100" \
-            | jq -e '[.[] | select(.state == "APPROVED" and .user.type != "Bot")] | length > 0' >/dev/null
+            | jq -e --arg owner "$(owner)" --arg sha "$2" \
+                '[.[] | select(.state == "APPROVED" and .user.login == $owner and .commit_id == $sha)]
+                 | length > 0' >/dev/null
         ;;
+    owner)       owner ;;
     checks)      checks "$1" ;;
     merge)       merge "$1" ;;
     tick)        tick "$@" ;;

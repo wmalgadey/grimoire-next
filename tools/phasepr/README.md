@@ -69,7 +69,7 @@ Every agent iteration is
 ```
 claude -p "<prompt>" --permission-mode auto --output-format json --max-turns N [--model ID] \
        --disallowedTools "Bash(git push:*)" "Bash(git reset:*)" "Bash(git rebase:*)" \
-                         "Bash(git commit --amend:*)" "Bash(gh pr merge:*)"
+                         "Bash(git merge:*)" "Bash(git commit --amend:*)" "Bash(gh pr merge:*)"
 ```
 
 with stdin closed; the JSON output and the prompt are kept in `specs/<feature>/phasepr/logs/`.
@@ -90,7 +90,7 @@ that never ask:
   unless `IS_SANDBOX=1` is set.
 
 In both modes the CLI refuses outright what phasepr alone does or forbids: `git push`, `git reset`,
-`git rebase`, `git commit --amend`, `gh pr merge`. An agent that tries one anyway is logged, not
+`git rebase`, `git merge`, `git commit --amend`, `gh pr merge`. An agent that tries one anyway is logged, not
 halted — nothing happened. The history check below stays either way: auto mode let a
 `git commit --amend` through when it was not on that list.
 
@@ -168,6 +168,8 @@ phase. Afterwards, from git alone:
 
 - the branch is still the phase branch, and the recorded HEAD is an ancestor of the new one —
   otherwise history was rewritten (amend, reset, rebase), and phasepr halts without touching it;
+- no other local branch moved — an agent that committed elsewhere and came back would slip that
+  commit into a later phase unreviewed — and no merge commit was made;
 - no checkbox outside the phase moved;
 - progress is a new commit or a newly checked task; three iterations in a row without either trip
   the circuit breaker;
@@ -179,7 +181,7 @@ phase. Afterwards, from git alone:
 
 A phase is done when its tasks are checked, the tree is clean and `gates.sh` — run by phasepr —
 is green on that exact commit: `dotnet build`, the Fast suite under its 15 s session timeout
-(time-budget), and `trace-check`. A red gate goes back to a fresh implement iteration with the end of
+(time-budget), and `trace-check` — all in Release, as CI builds them. A red gate goes back to a fresh implement iteration with the end of
 its output in the prompt. phasepr itself only ever checks out, creates branches, fast-forwards,
 pushes without force, and commits the mutation table.
 
@@ -196,8 +198,9 @@ owner has to make. Rerun it once that is decided.
 | `agent-halt` | an agent ended with `{"halt": "…"}` — owner tasks, instructions, decisions, a blocking rule, unchecked checklists, spec and tasks disagreeing | decides what it names |
 | `merge-conflict` | the phase PR conflicts with the feature branch | merges the feature branch in (no rebase) |
 | `circuit-breaker` | three agent iterations in a row without progress | reads the logs and the handoff |
-| `protocol-violation` | history rewritten, branch switched, another phase's checkbox moved | repairs by hand; nothing was reset |
-| `owner-review` | the phase changes `instructions/`, `docs/decisions.md`, the constitution (I.11) or `docs/product.md` (I.1) | approves the PR (phasepr then merges) or merges it |
+| `protocol-violation` | history rewritten, branch switched, another branch moved, a merge commit, another phase's checkbox moved | repairs by hand; nothing was reset |
+| `owner-review` | the phase changes `instructions/`, `docs/decisions.md`, the constitution (I.11) or `docs/product.md` (I.1) | approves the PR's current head as the owner (the repository owner, or `PHASEPR_OWNER_LOGIN`) — another person's or an older head's approval does not count — or merges it |
+| `untrusted-review` | an open thread is by someone other than Copilot or the owner: its text would reach an agent that can commit and reply | answers and resolves it |
 | `commit-subject` | an agent commit is not `type(scope): subject` with the feature's number or a requirement ID as scope | rewords it on the branch, or reruns to accept it |
 | `ci-red` | the PR's checks are red although `gates.sh` was green | looks at the check |
 | `permission-denied` | the permission mode refused an agent something it needed | allows it in `.claude/settings.json`, changes model or mode, or takes it out of the task |
