@@ -100,8 +100,14 @@ ACCESS-006 are proven again across the stream, their wording unchanged. **DEC-03
 
 - [X] T007 `src/Grimoire.Hub/LiveUpdates.cs`: a plain class — **no port and no interface**, because
       nothing is outside the process and no second implementation exists (Constitution II.4). One
-      unbounded `System.Threading.Channels.Channel` per subscriber, drained by the endpoint serving its
-      stream, and a per-subscriber offset for the record (research.md R-05) — **Req:** ACCESS-005, ACCESS-006
+      `System.Threading.Channels.Channel` per subscriber, drained by the endpoint serving its stream,
+      and a per-subscriber offset for the record (research.md R-05) — **Req:** ACCESS-005, ACCESS-006
+      — **Revised while implementing**: the channel is **bounded at one signal with `DropWrite`**, not
+      unbounded as this task and R-05 first wrote it. Raised in review of the phase's PR, and the
+      reason is that the signal carries no payload: `next` reads the current state when the subscriber
+      wakes, so one pending signal already says everything a hundred of them would. Unbounded, a
+      subscriber that was behind cost a byte per change without bound; dropping loses nothing and the
+      write still cannot block the board under its lock
 - [X] T008 `src/Grimoire.Runs/SubmissionBoard.cs`: one `Changed` delegate the composition root
       supplies, raised where the board already changes something under its lock. A delegate rather
       than an event or an observer, following `RunConductor.NextRunMayStart` — one precedent, not a
