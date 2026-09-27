@@ -88,8 +88,8 @@ internal sealed class DrivableHarness : IAgentHarness
     /// A submission does not start its run at the moment it is accepted: it starts when the queue
     /// reaches it, which for a text waiting behind a failure is after the acknowledgement the
     /// browser sent, on the hub's own thread and after the response was written (RUNS-002,
-    /// RUNS-003). A test drives the agent from outside, so it waits for the run the way the page's
-    /// own polling waits for the state.
+    /// RUNS-003). A test drives the agent from outside, so it waits for the run the way the page
+    /// waits to be sent the state.
     /// </remarks>
     private RunReport Of(Guid submissionId)
     {

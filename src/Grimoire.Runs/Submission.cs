@@ -51,6 +51,32 @@ public sealed record RunFigures(string Model, long CostSpent, ModelTokens Tokens
 public sealed record SubmissionStatus(SubmissionState State, bool AwaitingAcknowledgement, RunFigures? Run);
 
 /// <summary>
+/// One submission as the browser is told it, read at one instant: what tells it from another, and
+/// its state and figures (ACCESS-004, ACCESS-005).
+/// </summary>
+/// <remarks>
+/// A value rather than the submission itself, because the whole list has to be one instant and not a
+/// row at a time: <see cref="SubmissionBoard.Snapshot"/> builds all of these in one pass of the one
+/// lock, and nothing can change between two of them. Handed the submissions instead, a caller reads
+/// each one's <see cref="Submission.Status"/> separately and a run ending between two rows would make
+/// a list that combines two instants.
+/// </remarks>
+public sealed record SubmissionSnapshot(
+    Guid Id,
+    string Excerpt,
+    DateTimeOffset SubmittedAt,
+    SubmissionStatus Status)
+{
+    /// <summary>
+    /// Assumes the board's lock. <see cref="Submission.Status"/> takes it again, which on the same
+    /// thread succeeds and holds every other caller out — so the reading below is inside the one pass
+    /// rather than beside it.
+    /// </summary>
+    internal static SubmissionSnapshot Of(Submission submission) =>
+        new(submission.Id, submission.Excerpt, submission.SubmittedAt, submission.Status);
+}
+
+/// <summary>
 /// A text the user handed to Grimoire and that was <em>accepted</em>, together with its state and
 /// the run it has been given. A refused text never becomes one: nothing about it is stored and it
 /// carries no state (INGEST-003, INGEST-004).
@@ -171,6 +197,16 @@ public sealed partial class Submission
             }
         }
     }
+
+    /// <summary>
+    /// This one submission as the browser is told it, at one instant.
+    /// </summary>
+    /// <remarks>
+    /// For the one answer that is about a single submission — the accepted one, answered to whoever
+    /// submitted it. A list is read through <see cref="SubmissionBoard.Snapshot"/> instead, because
+    /// there the instant has to span every row.
+    /// </remarks>
+    public SubmissionSnapshot Snapshot => SubmissionSnapshot.Of(this);
 
     /// <summary>
     /// Whitespace collapsed, trimmed, and cut to <see cref="ExcerptLength"/> with an ellipsis where

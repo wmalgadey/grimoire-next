@@ -196,7 +196,8 @@ public sealed class RunRecordViewTests : PageTest
 
         var openedBefore = await Segments().Nth(0).BoundingBoxAsync();
 
-        // More happens while the page is left open. The page polls; nothing is pushed to it.
+        // More happens while the page is left open, and the page is sent the bytes appended since — it
+        // asks for nothing (contracts/hub-http-api.md).
         hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
         hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
 

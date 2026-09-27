@@ -50,7 +50,7 @@ public sealed record SubmissionResult
 /// (research.md R-03).
 /// </para>
 /// </remarks>
-public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
+public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store, SubmissionBoard.Changed? changed = null)
 {
     /// <summary>
     /// A run for this submission, made by whoever knows what a run is given — the hub. The board
@@ -58,6 +58,31 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
     /// marking and recording are one step under one lock.
     /// </summary>
     public delegate Run RunForSubmission(Guid submissionId);
+
+    /// <summary>
+    /// Something about a submission changed: a state, a figure, or an acknowledgement. The browser
+    /// is sent the list again (ACCESS-005).
+    /// </summary>
+    /// <remarks>
+    /// A delegate the composition root supplies, which is the precedent
+    /// <c>RunConductor.NextRunMayStart</c> already sets: the RUNS context says something happened
+    /// without knowing who listens. One mechanism, followed, rather than an event or an observer
+    /// beside it (Constitution II.1, research.md R-05).
+    /// <para>
+    /// Raised <b>inside</b> the one lock, at every place that already changes something under it. A
+    /// list read as one instant is the whole of ACCESS-005, and told outside the lock a subscriber
+    /// could be woken by a change and then read a board another change had moved on — or, worse, be
+    /// told of the earlier of two changes after the later one. What the delegate does must therefore
+    /// not block and must not take the board again; the hub's <c>LiveUpdates.Changed</c> writes a
+    /// byte to a channel per subscriber and does neither.
+    /// </para>
+    /// <para>
+    /// Optional, and null in the suites that do not read the streams. A board with nobody listening
+    /// is what every test of the queue rule needs, and a delegate that has to be supplied would put
+    /// a stub in every one of them.
+    /// </para>
+    /// </remarks>
+    public delegate void Changed();
 
     /// <summary>
     /// One lock for the board and every submission on it, so that a state cannot change while the
@@ -68,6 +93,11 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
     private readonly List<Submission> submissions = [];
 
     /// <summary>Every submission the user made, newest first — the order the browser lists them in.</summary>
+    /// <remarks>
+    /// The submissions themselves, for a caller that wants the objects. What the browser is told is
+    /// built from <see cref="Snapshot"/> instead, because these are read one at a time afterwards and
+    /// the list the browser reads has to be one instant (ACCESS-005).
+    /// </remarks>
     public IReadOnlyList<Submission> All
     {
         get
@@ -76,6 +106,24 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
             {
                 return [.. Enumerable.Reverse(submissions)];
             }
+        }
+    }
+
+    /// <summary>
+    /// Every submission as it stands at <b>one</b> instant, newest first (ACCESS-005).
+    /// </summary>
+    /// <remarks>
+    /// One pass of the one lock for the whole list, and not <see cref="All"/> followed by a reading of
+    /// each submission: those readings are each atomic in themselves, but they are taken one after
+    /// another, so a run ending between two of them would make a list that combines two instants —
+    /// which is exactly what "read as one instant under the board's one lock" forbids and what the
+    /// browser is sent. A delta would break it, and so does reading the whole list a row at a time.
+    /// </remarks>
+    public IReadOnlyList<SubmissionSnapshot> Snapshot()
+    {
+        lock (gate)
+        {
+            return [.. Enumerable.Reverse(submissions).Select(SubmissionSnapshot.Of)];
         }
     }
 
@@ -122,6 +170,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
                 AcknowledgedAt: null));
 
             submissions.Add(submission);
+            changed?.Invoke();
             return SubmissionResult.Of(submission);
         }
     }
@@ -174,6 +223,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
             store.AssignRun(next.Id, StoredRun.Of(run));
 
             next.HandedTo(run.Id, run.Model);
+            changed?.Invoke();
             return run;
         }
     }
@@ -239,6 +289,10 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
                     store.SetState(held.Id, SubmissionState.Failed);
                 }
             }
+
+            // Once, after all of them. What a restart put back is one change to the list, and a
+            // browser that opened its page during the restore reads it whole in any case.
+            changed?.Invoke();
         }
     }
 
@@ -263,6 +317,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
                 // On disk before the queue moves, so that a restart does not re-block a queue the
                 // user has already cleared (RUNS-003, RUNS-004).
                 store.Acknowledge(submissionId, at);
+                changed?.Invoke();
             }
         }
     }
@@ -281,6 +336,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
 
             submission.ReportedIn();
             store.SetState(submissionId, SubmissionState.Running);
+            changed?.Invoke();
         }
     }
 
@@ -290,7 +346,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
     /// </summary>
     /// <remarks>
     /// The terminal state and the final figures are written in <b>one</b> pass of the one lock. Written
-    /// as two — the figures, then the state — a poll landing between them would read <c>running</c>
+    /// as two — the figures, then the state — the list would be sent twice, once with <c>running</c>
     /// beside a final figure, and a tail whose write failed would raise the count of lost entries on a
     /// row still reading <c>running</c>. ACCESS-005 has the state and the figures read as one instant,
     /// and a reading is only as atomic as the writing behind it.
@@ -321,6 +377,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
             if (submission.RunId is { } run)
             {
                 store.Ended(submissionId, terminal, run, costSpent, tokens, toolCalls, entriesLost);
+                changed?.Invoke();
                 return;
             }
 
@@ -328,6 +385,7 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
             // reaches this today — the board only ends a submission it handed out — and the state still
             // has to be recorded if anything ever does.
             store.SetState(submissionId, terminal);
+            changed?.Invoke();
         }
     }
 
@@ -355,9 +413,14 @@ public sealed class SubmissionBoard(TimeProvider clock, ISubmissionStore store)
                 return;
             }
 
+            // Only where one of them has actually risen, which is the same condition the store is
+            // written under: the cost is reported on every streamed line, most of which change
+            // nothing, and a browser sent the list sixty times a turn to show the same three numbers
+            // would be sixty events with nothing in them (research.md R-06).
             if (submission.FiguresAre(costSpent, tokens, toolCalls, entriesLost))
             {
                 store.RecordFigures(run, costSpent, tokens, toolCalls, entriesLost);
+                changed?.Invoke();
             }
         }
     }

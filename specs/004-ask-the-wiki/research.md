@@ -143,9 +143,17 @@ rebuilt, and an older file comes back with its submissions intact.
 
 ## R-05 — How each stream is fed, and what an increment is
 
-**Decision.** One hub-owned `LiveUpdates` object. Every subscriber is an unbounded
+**Decision.** One hub-owned `LiveUpdates` object. Every subscriber is a
 `System.Threading.Channels.Channel`, drained by the endpoint's `IAsyncEnumerable`. Three things
 publish into it, each at the place that already knows:
+
+**Revised while implementing** (phase 2, raised in review): the channel is **bounded at one signal,
+with `DropWrite`**, where this entry first said unbounded. What is on it is a bare signal and not a
+payload, and `next` reads the current state when the subscriber wakes — so one pending signal already
+says everything a hundred of them would, and dropping the rest loses nothing. Unbounded, a subscriber
+that fell behind cost a byte per change with no bound on it, which is what the class's own comment
+denied. The write still cannot block: `Changed` is called by the board under its one lock and by the
+conductor under a run's.
 
 | What changed | Who says so | What subscribers get |
 | --- | --- | --- |
