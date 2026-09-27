@@ -155,7 +155,8 @@ threads() {
         return
     fi
     ghx api graphql -f "query=$THREADS_QUERY" -F "owner=${r%%/*}" -F "name=${r#*/}" -F "number=$pr" \
-        | jq '.data.repository.pullRequest.reviewThreads
+        | jq 'if .errors then error("GraphQL: \(.errors | map(.message) | join("; "))") else . end
+               | .data.repository.pullRequest.reviewThreads // error("no review threads in the answer")
                | if .pageInfo.hasNextPage then error("more than 100 review threads") else . end
                | [.nodes[]
                | select(.isResolved | not)

@@ -450,6 +450,23 @@ setup() {
     [[ "$output" == *"more than 100 threads"* ]]
 }
 
+@test "a Branch line that names anything but a phase branch of the feature is refused" {
+    sed 's/`042-demo-phase-2-base`/`main`/' specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md
+    git commit -qam "docs(042): point phase 2 at main"; git push -q
+    run phasepr --phase 2
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"declares the branch 'main'"* ]]
+    [ "$(count_calls '^claude implement-phase')" -eq 0 ]
+}
+
+@test "a draft-body agent that commits halts the run" {
+    scenario draft-body.sh 'git commit -q --allow-empty -m "feat(042): sneaked in"; echo "Body."'
+    run phasepr --phase 2
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"The draft-body agent changed the repository"* ]]
+    [ ! -f "$FAKE_GH/pulls/101.json" ]
+}
+
 @test "a merge conflict halts before merging" {
     export FAKE_CONFLICT=1
     run phasepr --phase 2

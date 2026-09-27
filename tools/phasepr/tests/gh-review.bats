@@ -68,6 +68,14 @@ open_phase_pr() {
     [ "$(jq -r '[.[].thread_id] | join(",")' <<< "$output")" = "T_1_2" ]
 }
 
+@test "a GraphQL error is an error, not an empty list of threads" {
+    pr=$(open_phase_pr)
+    export FAKE_GRAPHQL_ERROR=1
+    run gh_review threads "$pr"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"GraphQL: Something went wrong"* ]]
+}
+
 @test "tick ticks one phase, leaves Phase 10 alone for Phase 1, and does not rewrite a ticked body" {
     printf 'Outcome.\n\n- [ ] Phase 1 — one\n- [ ] Phase 10 — ten\n' > "$BATS_TEST_TMPDIR/draft.md"
     gh_review draft-open 042-demo main "t" "$BATS_TEST_TMPDIR/draft.md"

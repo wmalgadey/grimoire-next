@@ -832,6 +832,11 @@ run_phase() {
     rm -f "$tasks"
     [[ -n "$title" ]] || die_usage "there is no Phase $n in $TASKS"
     branch=$(phase_branch_of "$n")
+    # A **Branch** line is data from tasks.md: it must name a phase branch of this feature, never the
+    # feature branch, main, or anything else phasepr would then check out, commit on and push.
+    # (Two phases may share one, as 002's closing and convergence phases do.)
+    [[ "$branch" =~ ^$FEATURE-phase-[0-9]+(-[a-z0-9-]+)?$ ]] \
+        || die_usage "Phase $n declares the branch '$branch' in $TASKS; a phase branch is $FEATURE-phase-N[-slug]"
     if [[ "$total" -eq 0 ]]; then
         log "phase $n has no tasks; nothing to do"
         return 0
@@ -875,7 +880,7 @@ ensure_ignored() {
 }
 
 setup_draft() {
-    local body title tasks n t total checked mark
+    local body title tasks n t total checked mark before
     S_STEP=setup
     remote_has_branch "$FEATURE" || run git push -u origin "$FEATURE"
     S_DRAFT_PR=$("$GH_REVIEW" find "$FEATURE" main open)
@@ -885,8 +890,14 @@ setup_draft() {
     fi
     body="$LOG_DIR/draft-body.md"
     while :; do
+        # The draft body is text only; what the agent did to the repository is checked all the same.
+        before=$(git for-each-ref --format='%(refname) %(objectname)' refs/heads)
         invoke_agent draft-body "$(render "$EXT_ROOT/prompts/draft-body.md" \
             "FEATURE=$FEATURE" "FEATURE_DIR=$FEATURE_DIR")"
+        if [[ "$DRY_RUN" != "true" ]] \
+            && { [[ "$(git for-each-ref --format='%(refname) %(objectname)' refs/heads)" != "$before" ]] || ! tree_clean; }; then
+            halt protocol-violation "The draft-body agent changed the repository (a commit, a branch or a file) though it is told to write text only. Nothing was reset; look at what it did and rerun."
+        fi
         check_denials draft-body
         [[ -n "$AGENT_RESULT" ]] && break
         record_progress false "draft body"
