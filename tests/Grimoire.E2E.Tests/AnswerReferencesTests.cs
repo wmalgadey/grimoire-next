@@ -156,6 +156,35 @@ public sealed class AnswerReferencesTests : PageTest
 
     [Fact]
     [Trait("req", "ACCESS-009")]
+    public async Task Reference_IsPlainText_WhereItsTargetLeavesTheWiki()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(Vault, WikiInTheVault, token);
+
+        var question = await hub.AskAsync(AboutAda, token);
+
+        await Page.GotoAsync($"{hub.Address}/chat.html");
+        await Expect(Turn(question)).ToBeVisibleAsync();
+
+        // A target that climbs out of the wiki names something a reference has no business addressing,
+        // however the answer came by it. A reference's target is a path relative to the wiki's root —
+        // that is what the contract fixes, and `FileSystemWikiStore` refuses the same shape one layer
+        // down (ACCESS-009, GUARD-005's neighbourhood).
+        hub.Agent.Said(
+            question,
+            "See ([../outside.md](../outside.md)) and ([people/ada-lovelace.md](people/ada-lovelace.md)).");
+
+        // The page of this wiki is linked; the one that climbs out is not, and keeps its place in the
+        // prose as plain text. Both are still readable — nothing of the agent's words is removed.
+        var references = Turn(question).Locator(".references a");
+
+        await Expect(references).ToHaveCountAsync(1);
+        await Expect(references.First).ToHaveTextAsync("people/ada-lovelace.md");
+        await Expect(Turn(question).Locator(".answer")).ToContainTextAsync("../outside.md");
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-009")]
     [Trait("req", "QUERY-003")]
     public async Task Reference_IsPlainTextAndSaysOpeningIsNotSetUp_WithoutTheVault()
     {

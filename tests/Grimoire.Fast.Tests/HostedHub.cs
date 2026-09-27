@@ -41,8 +41,13 @@ internal sealed class HostedHub : IAsyncDisposable
     /// like the instruction paths, so it is given here and not by a request: ACCESS-009 is about what
     /// the browser is told when the two settings are there and when either is missing.
     /// </param>
-    /// <param name="vaultRoot">The wiki's own path inside that vault, on the same terms.</param>
-    public HostedHub(bool recordEverythingFails = false, string? vaultName = null, string? vaultRoot = null)
+    /// <param name="wikiPathInVault">
+    /// The wiki's own path <b>inside</b> that vault — <c>wiki</c>, not a filesystem path. The entry
+    /// point derives it from <c>--vault-root</c>; a test gives it directly, because what the browser
+    /// is told is what ACCESS-009 is about.
+    /// </param>
+    public HostedHub(
+        bool recordEverythingFails = false, string? vaultName = null, string? wikiPathInVault = null)
     {
         directory = Directory.CreateTempSubdirectory("grimoire-fast-hub-").FullName;
 
@@ -64,7 +69,7 @@ internal sealed class HostedHub : IAsyncDisposable
                 WikiRoot: directory,
                 Model: FastHub.Model,
                 VaultName: vaultName,
-                VaultRoot: vaultRoot),
+                WikiPathInVault: wikiPathInVault),
             Agent,
             Wiki,
             Store,

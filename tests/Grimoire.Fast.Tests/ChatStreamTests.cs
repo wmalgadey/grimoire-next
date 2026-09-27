@@ -309,7 +309,7 @@ public sealed class ChatStreamTests
     [Trait("req", "ACCESS-009")]
     public async Task Stream_OpensWithTheVaultTheWikiIsReadIn_WhenGrimoireWasToldBoth()
     {
-        await using var hub = new HostedHub(vaultName: "Notes", vaultRoot: "wiki");
+        await using var hub = new HostedHub(vaultName: "Notes", wikiPathInVault: "wiki");
 
         var opening = await SnapshotAsync(hub);
 
@@ -329,6 +329,35 @@ public sealed class ChatStreamTests
         // says opening is not set up, and a key that was there holding nothing would be a setting it
         // had to interpret (ACCESS-009).
         Assert.DoesNotContain("vault", await SnapshotFieldsAsync(hub));
+    }
+
+    [Theory]
+    [Trait("req", "ACCESS-009")]
+    [InlineData("/home/me/Vault", "/home/me/Vault/wiki", "wiki")]
+    [InlineData("/home/me/Vault", "/home/me/Vault/notes/wiki", "notes/wiki")]
+    [InlineData("/home/me/Vault", "/home/me/Vault", "")]
+    [InlineData("/home/me/Vault/", "/home/me/Vault/wiki/", "wiki")]
+    public void Vault_CarriesWhereTheWikiSitsInsideIt(string vaultRoot, string wiki, string inside)
+    {
+        // What the owner gives is the directory they have open in Obsidian; what a link needs is the
+        // wiki's path **within** it. Passed straight through, an absolute filesystem path went into a
+        // link that addresses a place inside a vault, and every reference pointed at nothing
+        // (ACCESS-009, quickstart.md).
+        Assert.Equal(inside, VaultView.InVaultPathOf(vaultRoot, wiki));
+    }
+
+    [Theory]
+    [Trait("req", "ACCESS-009")]
+    [InlineData("/home/me/Vault", "/home/me/elsewhere/wiki")]
+    [InlineData("/home/me/Vault/wiki", "/home/me/Vault")]
+    [InlineData("/home/me/Vault", "/etc/wiki")]
+    public void Vault_IsNothing_WhereTheWikiIsNotInsideIt(string vaultRoot, string wiki)
+    {
+        // A wiki outside the vault has no path inside it, so there is nothing to build a link from.
+        // The entry point refuses such a start rather than drawing links that address a place that is
+        // not there — silently drawing none would leave the owner wondering why a setting they gave
+        // does nothing.
+        Assert.Null(VaultView.InVaultPathOf(vaultRoot, wiki));
     }
 
     [Theory]

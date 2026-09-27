@@ -166,13 +166,13 @@ internal sealed class HubUnderTest : IAsyncDisposable
     /// absent is the whole of ACCESS-009 — so a test needs a hub of each kind.
     /// </remarks>
     public static Task<HubUnderTest> StartAsync(
-        string vaultName, string vaultRoot, CancellationToken cancellationToken) =>
+        string vaultName, string wikiPathInVault, CancellationToken cancellationToken) =>
         StartAsync(
             Directory.CreateTempSubdirectory("grimoire-e2e-").FullName,
             ownsTheDirectory: true,
             cancellationToken,
             vaultName,
-            vaultRoot);
+            wikiPathInVault);
 
     /// <summary>
     /// Grimoire stopped and started again over the same state, which is what a restart is — a
@@ -197,7 +197,7 @@ internal sealed class HubUnderTest : IAsyncDisposable
         bool ownsTheDirectory,
         CancellationToken cancellationToken,
         string? vaultName = null,
-        string? vaultRoot = null)
+        string? wikiPathInVault = null)
     {
         // Both texts every run receives (V.1). Their content does not matter here — the browser
         // door is ACCESS-001, ACCESS-005 and ACCESS-006; what a run is given is INGEST-002, proven a
@@ -228,7 +228,7 @@ internal sealed class HubUnderTest : IAsyncDisposable
                 WikiRoot: wiki,
                 Model: "claude-opus-4-5-20251101",
                 VaultName: vaultName,
-                VaultRoot: vaultRoot),
+                WikiPathInVault: wikiPathInVault),
             agent,
             new FileSystemWikiStore(wiki),
             new SqliteSubmissionStore(state),

@@ -150,6 +150,20 @@ function answerGrew(item, append) {
 // and pointed somewhere that does not exist.
 const reference = /\[([^\]\n]+)\]\((?!\w+:|\/\/|\/)([^)\s]+)\)/g;
 
+// Whether a target is a page **of this wiki**. Its path is relative to the wiki's root, which is the
+// one anchor an answer has — so a segment that climbs out of it names something this link has no
+// business addressing, however the answer came by it. Such a target keeps its place in the prose as
+// plain text and gets no link.
+//
+// This is not a check on whether the page exists: Grimoire checks no link, and OKF requires readers
+// to tolerate a broken one. It is a check on what the target *is*, which the contract fixes
+// (`FileSystemWikiStore` refuses a path that leaves the wiki for the same reason, one layer down).
+function insideTheWiki(target) {
+  return target
+    .split("/")
+    .every((segment) => segment !== ".." && segment !== "" && segment !== ".");
+}
+
 // `obsidian://open?vault=<name>&file=<the wiki's path in the vault>/<the page>`, which addresses that
 // page in the user's **own** wiki (ACCESS-009). The link form lives in this one place and nothing of
 // it goes into a wiki page.
@@ -157,7 +171,10 @@ const reference = /\[([^\]\n]+)\]\((?!\w+:|\/\/|\/)([^)\s]+)\)/g;
 // Grimoire checks no link: OKF requires readers to tolerate a broken one, and nothing here knows what
 // the wiki holds — the editor does what it does with a missing file.
 function opens(target) {
-  const inVault = `${vault.wikiPath.replace(/^\/+|\/+$/g, "")}/${target}`;
+  const wikiPath = vault.wikiPath.replace(/^\/+|\/+$/g, "");
+
+  // Empty where the wiki *is* the vault, and then the target stands alone.
+  const inVault = wikiPath === "" ? target : `${wikiPath}/${target}`;
 
   return `obsidian://open?vault=${encodeURIComponent(vault.name)}&file=${encodeURIComponent(inVault)}`;
 }
@@ -177,7 +194,8 @@ function referencesIn(item) {
   const prose = answer.firstChild.data;
 
   let links = item.querySelector(":scope > .references");
-  const named = [...prose.matchAll(reference)];
+  // Only the ones that name a page of this wiki. The rest stay as the agent wrote them.
+  const named = [...prose.matchAll(reference)].filter(([, , target]) => insideTheWiki(target));
 
   if (named.length === 0) {
     return;

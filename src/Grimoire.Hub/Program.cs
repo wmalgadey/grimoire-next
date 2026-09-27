@@ -1,5 +1,6 @@
 using Grimoire.Agent.Adapters;
 using Grimoire.Hub;
+using Grimoire.Hub.Api;
 using Grimoire.Runs.Adapters;
 using Grimoire.Wiki.Adapters;
 using Microsoft.AspNetCore.Builder;
@@ -68,7 +69,8 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
                                 (default: instructions/question.md)
           --vault <name>        the Obsidian vault the wiki is read in, so that a page an
                                 answer names can be opened from it
-          --vault-root <path>   the wiki's own path inside that vault
+          --vault-root <path>   the directory you have open in Obsidian; the wiki must be
+                                inside it, and where it sits is what a link is built from
           --state <path>        where the queue is kept, so that it survives a stop
                                 (default: state/ beside the hub)
           --urls <url>          where the hub listens; loopback only
@@ -116,6 +118,30 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
         // name is still readable in it, with one line saying opening is not set up (ACCESS-009).
         var vault = given.GetValueOrDefault("vault");
         var vaultRoot = given.GetValueOrDefault("vault-root");
+        string? wikiPathInVault = null;
+
+        if (vaultRoot is not null)
+        {
+            // What the owner gives is the directory they have open in Obsidian; what a link needs is
+            // where the wiki sits **inside** it. `--wiki ~/Vault/wiki --vault-root ~/Vault` makes
+            // `wiki`, and the browser joins that to a reference's target (quickstart.md, ACCESS-009).
+            // Resolved first, as `IsInside` compares them, so a wiki reached through a symbolic link
+            // still gets the path it actually has inside the vault.
+            wikiPathInVault = VaultView.InVaultPathOf(RealPathOf(vaultRoot), RealPathOf(wiki));
+
+            if (wikiPathInVault is null)
+            {
+                // Refused rather than ignored. A wiki outside the vault has no path inside it, so every
+                // link would address a place that is not there — and silently drawing none would leave
+                // the owner wondering why a setting they gave does nothing. This is the same answer
+                // `--state` inside the wiki gets, for the same reason: a start-up argument that cannot
+                // mean what it says is worth one line now rather than a puzzle later.
+                Console.Error.WriteLine(
+                    "The wiki is not inside --vault-root, so it has no path inside that vault. "
+                    + "Give --vault-root the directory you have open in Obsidian, with the wiki under it.");
+                return null;
+            }
+        }
 
         var state = given.GetValueOrDefault("state") ?? DefaultStateDirectory;
 
@@ -130,7 +156,7 @@ internal sealed record StartUp(HubOptions Options, Uri Address, string StateDire
         }
 
         return new StartUp(
-            new HubOptions(instruction, questionInstruction, purpose, wiki, model, vault, vaultRoot),
+            new HubOptions(instruction, questionInstruction, purpose, wiki, model, vault, wikiPathInVault),
             address,
             state);
     }

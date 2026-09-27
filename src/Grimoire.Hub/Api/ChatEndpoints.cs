@@ -147,6 +147,40 @@ public sealed record VaultView(
     /// one, but which of the four inputs produce a vault at all is a decision of ours.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Where the wiki sits <b>inside</b> the vault, in the form a link uses — or <c>null</c> where it
+    /// does not sit inside it at all (ACCESS-009).
+    /// </summary>
+    /// <remarks>
+    /// What the owner gives is the directory they have open in Obsidian; what a link needs is the
+    /// wiki's path within it. <c>--wiki ~/Vault/wiki --vault-root ~/Vault</c> makes <c>wiki</c>, and the
+    /// browser joins that to a reference's target.
+    /// <para>
+    /// It lives here rather than in the entry point because it is a <b>computation</b> and not an
+    /// argument being read: passing the owner's directory straight through put an absolute filesystem
+    /// path into a link that addresses a place inside a vault, and every reference pointed at nothing.
+    /// Argument reading is not tested (III.8); this is, which is the difference that matters.
+    /// </para>
+    /// <para>
+    /// Forward slashes whatever the platform separates paths with, because it is going into a URL and
+    /// not onto a disk. Empty where the wiki <em>is</em> the vault, and the target then stands alone.
+    /// </para>
+    /// </remarks>
+    public static string? InVaultPathOf(string vaultRoot, string wikiRoot)
+    {
+        var inside = Path.GetRelativePath(vaultRoot, wikiRoot);
+
+        // Outside the vault: `GetRelativePath` climbs out, or gives back a rooted path where the two
+        // share nothing at all. Either way there is no path inside that vault to give.
+        if (inside.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains("..")
+            || Path.IsPathRooted(inside))
+        {
+            return null;
+        }
+
+        return inside == "." ? string.Empty : inside.Replace(Path.DirectorySeparatorChar, '/').Trim('/');
+    }
+
     public static VaultView? FromStartUp(string? name, string? wikiPath) =>
         string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(wikiPath)
             ? null
