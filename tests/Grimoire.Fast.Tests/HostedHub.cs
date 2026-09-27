@@ -104,6 +104,23 @@ internal sealed class HostedHub : IAsyncDisposable
         return Guid.Parse(accepted!.Id);
     }
 
+    /// <summary>
+    /// A question asked the way the chat asks it, answering with the accepted question's id. The intake
+    /// awaits the pump, so its run is dispatched by the time this returns (QUERY-001).
+    /// </summary>
+    public async Task<Guid> AskAsync(string text)
+    {
+        var response = await PostAsync("/api/chat/questions", new { text }).ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var accepted = await response.Content
+            .ReadFromJsonAsync<ChatTurnView>(TestContext.Current.CancellationToken)
+            .ConfigureAwait(false);
+
+        return Guid.Parse(accepted!.Id);
+    }
+
     public Task<HttpResponseMessage> GetAsync(string path) =>
         client.GetAsync(new Uri(path, UriKind.Relative), TestContext.Current.CancellationToken);
 
