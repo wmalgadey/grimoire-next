@@ -17,8 +17,22 @@ grant recorded and its figures kept (RUNS-002, RUNS-003, RUNS-006, RUNS-010, GUA
 
 | ID | Requirement | Proof |
 | --- | --- | --- |
+| QUERY-001 | Users MUST be able to ask the wiki a question, and the question MUST be accepted without the user waiting for its answer. | test |
 | QUERY-002 | An accepted question MUST cause a run that is given the question, the purpose description, the question instruction, the run's identifier, and what has been asked and answered in the same chat before it, so that a follow-up is answered in the light of what came before; the run MUST run on the model Grimoire was started with. | test |
+| QUERY-003 | A question MUST be refused when its text is empty or only whitespace, when the question instruction is missing, or when the purpose description is missing; no run MUST start, the refused question MUST NOT be stored and MUST carry no state, and the user MUST be told which of the three it was. | test |
 | QUERY-005 | A chat MUST hold the questions asked in it, their answers and what the agent did, for as long as Grimoire runs and whether or not a browser is connected to it, and MUST NOT survive Grimoire stopping and starting again. | test |
+
+QUERY-001 is INGEST-001's counterpart, and "without the user waiting" means the same thing it means
+there: the question is answered with the turn as the chat carries one, and the run outlives the request
+that started it. **A question asked while something else runs is accepted**, not refused — it waits its
+turn (RUNS-002). There is no refusal for a run being in progress, which is the same position
+INGEST-005 was retired for.
+
+QUERY-003's three are checked in one order — the question instruction, then the purpose description,
+then the text — so each refusal names **exactly one** thing and a start with none of them in place says
+one thing rather than three. A submission is refused on the *ingest* instruction and a question on the
+*question* instruction; the purpose description refuses both (INGEST-003). A refused question becomes
+nothing: it is stored nowhere, carries no state, and there is no run to have failed.
 
 QUERY-002 is INGEST-002's counterpart and differs from it in one thing: what the chat has already
 said is handed to the run at dispatch, the way the purpose description is. A chat is therefore a
