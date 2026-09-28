@@ -12,12 +12,12 @@ namespace Grimoire.Fast.Tests;
 /// (Constitution III.7, research.md R-12).
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "GUARD-004")]
 public sealed class CeilingTests
 {
     private static ModelTokens Tokens(long each) => new(each, each, each, each);
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public void Ceilings_AreFixedValuesAndNotSettings()
     {
         // docs/product.md §4 rules out configurable budgets and per-run tuning outright.
@@ -26,6 +26,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public void Run_ReachesACeiling_WhenTheClockRunsOut()
     {
         var clock = FastSuite.Clock();
@@ -36,10 +37,12 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public void Run_ReachesACeiling_WhenTheCostRunsOut() =>
         Assert.True(Ceilings.Fixed.ReachedBy(TimeSpan.Zero, Ceilings.Fixed.Cost));
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public void Run_ReachesNoCeiling_WhileBothAreClear()
     {
         var clock = FastSuite.Clock();
@@ -50,6 +53,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public void Cost_WeighsEachTokenClassByWhatItIsBilledAt()
     {
         // One token of each class, weighed one class at a time: an input token is 1, an output
@@ -63,6 +67,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public void Cost_CountsEveryModelTheRunTouched()
     {
         // A modelUsage with more than one model in it: the CLI spends tokens on background calls
@@ -76,10 +81,12 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public void Cost_CountsNothing_WithoutAModelUsage() =>
         Assert.Equal(0, Ceilings.CostOf([]));
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public void Run_ReachesNoCeiling_WithTenMillionCacheReads()
     {
         // Five times the ceiling in raw tokens, and half of it in cost. A run that reads a large
@@ -93,6 +100,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public void Run_ReachesACeiling_WithFourHundredThousandOutputTokens()
     {
         // A fifth of the ceiling in raw tokens, and the whole of it in cost. Output is the dearest
@@ -105,6 +113,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_IsStoppedThroughThePort_WhenTheCostCeilingIsReached()
     {
         var hub = new FastHub();
@@ -119,6 +128,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_IsStoppedThroughThePort_WhenTheElapsedCeilingIsReached()
     {
         var hub = new FastHub();
@@ -132,6 +142,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-010")]
     public async Task Run_RecordsWhatItSpends_AsTheCostArrives()
     {
         var hub = new FastHub();
@@ -146,6 +157,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_EndsFailed_WhenWhatItSpentReachesTheCostCeiling()
     {
         var hub = new FastHub();
@@ -159,6 +171,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_IsLeftAlone_WhileBothCeilingsAreClear()
     {
         var hub = new FastHub();
@@ -171,6 +184,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_IsStoppedByTheClockAlone_WhenTheAgentSaysNothing()
     {
         var hub = new FastHub();
@@ -187,6 +201,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_EndsFailed_WhenTheClockRunsOutAndTheAgentNeverReportsAgain()
     {
         var hub = new FastHub();
@@ -201,6 +216,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_EndsFailed_WhenTheCostCeilingIsReachedAndTheAgentNeverReportsAgain()
     {
         var hub = new FastHub();
@@ -217,6 +233,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_IsNotStoppedByTheClock_BeforeTheCeiling()
     {
         var hub = new FastHub();
@@ -230,6 +247,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_IsNotStoppedByTheClock_AfterItHasAlreadyEnded()
     {
         var hub = new FastHub();
@@ -247,6 +265,7 @@ public sealed class CeilingTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-004")]
     public async Task Run_EndsFailed_AfterACeilingStopsIt()
     {
         var hub = new FastHub();

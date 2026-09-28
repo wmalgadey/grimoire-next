@@ -23,11 +23,10 @@ namespace Grimoire.E2E.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]
-[Trait("req", "ACCESS-005")]
-[Trait("req", "ACCESS-004")]
 public sealed class SubmissionStatesTests : PageTest
 {
     [Fact]
+    [Trait("req", "ACCESS-005")]
     public async Task List_ShowsEachSubmissionInItsState()
     {
         var token = TestContext.Current.CancellationToken;
@@ -62,6 +61,8 @@ public sealed class SubmissionStatesTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-005")]
+    [Trait("req", "ACCESS-004")]
     public async Task List_ShowsTheModelAndBothFigures_ForARunThatHasEnded()
     {
         var token = TestContext.Current.CancellationToken;
@@ -108,6 +109,7 @@ public sealed class SubmissionStatesTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-005")]
     public async Task List_ShowsNoRunFigures_ForASubmissionWaitingItsTurn()
     {
         var token = TestContext.Current.CancellationToken;
@@ -128,6 +130,7 @@ public sealed class SubmissionStatesTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-005")]
     public async Task Figures_RiseWhileTheRunIsUnderWay_WithoutMovingTheRows()
     {
         var token = TestContext.Current.CancellationToken;
@@ -175,6 +178,8 @@ public sealed class SubmissionStatesTests : PageTest
 
     [Fact]
     [Trait("req", "ACCESS-003")]
+    [Trait("req", "ACCESS-005")]
+    [Trait("req", "RUNS-003")]
     public async Task Row_IsNotRebuiltUnderTheUser_WhileTheListIsSentWhatHappens()
     {
         var token = TestContext.Current.CancellationToken;
@@ -209,6 +214,7 @@ public sealed class SubmissionStatesTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-004")]
     public async Task List_PutsANewSubmissionFirst_WhileThePageIsOpen()
     {
         var token = TestContext.Current.CancellationToken;

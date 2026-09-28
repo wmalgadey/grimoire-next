@@ -10,7 +10,6 @@ namespace Grimoire.Fast.Tests;
 /// revert or commit with. That absence is the requirement, so it is what these tests read.
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "WIKI-003")]
 public sealed class FailedRunTests
 {
     private readonly InMemoryWikiStore wiki = new();
@@ -46,6 +45,7 @@ public sealed class FailedRunTests
     }
 
     [Fact]
+    [Trait("req", "WIKI-003")]
     public void WikiPort_OffersNoWayToRemoveRevertOrCommit()
     {
         var offered = typeof(IWikiStore).GetMethods().Select(m => m.Name).Order(StringComparer.Ordinal);

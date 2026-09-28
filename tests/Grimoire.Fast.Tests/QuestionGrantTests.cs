@@ -30,13 +30,13 @@ namespace Grimoire.Fast.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "GUARD-005")]
 public sealed class QuestionGrantTests
 {
     /// <summary>The three an ingest run has and a question's run must not (GUARD-002, GUARD-005).</summary>
     private static readonly string[] TheWriteTools = ["write_page", "write_index", "append_log"];
 
     [Fact]
+    [Trait("req", "GUARD-005")]
     public void Grant_IsTheTwoReadToolsAndNothingElse()
     {
         var grant = ToolGrant.Question(FastSuite.Clock());
@@ -95,6 +95,8 @@ public sealed class QuestionGrantTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-005")]
+    [Trait("req", "GUARD-001")]
     public void Dispatch_PointsAQuestionsRunAtTheDoorItsGrantNames()
     {
         var question = new AgentDispatch(

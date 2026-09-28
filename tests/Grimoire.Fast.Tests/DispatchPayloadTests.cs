@@ -6,12 +6,12 @@ namespace Grimoire.Fast.Tests;
 /// What a run is given, and what does not reach it (INGEST-002, Constitution V.1).
 /// </summary>
 [Trait("level", "fast")]
-[Trait("req", "INGEST-002")]
 public sealed class DispatchPayloadTests
 {
     private readonly FastHub hub = new();
 
     [Fact]
+    [Trait("req", "INGEST-002")]
     public async Task Dispatch_CarriesTheInstructionThePurposeTheTextAndTheRunIdentifier()
     {
         await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -26,6 +26,7 @@ public sealed class DispatchPayloadTests
     }
 
     [Fact]
+    [Trait("req", "INGEST-002")]
     public async Task Dispatch_CarriesNothingBeyondThoseFour()
     {
         await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -44,6 +45,7 @@ public sealed class DispatchPayloadTests
     }
 
     [Fact]
+    [Trait("req", "INGEST-002")]
     public async Task Dispatch_RunsOnThePinnedModelTheHubWasStartedWith()
     {
         await hub.AcceptedAsync();
@@ -54,6 +56,7 @@ public sealed class DispatchPayloadTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-001")]
     public async Task Dispatch_CarriesTheGrantTheRunRecorded()
     {
         var submission = await hub.AcceptedAsync();

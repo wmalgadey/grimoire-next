@@ -218,6 +218,7 @@ public sealed class RunRecordTests
 
     [Fact]
     [Trait("req", "RUNS-007")]
+    [Trait("req", "RUNS-005")]
     public async Task Record_AsksTheWikiForNothing()
     {
         var submission = await hub.AcceptedAsync();

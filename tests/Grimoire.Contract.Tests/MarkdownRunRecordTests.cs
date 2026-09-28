@@ -62,6 +62,7 @@ public sealed class MarkdownRunRecordTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void Record_KeepsEveryAppendInOrder()
     {
         var head = AHead();
@@ -286,7 +287,6 @@ public sealed class MarkdownRunRecordTests : IDisposable
     }
 
     [Fact]
-    [Trait("req", "RUNS-008")]
     public void Tail_IsTheWholeRecord_WhenNoHeadWasEverWritten()
     {
         // The head was the entry that was lost — an unwritable directory when the run began, a state

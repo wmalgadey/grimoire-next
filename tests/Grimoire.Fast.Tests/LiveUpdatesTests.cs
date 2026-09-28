@@ -18,8 +18,6 @@ namespace Grimoire.Fast.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "ACCESS-005")]
-[Trait("req", "ACCESS-006")]
 public sealed class LiveUpdatesTests
 {
     private const string Topic = "a-view";

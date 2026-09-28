@@ -14,7 +14,6 @@ namespace Grimoire.Fast.Tests;
 /// process ends, and the exit code joins the other two. All three have to agree.
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "RUNS-005")]
 public sealed class RunEndingTests
 {
     private static async Task<(FastHub Hub, Submission Submission)> ARunThatWroteItsEntryAsync()
@@ -30,6 +29,7 @@ public sealed class RunEndingTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public async Task Run_EndsDone_WhenTheResultTheEntryAndAZeroExitAllAgree()
     {
         var (hub, submission) = await ARunThatWroteItsEntryAsync();
@@ -40,6 +40,7 @@ public sealed class RunEndingTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public async Task Run_EndsFailed_WhenTheResultWasCleanAndTheProcessExitedNonZero()
     {
         var (hub, submission) = await ARunThatWroteItsEntryAsync();
@@ -75,6 +76,7 @@ public sealed class RunEndingTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public async Task Run_EndsFailed_WhenTheProcessExitsWithNoResultAtAll()
     {
         var hub = new FastHub();
@@ -89,6 +91,7 @@ public sealed class RunEndingTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public async Task Run_EndsFailed_WhenTheEntryIsStillMissingAfterTheNudge()
     {
         var hub = new FastHub();

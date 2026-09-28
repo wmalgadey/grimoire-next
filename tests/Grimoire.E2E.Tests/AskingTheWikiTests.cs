@@ -23,7 +23,6 @@ namespace Grimoire.E2E.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]
-[Trait("req", "ACCESS-007")]
 public sealed class AskingTheWikiTests : PageTest
 {
     private const string AboutAda = "What does the wiki say about Ada Lovelace?";
@@ -31,6 +30,7 @@ public sealed class AskingTheWikiTests : PageTest
     private ILocator Turn(Guid question) => Page.Locator($"#chat li[data-id=\"{question}\"]");
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Answer_GrowsInPlace_WhileTheRunIsStillWriting()
     {
         var token = TestContext.Current.CancellationToken;
@@ -71,6 +71,7 @@ public sealed class AskingTheWikiTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Answer_IsNotRedrawn_WhileItGrows()
     {
         var token = TestContext.Current.CancellationToken;

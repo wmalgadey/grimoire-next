@@ -19,6 +19,8 @@ namespace Grimoire.E2E.Tests;
 public sealed class RestartTests : PageTest
 {
     [Fact]
+    [Trait("req", "RUNS-003")]
+    [Trait("req", "ACCESS-003")]
     public async Task Restart_ShowsEverySubmission_WithTheRunThatWasInProgressFailed()
     {
         var token = TestContext.Current.CancellationToken;
