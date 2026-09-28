@@ -13,6 +13,16 @@
 #
 # This is a measurement. It has no threshold, it is not a gate, and nothing here changes a test,
 # a test runner or a line of production code.
+#
+# How long it takes. Every run pays a fixed part before its first mutant — the build, the initial
+# test run and, under `perTestInIsolation`, one process per test to capture coverage. With the Fast
+# suite at 429 tests (004, Phase 6) that fixed part measured 6:39 and 6:54 for a Grimoire.Hub run on
+# a 4-core i7-6820HQ, 5 to 5½ minutes of it the coverage capture, and every one of the five runs
+# below pays it. Grimoire.Hub then has about 430 mutants to test (654 created in scope, 228 of them
+# compile errors — see below); two took about 9 seconds. Estimated from that, not measured: 25 to
+# 35 minutes for the Grimoire.Hub run alone on that machine, about an hour for the whole script.
+# CI's `mutation` job ran the other four projects in 8 to 11 minutes against a smaller suite; with
+# Grimoire.Hub, expect roughly 20 to 30.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -29,8 +39,7 @@ run() {
     "$@"
 }
 
-# The code that holds decisions of ours. Grimoire.Hub — the composition root — is left out, and
-# so is every Adapters/ folder, except AgentTranscript: it sits in the agent's adapter folder
+# The code that holds decisions of ours. Every Adapters/ folder is left out, except AgentTranscript: it sits in the agent's adapter folder
 # because the CLI's protocol may not appear outside it (Constitution V.2), but it starts no
 # process and touches no file, and the whole of the translation from CLI lines to port events is
 # in it.
@@ -48,6 +57,27 @@ run Grimoire.Agent \
   --mutate '**/ToolGrant.cs' \
   --mutate '**/Adapters/AgentTranscript.cs'
 run Grimoire.Wiki --mutate '**/*' --mutate '!**/Adapters/**'
+
+# Grimoire.Hub was left out from 001 on as "the composition root" (specs/001-first-ingest/
+# mutation.md). That stopped being true of it: it is the only project that decides anything
+# (CLAUDE.md), and most of 004's logic is here — Chat, ChatEndpoints, InstructionLoader,
+# HubApplication.RestoreAfterAStop, WikiToolsServer (specs/004-ask-the-wiki/test-audit.md, T091).
+# The Fast suite reaches it through HubApplication.Build with in-memory adapters (III.9), and it has
+# no Adapters/ folder, source generator or file of records only, so everything is in except
+# Program.cs.
+#
+# Program.cs is left out, and not only for its wiring. It puts the real adapters at their ports and
+# reads the arguments (III.8), but StartUp.Read also holds the start-up refusals — loopback only,
+# no port 0, a wiki outside --vault-root, a --state inside the wiki (IsInside and RealPathOf, links
+# resolved). No Fast test calls StartUp.Read, so every mutant in the file would come back not
+# covered and bury the survivors that do say something; those refusals are a gap in the tests,
+# not in this scope.
+#
+# Stryker cannot compile part of this project mutated. Where a mutation leaves a local variable
+# unassigned (CS0165 — pattern variables such as `is not { } watched`), Stryker's safe mode
+# drops every mutant of the enclosing method as a compile error: 228 of the 654 in scope, 97 of
+# RunConductor's 145. Those methods go untested by this measurement; the report lists them.
+run Grimoire.Hub --mutate '**/*' --mutate '!**/Program.cs'
 
 # Grimoire.Trace without its wiring and its output. `Program.cs` is argument parsing and the two
 # verbs wired together, `RepositoryLayout.cs` is where the repository keeps things, and
