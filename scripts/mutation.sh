@@ -66,12 +66,11 @@ run Grimoire.Wiki --mutate '**/*' --mutate '!**/Adapters/**'
 # no Adapters/ folder, source generator or file of records only, so everything is in except
 # Program.cs.
 #
-# Program.cs is left out, and not only for its wiring. It puts the real adapters at their ports and
-# reads the arguments (III.8), but StartUp.Read also holds the start-up refusals — loopback only,
-# no port 0, a wiki outside --vault-root, a --state inside the wiki (IsInside and RealPathOf, links
-# resolved). No Fast test calls StartUp.Read, so every mutant in the file would come back not
-# covered and bury the survivors that do say something; those refusals are a gap in the tests,
-# not in this scope.
+# Program.cs is left out, and it is now the entry point and nothing else: the top-level statements
+# that put the real adapters at their ports (dependency wiring, III.8). The start-up refusals —
+# loopback only, no port 0, a wiki outside --vault-root, a --state inside the wiki — used to sit in
+# the same file and went unmeasured with it; they are StartUp.cs now, read by StartUpTests, and
+# mutated with everything else.
 #
 # Stryker cannot compile part of this project mutated. Where a mutation leaves a local variable
 # unassigned (CS0165 — pattern variables such as `is not { } watched`), Stryker's safe mode
