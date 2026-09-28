@@ -378,7 +378,9 @@ public static class ChatEndpoints
             // A turn a descriptor names is always in the same snapshot, so this cannot be missed — only
             // a new chat starting between the generation check above and this reading takes one away,
             // and the next wake answers that with a snapshot of its own.
-            if (snapshot.Turns.FirstOrDefault(turn => turn.Question.Id == change.Question) is not { } turn)
+            var turn = snapshot.Turns.FirstOrDefault(turn => turn.Question.Id == change.Question);
+
+            if (turn is null)
             {
                 continue;
             }

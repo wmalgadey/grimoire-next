@@ -243,7 +243,9 @@ public sealed class RunConductor(
     /// </summary>
     private void CostSoFar(Guid queuedId, RunSpend spend)
     {
-        if (Reporting(queuedId) is not { } watched)
+        var watched = Reporting(queuedId);
+
+        if (watched is null)
         {
             return;
         }
@@ -288,7 +290,9 @@ public sealed class RunConductor(
     /// </remarks>
     private void MomentHappened(Guid queuedId, TranscriptMoment moment)
     {
-        if (Reporting(queuedId) is not { } watched)
+        var watched = Reporting(queuedId);
+
+        if (watched is null)
         {
             return;
         }
@@ -408,6 +412,13 @@ public sealed class RunConductor(
     }
 
     /// <summary>The run this report is about, or null once it is over.</summary>
+    /// <remarks>
+    /// Its callers read it into a local and test that for null rather than writing
+    /// <c>is not { } watched</c>. The two mean the same, but a mutant of the pattern leaves the
+    /// variable unassigned (CS0165), and Stryker then drops every mutant of the whole method as a
+    /// compile error — so the guard written as a pattern hid the method from the mutation
+    /// measurement (specs/004-ask-the-wiki/mutation.md).
+    /// </remarks>
     private Watched? Reporting(Guid queuedId) => runs.GetValueOrDefault(queuedId);
 
     /// <summary>Whether the run is already over. Read inside that run's lock.</summary>
@@ -444,7 +455,9 @@ public sealed class RunConductor(
     /// </remarks>
     private async Task AgentStoppedAsync(Guid queuedId, bool endedAbnormally)
     {
-        if (Reporting(queuedId) is not { } watched)
+        var watched = Reporting(queuedId);
+
+        if (watched is null)
         {
             return;
         }
@@ -515,7 +528,9 @@ public sealed class RunConductor(
     /// </summary>
     private void AgentExited(Guid queuedId, int exitCode)
     {
-        if (Reporting(queuedId) is not { } watched)
+        var watched = Reporting(queuedId);
+
+        if (watched is null)
         {
             return;
         }
@@ -552,7 +567,9 @@ public sealed class RunConductor(
     /// </remarks>
     private void Ended(Guid queuedId, Func<Run, RunEnding> verdict)
     {
-        if (Reporting(queuedId) is not { } watched)
+        var watched = Reporting(queuedId);
+
+        if (watched is null)
         {
             return;
         }
@@ -639,7 +656,9 @@ public sealed class RunConductor(
     /// </remarks>
     private void ElapsedCeilingReached(Guid queuedId)
     {
-        if (runs.GetValueOrDefault(queuedId)?.Run is not { } run)
+        var run = runs.GetValueOrDefault(queuedId)?.Run;
+
+        if (run is null)
         {
             return;
         }

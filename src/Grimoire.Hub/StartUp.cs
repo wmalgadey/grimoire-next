@@ -211,7 +211,9 @@ public sealed record StartUp(HubOptions Options, Uri Address, string StateDirect
 
         for (var followed = 0; followed < Links; followed++)
         {
-            if (new DirectoryInfo(at).ResolveLinkTarget(returnFinalTarget: true)?.FullName is not { } target)
+            var target = new DirectoryInfo(at).ResolveLinkTarget(returnFinalTarget: true)?.FullName;
+
+            if (target is null)
             {
                 break;
             }

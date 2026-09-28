@@ -16,13 +16,13 @@
 #
 # How long it takes. Every run pays a fixed part before its first mutant — the build, the initial
 # test run and, under `perTestInIsolation`, one process per test to capture coverage. With the Fast
-# suite at 429 tests (004, Phase 6) that fixed part measured 6:39 and 6:54 for a Grimoire.Hub run on
-# a 4-core i7-6820HQ, 5 to 5½ minutes of it the coverage capture, and every one of the five runs
-# below pays it. Grimoire.Hub then has about 430 mutants to test (654 created in scope, 228 of them
-# compile errors — see below); two took about 9 seconds. Estimated from that, not measured: 25 to
-# 35 minutes for the Grimoire.Hub run alone on that machine, about an hour for the whole script.
-# CI's `mutation` job ran the other four projects in 8 to 11 minutes against a smaller suite; with
-# Grimoire.Hub, expect roughly 20 to 30.
+# suite at 441 tests (004, Phase 7) that fixed part measured 3:15 to 6:55 for a Grimoire.Hub run on
+# a 4-core i7-6820HQ, most of it the coverage capture, and every one of the five runs below pays
+# it. Mutants then cost about 1.1 seconds each (91 of RunConductor's in 1:40). Grimoire.Hub has 753
+# mutants in scope, 97 of them compile errors (see below), so something over 600 to test.
+# Estimated from that, not measured: 15 to 20 minutes for the Grimoire.Hub run on that machine,
+# 45 to 60 for the whole script. CI's `mutation` job ran the other four projects in 8 to 11 minutes
+# against a smaller suite; with Grimoire.Hub, expect roughly 20 to 30.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -72,10 +72,13 @@ run Grimoire.Wiki --mutate '**/*' --mutate '!**/Adapters/**'
 # the same file and went unmeasured with it; they are StartUp.cs now, read by StartUpTests, and
 # mutated with everything else.
 #
-# Stryker cannot compile part of this project mutated. Where a mutation leaves a local variable
-# unassigned (CS0165 — pattern variables such as `is not { } watched`), Stryker's safe mode
-# drops every mutant of the enclosing method as a compile error: 228 of the 654 in scope, 97 of
-# RunConductor's 145. Those methods go untested by this measurement; the report lists them.
+# Stryker cannot compile every mutant, and drops those one by one as compile errors: 97 of the 753
+# in scope. What it must not do is fall into safe mode, where a compile error it cannot pin on one
+# mutant (CS0165, a variable left unassigned) drops every mutant of the enclosing method. The
+# early-return guards written as `is not { } x` did that to thirteen methods — 269 compile errors,
+# 97 of RunConductor's 145 — and are written as `var x = …; if (x is null)` for that reason
+# (specs/004-ask-the-wiki/mutation.md). A guard written back as a pattern shows up here again as a
+# "Safe Mode!" line in Stryker's log.
 run Grimoire.Hub --mutate '**/*' --mutate '!**/Program.cs'
 
 # Grimoire.Trace without its wiring and its output. `Program.cs` is argument parsing and the two

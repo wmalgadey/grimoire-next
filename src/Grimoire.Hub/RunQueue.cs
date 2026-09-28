@@ -194,7 +194,9 @@ public sealed class RunQueue(
             // The board decides, and asks the conductor for the run only once it has: handing a
             // submission out, marking it with that run and recording both are one step under one
             // lock, so a stop between deciding and recording cannot exist (research.md R-04).
-            if (board.TakeNext(conductor.Begin, conductor.Watching) is not { } run)
+            var run = board.TakeNext(conductor.Begin, conductor.Watching);
+
+            if (run is null)
             {
                 return;
             }
@@ -221,7 +223,9 @@ public sealed class RunQueue(
     {
         try
         {
-            if (board.TextOf(run.QueuedId) is not { } text)
+            var text = board.TextOf(run.QueuedId);
+
+            if (text is null)
             {
                 return;
             }

@@ -128,7 +128,9 @@ public static class RunRecordEndpoint
         // Null where every write of this record has failed, which the connect above already refused.
         // A record that goes on to lose every later write is still a record, so this is the run's own
         // ending being written and nothing more to say.
-        if (record.Read(run) is not { } bytes || bytes.Length <= sent.Bytes)
+        var bytes = record.Read(run);
+
+        if (bytes is null || bytes.Length <= sent.Bytes)
         {
             yield break;
         }
