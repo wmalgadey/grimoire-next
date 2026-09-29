@@ -7,43 +7,13 @@ namespace Grimoire.Fast.Tests;
 /// </summary>
 /// <remarks>
 /// What Grimoire does <em>not</em> do is observable at the port: there is nothing there to remove,
-/// revert or commit with. That absence is the requirement, so it is what these tests read.
+/// revert or commit with. That absence is the requirement, so it is what this test reads. That a
+/// failed run's pages and log entry stay on disk is the real adapter's, and is proven against it
+/// (<c>FileSystemWikiStoreTests</c>).
 /// </remarks>
 [Trait("level", "fast")]
 public sealed class FailedRunTests
 {
-    private readonly InMemoryWikiStore wiki = new();
-
-    private async Task ARunWrites()
-    {
-        await wiki.WriteAsync("recipes/sourdough.md", "---\ntype: Recipe\n---\n\nBody.\n", TestContext.Current.CancellationToken);
-        await wiki.WriteAsync("recipes/index.md", "- sourdough\n", TestContext.Current.CancellationToken);
-        await wiki.AppendLogAsync("Run 8f3c wrote one page.\n", TestContext.Current.CancellationToken);
-    }
-
-    [Fact]
-    public async Task RunFails_LeavesEveryPageItWroteInPlace()
-    {
-        await ARunWrites();
-
-        // The run ends failed. Nothing in Grimoire reaches back into the wiki afterwards: the
-        // failure is shown to the user, not recorded in the wiki or undone there.
-        Assert.Equal(
-            ["log.md", "recipes/index.md", "recipes/sourdough.md"],
-            await wiki.ListAsync(TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task RunFails_LeavesTheLogEntryItWroteInPlace()
-    {
-        await ARunWrites();
-
-        // Equality rather than containment: WIKI-003 is that nothing reaches back into the wiki,
-        // which means nothing was taken away either. The blank line is the store's own separator
-        // between entries, not something the failure added.
-        Assert.Equal("Run 8f3c wrote one page.\n\n", await wiki.ReadAsync("log.md", TestContext.Current.CancellationToken));
-    }
-
     [Fact]
     [Trait("req", "WIKI-003")]
     public void WikiPort_OffersNoWayToRemoveRevertOrCommit()

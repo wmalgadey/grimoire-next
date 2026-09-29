@@ -198,6 +198,27 @@ public sealed class MarkdownRunRecordTests : IDisposable
     }
 
     [Fact]
+    public void Record_TakesNoSecondTail_WhenTheRunIsEndedAgain()
+    {
+        var head = AHead();
+        var record = new MarkdownRunRecord(state);
+
+        record.Begin(head);
+        record.Ended(ATail(head.RunId, RunOutcome.Failed, RunEndedBecause.AgentProcessDied));
+
+        var file = Path.Combine(state, "runs", $"{head.RunId}.md");
+        var ended = File.ReadAllText(file);
+
+        // A harness whose process died after the hub had already ended the run reports again, with
+        // an ending of its own. A run ends once: the file is what the first ending left, and a second
+        // tail that disagrees with it is not appended beside it (RUNS-007).
+        record.Ended(ATail(head.RunId, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry));
+
+        Assert.Equal(ended, File.ReadAllText(file));
+        Assert.Equal(0, record.EntriesLost(head.RunId));
+    }
+
+    [Fact]
     [Trait("req", "ACCESS-006")]
     public async Task Read_IsAlwaysAWholeRecord_WhileTheRunIsStillAppendingToIt()
     {

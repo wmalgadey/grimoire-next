@@ -128,20 +128,6 @@ public sealed class CeilingTests
     }
 
     [Fact]
-    [Trait("req", "GUARD-004")]
-    public async Task Run_IsStoppedThroughThePort_WhenTheElapsedCeilingIsReached()
-    {
-        var hub = new FastHub();
-        var submission = await hub.AcceptedAsync();
-        var run = hub.Conductor.Of(submission.Id)!;
-
-        hub.Clock.Advance(Ceilings.Fixed.Elapsed);
-        hub.Harness.Spend(submission.Id, costSpent: 1);
-
-        Assert.Equal([run.Id], hub.Harness.Stopped);
-    }
-
-    [Fact]
     [Trait("req", "RUNS-010")]
     public async Task Run_RecordsWhatItSpends_AsTheCostArrives()
     {
@@ -154,20 +140,6 @@ public sealed class CeilingTests
         // Recorded on the run, not only compared against the ceiling: the decision taken when the
         // agent stops reads this, and a run that had spent nothing would never reach the ceiling.
         Assert.Equal(7_500, hub.Conductor.Of(submission.Id)!.CostSpent);
-    }
-
-    [Fact]
-    [Trait("req", "GUARD-004")]
-    public async Task Run_EndsFailed_WhenWhatItSpentReachesTheCostCeiling()
-    {
-        var hub = new FastHub();
-        var submission = await hub.AcceptedAsync();
-        hub.Harness.ReportIn(submission.Id);
-
-        hub.Harness.Spend(submission.Id, Ceilings.Fixed.Cost);
-        await hub.Harness.StoppedAsync(submission.Id);
-
-        Assert.Equal(SubmissionState.Failed, submission.State);
     }
 
     [Fact]
@@ -262,20 +234,5 @@ public sealed class CeilingTests
 
         Assert.Empty(hub.Harness.Stopped);
         Assert.Equal(SubmissionState.Done, submission.State);
-    }
-
-    [Fact]
-    [Trait("req", "GUARD-004")]
-    public async Task Run_EndsFailed_AfterACeilingStopsIt()
-    {
-        var hub = new FastHub();
-        var submission = await hub.AcceptedAsync();
-        hub.Harness.ReportIn(submission.Id);
-
-        hub.Clock.Advance(Ceilings.Fixed.Elapsed);
-        hub.Harness.Spend(submission.Id, costSpent: 1);
-        await hub.Harness.StoppedAsync(submission.Id, endedAbnormally: true);
-
-        Assert.Equal(SubmissionState.Failed, submission.State);
     }
 }

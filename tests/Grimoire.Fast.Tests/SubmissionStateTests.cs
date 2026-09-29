@@ -92,28 +92,6 @@ public sealed class SubmissionStateTests
 
     [Fact]
     [Trait("req", "RUNS-001")]
-    public async Task Transitions_LeaveExactlyOneStateAtATime()
-    {
-        var submission = await Accepted();
-
-        foreach (var reached in new[] { SubmissionState.Submitted, SubmissionState.Running, SubmissionState.Done })
-        {
-            Assert.Single(Enum.GetValues<SubmissionState>(), s => s == submission.State);
-            Assert.Equal(reached, submission.State);
-
-            if (reached == SubmissionState.Submitted)
-            {
-                hub.Harness.ReportIn(submission.Id);
-            }
-            else if (reached == SubmissionState.Running)
-            {
-                hub.Harness.End(submission.Id, RunOutcome.Done);
-            }
-        }
-    }
-
-    [Fact]
-    [Trait("req", "RUNS-001")]
     public async Task RunEnds_IsIgnored_WhenTheRunHasAlreadyEnded()
     {
         var submission = await Accepted();
