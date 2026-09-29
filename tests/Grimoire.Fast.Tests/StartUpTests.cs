@@ -81,6 +81,20 @@ public sealed class StartUpTests : IDisposable
 
     [Fact]
     [Trait("req", "RUNS-007")]
+    public void Start_IsRefused_WhenTheStateDirectoryReachesIntoTheWikiThroughALink()
+    {
+        // Spelled beside the wiki, through a link that exists and is a directory, not a file — and
+        // lands in the wiki. Only resolving the link shows it: compared as spelled, `link/state` is
+        // outside `vault/wiki`, and the queue would sit where the wiki store lists it.
+        Directory.CreateDirectory(Wiki);
+        var link = Path.Combine(root, "link");
+        Directory.CreateSymbolicLink(link, Wiki);
+
+        Assert.Null(StartUp.Read(With("--state", Path.Combine(link, "state"))));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-007")]
     public void Start_IsAccepted_WhenTheStateDirectoryOnlySharesTheWikisName()
     {
         // `wiki-state` begins with the wiki's path and is not inside it. A comparison that forgot the
