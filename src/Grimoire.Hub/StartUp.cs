@@ -52,9 +52,11 @@ public sealed record StartUp(HubOptions Options, Uri Address, string StateDirect
     {
         var given = Named(arguments);
 
-        if (given.GetValueOrDefault("wiki") is not { } wiki
-            || given.GetValueOrDefault("purpose") is not { } purpose
-            || given.GetValueOrDefault("model") is not { } model)
+        var wiki = given.GetValueOrDefault("wiki");
+        var purpose = given.GetValueOrDefault("purpose");
+        var model = given.GetValueOrDefault("model");
+
+        if (wiki is null || purpose is null || model is null)
         {
             return null;
         }
@@ -183,7 +185,9 @@ public sealed record StartUp(HubOptions Options, Uri Address, string StateDirect
 
         while (!Directory.Exists(at) && !File.Exists(at))
         {
-            if (Path.GetDirectoryName(at) is not { } parent || parent == at)
+            var parent = Path.GetDirectoryName(at);
+
+            if (parent is null || parent == at)
             {
                 return full;
             }
@@ -222,7 +226,9 @@ public sealed record StartUp(HubOptions Options, Uri Address, string StateDirect
         }
 
         // And then what it hangs off, because a link anywhere above counts as much as one here.
-        if (Path.GetDirectoryName(at) is not { } parent || parent == at)
+        var parent = Path.GetDirectoryName(at);
+
+        if (parent is null || parent == at)
         {
             return at;
         }

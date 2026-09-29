@@ -39,8 +39,21 @@ Thirteen methods went that way, every one of them on an early-return guard of th
 Each guard is now written as a local and a null test — `var watched = Reporting(queuedId);
 if (watched is null) return;` — which means the same thing and leaves nothing unassigned for a
 mutant to break. The rewrite changes no behaviour, and the Fast suite is the proof: 441 of 441 before
-and after. Guards whose pattern variable is not used after the `if`, and patterns in a positive
-branch (`is { } run`), never broke the compilation and are left as they were.
+and after. Patterns in a positive branch (`is { } run`) never broke the compilation and are left as
+they were.
+
+`RunConductor.cs` had six such guards, and all six were rewritten, but only five of its methods are
+in the table. The sixth, `AgentExited`, was not in safe mode: two of its mutants were compile errors
+before the rewrite and one after, while the rest of its mutants compiled. It was rewritten with the
+other five because it is the same guard.
+
+**The rest of the tree followed** once `CLAUDE.md` made this a rule rather than a fix for thirteen
+methods. Every guard left that declared a variable in a condition controlling an early return
+— `is not { } x`, `is not T x`, a property pattern, or an `out var` behind `||` — was written out the
+same way: `StartUp.cs` (three), `Program.cs`, `Api/RunRecordEndpoint.cs` (two), `Queued.cs`,
+`RecordText.cs`, `RunBoard.cs` (four) and `Adapters/AgentTranscript.cs` (six). None of them put
+Stryker into safe mode, so the counts below do not move. They are rewritten so that the rule holds
+without exceptions a reader would have to know about.
 
 RunConductor was rewritten first, on its own, because it was the worst case. The rule was to carry
 on only if its compile errors fell below 20; they fell to 12.

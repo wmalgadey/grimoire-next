@@ -12,7 +12,9 @@ using Microsoft.AspNetCore.Builder;
 // What the arguments are refused for is a decision and lives in StartUp.cs, where the Fast suite
 // reads it. What exercises this file is the owner's acceptance run (quickstart.md).
 
-if (StartUp.Read(args) is not { } startUp)
+var startUp = StartUp.Read(args);
+
+if (startUp is null)
 {
     Console.Error.WriteLine(StartUp.Usage);
     return 1;

@@ -170,7 +170,9 @@ public abstract class Queued
     /// </summary>
     internal bool FiguresAre(long costSpent, ModelTokens tokens, int toolCalls, int entriesLost)
     {
-        if (figures is not { } held)
+        var held = figures;
+
+        if (held is null)
         {
             // No run, so there are no figures to be. A report for a run this does not have is a report
             // about something else.
