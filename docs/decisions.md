@@ -185,6 +185,8 @@ One mechanism for both ceilings because the agent loops model call → tool call
 
 **Made by**: owner, after feature 001.
 
+**Amended by `004-ask-the-wiki`**: the mutation run is no longer manual only. CI runs it as its own job and publishes a fourth badge; both existed since 002 without this entry, which is the drift the 004 test audit found. The job runs on schedule and on dispatch, not on every push — with `Grimoire.Hub` in scope it takes twenty to thirty minutes, and its score is a metric to read, not a gate to wait for. The three metrics of the original decision still run on every push to main; this one reports.
+
 ## DEC-023 — The submissions live in SQLite, behind a port of the RUNS context
 
 **Decision**: `Microsoft.Data.Sqlite`, raw SQL over two tables in one file inside a directory Grimoire owns (`--state <path>`, defaulting to `state/` beside the hub), behind `ISubmissionStore` declared by the RUNS context with `SqliteSubmissionStore` under `Grimoire.Runs/Adapters/`. No ORM and no migration framework. The port's members are synchronous, unlike every other port in the tree.
@@ -260,6 +262,12 @@ One mechanism for both ceilings because the agent loops model call → tool call
 **Departs from**: DEC-023's "two tables that do not change shape" — stated here rather than silently broken.
 
 **Made by**: plan `003-live-run-record` (research.md R-07).
+
+**Amended by `004-ask-the-wiki`**: a `runs` table that declares `submission_id NOT NULL` — every file 002 and 003 wrote — cannot take a question's run, and `ADD COLUMN` cannot lift a constraint. Such a table is rebuilt once, by SQLite's own procedure (create `runs_new`, copy every row, drop, rename) inside one transaction, and only when `pragma_table_info` reports the constraint; the column additions then run as before. Before the rebuild the file is copied to `submissions.db.before-rebuild` beside it; if the rebuild fails, the error names the copy. After it, `PRAGMA user_version` is set to 1, and from here on the store tells one schema from another by that number, not by inspecting columns — the next feature that changes the schema raises it and adds its step.
+
+Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly the list this decision exists to keep, the check that refused was as long as the rebuild that keeps, and the "owner decision" it cited was never recorded here. The two real files — the 002 schema and the 003 schema — are the fixtures that prove this; a file state no commit ever wrote is not.
+
+**Departs from**: research.md R-04's "no table is rebuilt", which asked for something SQLite cannot do.
 
 ## DEC-032 — Reading a run is a second static page, polled and appended to, with no Markdown renderer
 
