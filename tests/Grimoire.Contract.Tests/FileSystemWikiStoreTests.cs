@@ -101,7 +101,6 @@ public sealed class FileSystemWikiStoreTests : IDisposable
     }
 
     [Fact]
-    [Trait("req", "RUNS-005")]
     public async Task ReadPage_FindsNothing_WhenTheFileIsNotThere()
         => Assert.Null(await wiki.ReadAsync("nothing.md", TestContext.Current.CancellationToken));
 
