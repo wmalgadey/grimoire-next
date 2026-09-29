@@ -65,7 +65,10 @@ public static class RunRecordEndpoint
             // Three cases, one answer: there is no such submission, it has no run yet, or its record
             // was never written at all. None of them is a run the user can read, and telling them
             // apart would say something about a run that does not exist.
-            if (board.Find(id)?.RunId is not { } run || record.Read(run) is not { } bytes)
+            var run = board.Find(id)?.RunId;
+            var bytes = run is null ? null : record.Read(run.Value);
+
+            if (bytes is null)
             {
                 return Results.NotFound();
             }
@@ -83,10 +86,14 @@ public static class RunRecordEndpoint
             // The same three cases and the same one answer as the endpoint above, asked before
             // anything is streamed: a stream that opened on a run that does not exist would leave the
             // page waiting for an event that can never come.
-            if (board.Find(id)?.RunId is not { } run || record.Read(run) is null)
+            var found = board.Find(id)?.RunId;
+
+            if (found is null || record.Read(found.Value) is null)
             {
                 return Results.NotFound();
             }
+
+            var run = found.Value;
 
             return TypedResults.ServerSentEvents(
                 live.Watch(LiveUpdates.RecordOf(run), sent => Framed(record, run, sent), sent => Framed(record, run, sent), token));
@@ -128,7 +135,9 @@ public static class RunRecordEndpoint
         // Null where every write of this record has failed, which the connect above already refused.
         // A record that goes on to lose every later write is still a record, so this is the run's own
         // ending being written and nothing more to say.
-        if (record.Read(run) is not { } bytes || bytes.Length <= sent.Bytes)
+        var bytes = record.Read(run);
+
+        if (bytes is null || bytes.Length <= sent.Bytes)
         {
             yield break;
         }

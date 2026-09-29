@@ -8,12 +8,12 @@ namespace Grimoire.Fast.Tests;
 /// current while it runs, final once it has ended, and surviving a stop (RUNS-010).
 /// </summary>
 [Trait("level", "fast")]
-[Trait("req", "RUNS-010")]
 public sealed class RunFiguresTests
 {
     private readonly FastHub hub = new();
 
     [Fact]
+    [Trait("req", "RUNS-010")]
     public async Task Figures_AreThereFromTheMomentTheRunIs()
     {
         var submission = await hub.AcceptedAsync();
@@ -28,6 +28,7 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-010")]
     public async Task Figures_RiseWithTheRunAndNeverGoBackwards()
     {
         var submission = await hub.AcceptedAsync();
@@ -53,6 +54,7 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-010")]
     public async Task Figures_StandAsTheFinalOnes_OnceTheRunHasEnded()
     {
         var submission = await hub.AcceptedAsync();
@@ -71,6 +73,7 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-010")]
     public async Task Figures_AreReadAsOneInstantWithTheStateAndTheAcknowledgement()
     {
         var submission = await hub.AcceptedAsync();
@@ -126,7 +129,6 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-005")]
     public async Task TerminalState_AndTheFinalFigures_ArePublishedTogether()
     {
         var submission = await hub.AcceptedAsync();
@@ -162,7 +164,7 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-005")]
+    [Trait("req", "RUNS-010")]
     public async Task Figures_DoNotMove_AfterTheRunHasEnded()
     {
         var submission = await hub.AcceptedAsync();
@@ -188,6 +190,7 @@ public sealed class RunFiguresTests
 
     [Fact]
     [Trait("req", "RUNS-009")]
+    [Trait("req", "RUNS-010")]
     public async Task Ending_WaitsForAMomentAlreadyBeingAccountedFor()
     {
         var submission = await hub.AcceptedAsync();
@@ -224,6 +227,7 @@ public sealed class RunFiguresTests
 
     [Fact]
     [Trait("req", "RUNS-004")]
+    [Trait("req", "RUNS-010")]
     public async Task Figures_ComeBackWithTheRun_AfterAStop()
     {
         var submission = await hub.AcceptedAsync();

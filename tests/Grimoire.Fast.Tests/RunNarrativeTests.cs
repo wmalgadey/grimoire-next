@@ -14,7 +14,6 @@ namespace Grimoire.Fast.Tests;
 /// (research.md R-03, R-11).
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "RUNS-009")]
 public sealed class RunNarrativeTests
 {
     private readonly FastHub hub = new();
@@ -22,6 +21,7 @@ public sealed class RunNarrativeTests
     private static AgentTranscript Transcript() => new(ToolGrant.Ingest(FastSuite.Clock()));
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void ToolCall_IsReadWithItsNameAndItsArguments()
     {
         var read = Transcript().Read(RecordedTranscript.ToolCall);
@@ -35,6 +35,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void ToolResult_IsReadWhole()
     {
         var transcript = Transcript();
@@ -54,6 +55,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void AgentText_IsReadAsTheAgentsOwn()
     {
         var moment = Assert.Single(Transcript().Read(RecordedTranscript.AgentText).Moments);
@@ -63,6 +65,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void Blocks_AreEachAMomentInTheOrderTheyArrived()
     {
         // `message.content` is an array and the API allows several blocks. Each is its own moment, and
@@ -75,6 +78,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void ToolResult_IsTheTextOfItsBlocks_WhenTheContentIsAnArray()
     {
         var moment = Assert.Single(Transcript().Read(RecordedTranscript.ToolResultInBlocks).Moments);
@@ -83,6 +87,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void ToolResult_IsRecordedAsUnreadable_WhenItIsNeitherAStringNorBlocks()
     {
         var moment = Assert.Single(Transcript().Read(RecordedTranscript.ToolResultThatCannotBeRead).Moments);
@@ -95,6 +100,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void Results_AreEachAttributedToTheirOwnCall_WhenOneTurnMakesSeveral()
     {
         var transcript = Transcript();
@@ -118,7 +124,7 @@ public sealed class RunNarrativeTests
         Assert.Empty(Transcript().Read(RecordedTranscript.Thinking).Moments);
 
     [Fact]
-    [Trait("req", "RUNS-005")]
+    [Trait("req", "RUNS-009")]
     public async Task Record_HoldsWhatTheRunDid_InTheOrderItHappened()
     {
         var submission = await hub.AcceptedAsync();
@@ -193,7 +199,6 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-009")]
     public async Task Result_IsPutUnderItsCall_WhenTheAgentMadeOneAndWaited()
     {
         var submission = await hub.AcceptedAsync();
@@ -212,7 +217,6 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-009")]
     public async Task Calls_SitInsideWhatTheAgentSaidBeforeThem()
     {
         var submission = await hub.AcceptedAsync();
@@ -241,7 +245,6 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-009")]
     public async Task Call_StaysAtTheTop_BeforeTheAgentHasSaidAnything()
     {
         var submission = await hub.AcceptedAsync();

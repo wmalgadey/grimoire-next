@@ -157,7 +157,10 @@ public sealed class AgentTranscript(ToolGrant grant)
     /// <summary>What this line tells the hub.</summary>
     public TranscriptEvent Read(string line)
     {
-        if (Parse(line) is not { } message || Text(message["type"]) is not { } type)
+        var message = Parse(line);
+        var type = message is null ? null : Text(message["type"]);
+
+        if (message is null || type is null)
         {
             return new TranscriptEvent(TranscriptSays.Nothing);
         }
@@ -243,7 +246,9 @@ public sealed class AgentTranscript(ToolGrant grant)
     {
         var moments = new List<TranscriptMoment>();
 
-        if (message["message"]?["content"] is not JsonArray blocks)
+        var blocks = message["message"]?["content"] as JsonArray;
+
+        if (blocks is null)
         {
             return moments;
         }
@@ -355,7 +360,9 @@ public sealed class AgentTranscript(ToolGrant grant)
     /// </summary>
     private static List<string>? Strings(JsonNode? array)
     {
-        if (array is not JsonArray listed)
+        var listed = array as JsonArray;
+
+        if (listed is null)
         {
             return null;
         }
@@ -364,7 +371,10 @@ public sealed class AgentTranscript(ToolGrant grant)
 
         foreach (var element in listed)
         {
-            if (element is not JsonValue value || !value.TryGetValue<string>(out var name))
+            var value = element as JsonValue;
+            string? name = null;
+
+            if (value is null || !value.TryGetValue(out name))
             {
                 return null;
             }
@@ -382,7 +392,9 @@ public sealed class AgentTranscript(ToolGrant grant)
     /// </summary>
     private static ModelTokens StreamedTokens(JsonObject message)
     {
-        if (message["event"]?["usage"] is not JsonObject usage)
+        var usage = message["event"]?["usage"] as JsonObject;
+
+        if (usage is null)
         {
             return default;
         }
@@ -402,7 +414,9 @@ public sealed class AgentTranscript(ToolGrant grant)
     {
         var usage = new Dictionary<string, ModelTokens>(StringComparer.Ordinal);
 
-        if (result["modelUsage"] is not JsonObject reported)
+        var reported = result["modelUsage"] as JsonObject;
+
+        if (reported is null)
         {
             return usage;
         }

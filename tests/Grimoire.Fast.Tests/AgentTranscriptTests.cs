@@ -294,7 +294,7 @@ public sealed class AgentTranscriptTests
     }
 
     [Fact]
-    [Trait("req", "GUARD-004")]
+    [Trait("req", "RUNS-005")]
     public void Result_SaysTheAgentDidNotStopOfItsOwnAccord_WhenTheTurnWasInterrupted()
     {
         var said = Transcript().Read(RecordedTranscript.ResultOfAnInterruptedTurn);
@@ -304,7 +304,7 @@ public sealed class AgentTranscriptTests
     }
 
     [Fact]
-    [Trait("req", "GUARD-004")]
+    [Trait("req", "RUNS-005")]
     public void Result_SaysTheAgentDidNotStopOfItsOwnAccord_WhenTheStreamWasAborted() =>
         // The interrupt is how a ceiling stops a run, and the turn it cut short is not a turn the
         // agent finished — whatever the subtype beside it says. Read the subtype alone and an
@@ -315,7 +315,7 @@ public sealed class AgentTranscriptTests
                 .EndedAbnormally);
 
     [Fact]
-    [Trait("req", "GUARD-004")]
+    [Trait("req", "RUNS-005")]
     public void Result_SaysTheAgentDidNotStopOfItsOwnAccord_WhenTheSubtypeIsNotSuccess() =>
         Assert.True(
             Transcript()
@@ -323,7 +323,7 @@ public sealed class AgentTranscriptTests
                 .EndedAbnormally);
 
     [Fact]
-    [Trait("req", "GUARD-004")]
+    [Trait("req", "RUNS-005")]
     public void Result_SaysTheAgentDidNotStopOfItsOwnAccord_WhenATerminalFieldCannotBeRead()
     {
         // Present and not a name. Read as absent, this result says the agent finished cleanly,

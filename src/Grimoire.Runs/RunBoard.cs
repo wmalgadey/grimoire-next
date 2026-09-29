@@ -374,7 +374,9 @@ public sealed class RunBoard(
             // correction — an NTP step, or the owner putting the machine's time back — would give a
             // later one an earlier stamp and let it jump the queue. The list is appended to under this
             // same lock, so its order is the acceptance order and nothing can reorder it.
-            if (queued.Find(q => q.IsWaiting) is not { } next)
+            var next = queued.Find(q => q.IsWaiting);
+
+            if (next is null)
             {
                 return null;
             }
@@ -550,7 +552,9 @@ public sealed class RunBoard(
     {
         lock (gate)
         {
-            if (Located(queuedId) is not Submission submission)
+            var submission = Located(queuedId) as Submission;
+
+            if (submission is null)
             {
                 return;
             }
@@ -583,7 +587,9 @@ public sealed class RunBoard(
     {
         lock (gate)
         {
-            if (Located(queuedId) is not { } ending)
+            var ending = Located(queuedId);
+
+            if (ending is null)
             {
                 return;
             }
@@ -643,14 +649,16 @@ public sealed class RunBoard(
             // record, because the moment behind it was dropped for arriving after the tail. RUNS-010
             // has the figures stand as the run's final ones once it has ended, and this is where a
             // terminal one is known.
-            if (Located(queuedId) is not { IsUnderWay: true, RunId: { } run } working)
+            var working = Located(queuedId);
+
+            if (working is null || !working.IsUnderWay || working.RunId is null)
             {
                 return;
             }
 
             if (working.FiguresAre(costSpent, tokens, toolCalls, entriesLost))
             {
-                store.RecordFigures(run, costSpent, tokens, toolCalls, entriesLost);
+                store.RecordFigures(working.RunId.Value, costSpent, tokens, toolCalls, entriesLost);
                 changed?.Invoke(working);
             }
         }

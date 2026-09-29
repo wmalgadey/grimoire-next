@@ -21,7 +21,6 @@ namespace Grimoire.E2E.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]
-[Trait("req", "ACCESS-007")]
 public sealed class AnswerReferencesTests : PageTest
 {
     private const string AboutAda = "What does the wiki say about Ada Lovelace?";
@@ -31,7 +30,7 @@ public sealed class AnswerReferencesTests : PageTest
     private ILocator Turn(Guid question) => Page.Locator($"#chat li[data-id=\"{question}\"]");
 
     [Fact]
-    [Trait("req", "ACCESS-006")]
+    [Trait("req", "ACCESS-007")]
     public async Task Steps_AreShutUntilTheUserOpensOne()
     {
         var token = TestContext.Current.CancellationToken;
@@ -73,6 +72,7 @@ public sealed class AnswerReferencesTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Step_AppearsBelowWhatIsThere_WhileAStepTheUserOpenedStaysOpen()
     {
         var token = TestContext.Current.CancellationToken;
@@ -220,7 +220,6 @@ public sealed class AnswerReferencesTests : PageTest
 
     [Fact]
     [Trait("req", "ACCESS-009")]
-    [Trait("req", "QUERY-003")]
     public async Task Reference_IsPlainTextAndSaysOpeningIsNotSetUp_WithoutTheVault()
     {
         var token = TestContext.Current.CancellationToken;

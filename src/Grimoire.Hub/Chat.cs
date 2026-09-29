@@ -287,7 +287,9 @@ public sealed class Chat(Chat.Changed? changed = null)
     {
         lock (gate)
         {
-            if (Answering(runId) is not { } turn)
+            var turn = Answering(runId);
+
+            if (turn is null)
             {
                 return;
             }
@@ -305,7 +307,9 @@ public sealed class Chat(Chat.Changed? changed = null)
     {
         lock (gate)
         {
-            if (Answering(runId) is not { } turn)
+            var turn = Answering(runId);
+
+            if (turn is null)
             {
                 return;
             }
@@ -329,7 +333,9 @@ public sealed class Chat(Chat.Changed? changed = null)
     {
         lock (gate)
         {
-            if (turns.Find(turn => turn.Question.Id == questionId) is not { } turn)
+            var turn = turns.Find(turn => turn.Question.Id == questionId);
+
+            if (turn is null)
             {
                 return;
             }

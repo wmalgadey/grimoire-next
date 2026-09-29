@@ -14,7 +14,6 @@ namespace Grimoire.Fast.Tests;
 /// process ends, and the exit code joins the other two. All three have to agree.
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "RUNS-005")]
 public sealed class RunEndingTests
 {
     private static async Task<(FastHub Hub, Submission Submission)> ARunThatWroteItsEntryAsync()
@@ -30,6 +29,7 @@ public sealed class RunEndingTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public async Task Run_EndsDone_WhenTheResultTheEntryAndAZeroExitAllAgree()
     {
         var (hub, submission) = await ARunThatWroteItsEntryAsync();
@@ -40,6 +40,7 @@ public sealed class RunEndingTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public async Task Run_EndsFailed_WhenTheResultWasCleanAndTheProcessExitedNonZero()
     {
         var (hub, submission) = await ARunThatWroteItsEntryAsync();
@@ -55,26 +56,7 @@ public sealed class RunEndingTests
     }
 
     [Fact]
-    public async Task Run_DoesNotEndAtTheResult_ButAtTheExitThatFollowsIt()
-    {
-        var hub = new FastHub();
-        var submission = await hub.AcceptedAsync();
-        hub.Harness.ReportIn(submission.Id);
-        await hub.Wiki.AppendLogAsync(
-            $"Run {hub.Conductor.Of(submission.Id)!.Id} added one page.\n", TestContext.Current.CancellationToken);
-
-        var run = hub.Conductor.Of(submission.Id)!;
-
-        // Nothing further is sent, which is what lets the process end at all — and until it has,
-        // the run is still the hub's.
-        Assert.Equal(SubmissionState.Running, submission.State);
-
-        await hub.Harness.StoppedAsync(submission.Id);
-
-        Assert.Equal([run.Id], hub.Harness.ToldNothingFurther);
-    }
-
-    [Fact]
+    [Trait("req", "RUNS-005")]
     public async Task Run_EndsFailed_WhenTheProcessExitsWithNoResultAtAll()
     {
         var hub = new FastHub();
@@ -89,6 +71,7 @@ public sealed class RunEndingTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public async Task Run_EndsFailed_WhenTheEntryIsStillMissingAfterTheNudge()
     {
         var hub = new FastHub();

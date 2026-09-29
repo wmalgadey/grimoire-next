@@ -12,7 +12,6 @@ namespace Grimoire.Fast.Tests;
 /// a page would create one that no run is recorded as having generated.
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "WIKI-002")]
 public sealed class WikiFileTests
 {
     [Fact]

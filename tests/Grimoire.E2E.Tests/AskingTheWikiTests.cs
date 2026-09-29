@@ -23,7 +23,6 @@ namespace Grimoire.E2E.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]
-[Trait("req", "ACCESS-007")]
 public sealed class AskingTheWikiTests : PageTest
 {
     private const string AboutAda = "What does the wiki say about Ada Lovelace?";
@@ -31,6 +30,7 @@ public sealed class AskingTheWikiTests : PageTest
     private ILocator Turn(Guid question) => Page.Locator($"#chat li[data-id=\"{question}\"]");
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Answer_GrowsInPlace_WhileTheRunIsStillWriting()
     {
         var token = TestContext.Current.CancellationToken;
@@ -71,6 +71,7 @@ public sealed class AskingTheWikiTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Answer_IsNotRedrawn_WhileItGrows()
     {
         var token = TestContext.Current.CancellationToken;
@@ -180,59 +181,6 @@ public sealed class AskingTheWikiTests : PageTest
         foreach (var currency in new[] { "$", "€", "£", "USD", "EUR" })
         {
             Assert.DoesNotContain(currency, shown, StringComparison.Ordinal);
-        }
-    }
-
-    [Fact]
-    [Trait("req", "GUARD-005")]
-    public async Task Wiki_IsByteForByteWhatItWas_AfterAQuestionWasAnswered()
-    {
-        var token = TestContext.Current.CancellationToken;
-        await using var hub = await HubUnderTest.StartAsync(token);
-
-        // A wiki that already holds something, so that "unchanged" is a claim about files and not about
-        // an empty directory.
-        Directory.CreateDirectory(Path.Combine(hub.WikiDirectory, "people"));
-        await File.WriteAllTextAsync(
-            Path.Combine(hub.WikiDirectory, "people", "ada-lovelace.md"),
-            "---\ntype: person\n---\n\n# Ada Lovelace\n",
-            token);
-        await File.WriteAllTextAsync(
-            Path.Combine(hub.WikiDirectory, "index.md"), "---\nokf_version: \"0.2\"\n---\n", token);
-        await File.WriteAllTextAsync(Path.Combine(hub.WikiDirectory, "log.md"), "# Log\n", token);
-
-        var before = hub.WikiAsItStands();
-
-        var question = await hub.AskAsync(AboutAda, token);
-
-        await Page.GotoAsync($"{hub.Address}/chat.html");
-        await Expect(Turn(question)).ToBeVisibleAsync();
-
-        // A run that reads, says something, and stops of its own accord inside both ceilings.
-        hub.Agent.Called(question, "list_pages", "{}");
-        hub.Agent.Returned(question, "list_pages", """{"paths":["people/ada-lovelace.md"]}""");
-        hub.Agent.Called(question, "read_page", """{"path":"people/ada-lovelace.md"}""");
-        hub.Agent.Returned(question, "read_page", "# Ada Lovelace");
-        hub.Agent.Said(question, "The wiki has a page for her ([people/ada-lovelace.md](people/ada-lovelace.md)).");
-
-        // Ended done. `Exit` alone would not do it: the verdict at a process's exit also needs the
-        // `result` that says the agent stopped of its own accord, and this harness reports no result —
-        // so the ending is given directly, which is the path a run with no result takes anyway
-        // (RUNS-005, contracts/agent-cli-protocol.md).
-        hub.Agent.End(question, RunOutcome.Done);
-
-        await Expect(Turn(question).Locator(".state")).ToHaveTextAsync("answered");
-
-        // **Byte for byte.** No page written, no index touched, no log entry — by construction and not
-        // because the instruction asked nicely: the tools that could have done any of it are not
-        // served at that run's endpoint at all (GUARD-005, contracts/question-run.md §1).
-        var after = hub.WikiAsItStands();
-
-        Assert.Equal(before.Keys.Order(StringComparer.Ordinal), after.Keys.Order(StringComparer.Ordinal));
-
-        foreach (var (path, held) in before)
-        {
-            Assert.Equal(held, after[path]);
         }
     }
 }

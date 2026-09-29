@@ -35,13 +35,14 @@ namespace Grimoire.Fast.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "ACCESS-007")]
 public sealed class ChatStreamTests
 {
     private const string AboutAda = "What does the wiki say about Ada Lovelace?";
     private const string AboutHerMother = "And who was her mother?";
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
+    [Trait("req", "ACCESS-008")]
     public async Task Stream_OpensWithTheChatAsItStands()
     {
         await using var hub = new HostedHub();
@@ -79,6 +80,7 @@ public sealed class ChatStreamTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Stream_SendsTheOneThingThatChanged_AfterEachChange()
     {
         await using var hub = new HostedHub();
@@ -130,6 +132,7 @@ public sealed class ChatStreamTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Stream_CarriesTheOneStateEachQuestionIsIn()
     {
         await using var hub = new HostedHub();
@@ -216,6 +219,8 @@ public sealed class ChatStreamTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
+    [Trait("req", "QUERY-005")]
     public async Task Stream_OpensWithWhatArrivedWhileNobodyWasReading()
     {
         await using var hub = new HostedHub();
@@ -259,6 +264,7 @@ public sealed class ChatStreamTests
 
     /// <summary>The agent's own text, which is what the answer is made of (research.md R-08).</summary>
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Asked_SaysTheQuestionIsWaiting_EvenWhereItsRunHasAlreadyStarted()
     {
         await using var hub = new HostedHub();
@@ -282,6 +288,7 @@ public sealed class ChatStreamTests
 
     [Fact]
     [Trait("req", "QUERY-001")]
+    [Trait("req", "ACCESS-007")]
     public async Task Asked_ReachesTheBrowser_WhileTheQuestionWaitsBehindSomethingElse()
     {
         await using var hub = new HostedHub();
@@ -348,7 +355,6 @@ public sealed class ChatStreamTests
     }
 
     [Theory]
-    [Trait("req", "ACCESS-009")]
     [InlineData("/home/me/Vault", "/home/me/elsewhere/wiki")]
     [InlineData("/home/me/Vault/wiki", "/home/me/Vault")]
     [InlineData("/home/me/Vault", "/etc/wiki")]
@@ -389,6 +395,7 @@ public sealed class ChatStreamTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Stream_CarriesOneStepForEachThingTheAgentDid()
     {
         await using var hub = new HostedHub();
@@ -415,6 +422,7 @@ public sealed class ChatStreamTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-007")]
     public async Task Stream_CarriesWhatCameBackWhole()
     {
         await using var hub = new HostedHub();
@@ -456,6 +464,7 @@ public sealed class ChatStreamTests
 
     [Fact]
     [Trait("req", "QUERY-006")]
+    [Trait("req", "ACCESS-007")]
     public async Task Stream_CarriesWhyAQuestionGotNoAnswer()
     {
         await using var hub = new HostedHub();
@@ -514,7 +523,6 @@ public sealed class ChatStreamTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-003")]
     public async Task Acknowledge_AnswersWithNothing_WhenItClearedAFailure()
     {
         await using var hub = new HostedHub();
@@ -529,7 +537,6 @@ public sealed class ChatStreamTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-003")]
     public async Task Acknowledge_AnswersWithNothing_WhenItWasAcknowledgedAlready()
     {
         await using var hub = new HostedHub();
@@ -545,7 +552,6 @@ public sealed class ChatStreamTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-003")]
     public async Task Acknowledge_AnswersWithNothing_WhenTheQuestionIsUnknown()
     {
         await using var hub = new HostedHub();

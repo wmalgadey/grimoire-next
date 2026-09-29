@@ -277,19 +277,6 @@ internal sealed class HubUnderTest : IAsyncDisposable
     }
 
     /// <summary>
-    /// Everything in the wiki directory, by path, with what each file holds — so that "byte for byte
-    /// what it was" is a claim about a real directory and not about a port (GUARD-005).
-    /// </summary>
-    public IReadOnlyDictionary<string, byte[]> WikiAsItStands() =>
-        Directory.Exists(WikiDirectory)
-            ? Directory.GetFiles(WikiDirectory, "*", SearchOption.AllDirectories)
-                .ToDictionary(
-                    path => Path.GetRelativePath(WikiDirectory, path),
-                    File.ReadAllBytes,
-                    StringComparer.Ordinal)
-            : new Dictionary<string, byte[]>(StringComparer.Ordinal);
-
-    /// <summary>
     /// A failure acknowledged the way the page acknowledges it, so that the queue moves on
     /// (ACCESS-003, RUNS-003). That a person can reach this from the browser is
     /// <see cref="AcknowledgementTests"/>; here it is a step on the way to somewhere else.

@@ -23,7 +23,6 @@ namespace Grimoire.Fast.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "QUERY-001")]
 public sealed class QuestionAcceptanceTests
 {
     private const string Text = "What does the wiki say about Ada Lovelace?";
@@ -31,6 +30,7 @@ public sealed class QuestionAcceptanceTests
     private readonly FastHub hub = new();
 
     [Fact]
+    [Trait("req", "QUERY-001")]
     public async Task Ask_IsAnsweredWithTheTurn_WhileItsRunHasProducedNothing()
     {
         var question = await hub.AskedAsync(Text);
@@ -56,6 +56,7 @@ public sealed class QuestionAcceptanceTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-001")]
     public async Task Ask_WaitsForNoPartOfTheAnswer_WhileTheRunProducesIt()
     {
         var question = await hub.AskedAsync(Text);
@@ -76,6 +77,7 @@ public sealed class QuestionAcceptanceTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-001")]
     public async Task Ask_IsAccepted_WhileSomethingElseRuns()
     {
         await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -90,6 +92,7 @@ public sealed class QuestionAcceptanceTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-002")]
     public async Task Ask_WaitsItsTurn_WhileSomethingElseRuns()
     {
         var submission = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -105,6 +108,7 @@ public sealed class QuestionAcceptanceTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task Ask_StoresNothingOfTheQuestion()
     {
         var question = await hub.AskedAsync(Text);

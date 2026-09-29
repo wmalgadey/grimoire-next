@@ -22,7 +22,6 @@ namespace Grimoire.Fast.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "QUERY-006")]
 public sealed class FailedQuestionTests
 {
     private const string AboutAda = "What does the wiki say about Ada Lovelace?";
@@ -31,6 +30,7 @@ public sealed class FailedQuestionTests
 
     [Fact]
     [Trait("req", "GUARD-004")]
+    [Trait("req", "QUERY-006")]
     public async Task QuestionRunFails_LeavesTheQuestionWithNoAnswer_WhenTheTimeCeilingIsReached()
     {
         var question = await hub.AskedAsync(AboutAda);
@@ -42,6 +42,7 @@ public sealed class FailedQuestionTests
 
     [Fact]
     [Trait("req", "GUARD-004")]
+    [Trait("req", "QUERY-006")]
     public async Task QuestionRunFails_LeavesTheQuestionWithNoAnswer_WhenTheCostCeilingIsReached()
     {
         var question = await hub.AskedAsync(AboutAda);
@@ -52,6 +53,7 @@ public sealed class FailedQuestionTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-006")]
     public async Task QuestionRunFails_LeavesTheQuestionWithNoAnswer_WhenTheAgentProcessDies()
     {
         var question = await hub.AskedAsync(AboutAda);
@@ -62,6 +64,8 @@ public sealed class FailedQuestionTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-006")]
+    [Trait("req", "GUARD-001")]
     public async Task QuestionRunFails_LeavesTheQuestionWithNoAnswer_WhenTheToolsAreNotTheGrant()
     {
         // Said at `system/init`, before any model call: the run is over in the window between the
@@ -75,6 +79,7 @@ public sealed class FailedQuestionTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-006")]
     public async Task QuestionRunFails_PresentsNothingItProducedAsItsAnswer()
     {
         var question = await hub.AskedAsync(AboutAda);
@@ -128,6 +133,7 @@ public sealed class FailedQuestionTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-006")]
     public async Task Ask_IsGivenARun_AfterTheFailureWasAcknowledged()
     {
         var failed = await hub.AskedAsync(AboutAda);

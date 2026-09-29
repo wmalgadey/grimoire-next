@@ -176,6 +176,7 @@ public sealed class SubmissionStreamTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-003")]
     public async Task Stream_SendsTheListWithoutTheControl_AfterAFailureWasAcknowledged()
     {
         await using var hub = new HostedHub();

@@ -15,12 +15,12 @@ namespace Grimoire.Fast.Tests;
 /// produced (research.md R-13). The two-tabs half of QUERY-005 is its E2E end.
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "QUERY-005")]
 public sealed class ChatTests
 {
     private readonly FastHub hub = new();
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task Chat_HoldsTheAnswerAsItArrived_WhileNoBrowserIsSubscribed()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -42,6 +42,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task Chat_HoldsTheStepsUnderTheAnswer_InTheOrderTheyHappened()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -67,6 +68,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task Chat_HoldsWhatCameBackWhole()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -82,6 +84,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task Chat_HoldsEachQuestionInTheOrderItWasAsked()
     {
         var first = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -93,6 +96,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-008")]
     public async Task Chat_CarriesNoCostForAQuestionWaitingItsTurn()
     {
         await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -107,6 +111,7 @@ public sealed class ChatTests
 
     [Fact]
     [Trait("req", "RUNS-010")]
+    [Trait("req", "ACCESS-008")]
     public async Task Chat_CarriesTheCostItsRunSpent()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -120,6 +125,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task Chat_ReachesNoStore()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -144,7 +150,7 @@ public sealed class ChatTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-006")]
+    [Trait("req", "GUARD-003")]
     public async Task Chat_ReachesNoStoreButItsRunsRowDoes()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -166,7 +172,7 @@ public sealed class ChatTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-007")]
+    [Trait("req", "QUERY-005")]
     public async Task Chat_HoldsTheAnswer_WhenAnotherRunsEndingIsWhatStartedTheQuestion()
     {
         // The question waits behind a submission, so the run it is eventually given is handed out by
@@ -196,6 +202,7 @@ public sealed class ChatTests
 
     [Fact]
     [Trait("req", "RUNS-003")]
+    [Trait("req", "QUERY-005")]
     public async Task NewChat_LeavesTheQueueMoving_WhenARunItTookAwayFailsAfterwards()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -223,7 +230,7 @@ public sealed class ChatTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-002")]
+    [Trait("req", "QUERY-005")]
     public async Task NewChat_StartsNoQuestionThatWasStillWaitingWhenItWentAway()
     {
         var running = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -273,7 +280,7 @@ public sealed class ChatTests
 
     [Fact]
     [Trait("req", "RUNS-002")]
-    [Trait("req", "QUERY-002")]
+    [Trait("req", "QUERY-005")]
     public async Task Chat_ShowsTheQuestionsInTheOrderTheyWillRun_WhenSeveralAreAskedAtOnce()
     {
         const int AtOnce = 16;
@@ -315,7 +322,7 @@ public sealed class ChatTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-007")]
+    [Trait("req", "QUERY-005")]
     public async Task Chat_IsWrittenTo_WhileAnotherThreadHoldsTheBoard()
     {
         var store = new InMemorySubmissionStore();
@@ -361,6 +368,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task NewChat_IsEmpty()
     {
         var question = await hub.AskedAsync();
@@ -378,6 +386,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task NewChat_ReachesNothingOfThePreviousOne()
     {
         var gone = await hub.AskedAsync();
@@ -397,6 +406,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task NewChat_KeepsNothingOfThePreviousOne()
     {
         var question = await hub.AskedAsync();
@@ -415,6 +425,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-002")]
     public async Task NewChat_LeavesTheRunHoldingTheQueue()
     {
         var question = await hub.AskedAsync();
@@ -432,6 +443,7 @@ public sealed class ChatTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task NewChat_HoldsNothingTheRunUnderWayProduces()
     {
         var question = await hub.AskedAsync();
@@ -448,6 +460,7 @@ public sealed class ChatTests
 
     [Fact]
     [Trait("req", "RUNS-010")]
+    [Trait("req", "QUERY-005")]
     public async Task NewChat_LeavesTheFiguresWithTheRunUnderWay()
     {
         var question = await hub.AskedAsync();

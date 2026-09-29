@@ -22,7 +22,6 @@ namespace Grimoire.E2E.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]
-[Trait("req", "QUERY-005")]
 public sealed class ChatLifetimeTests : PageTest
 {
     private const string AboutAda = "What does the wiki say about Ada Lovelace?";
@@ -42,6 +41,7 @@ public sealed class ChatLifetimeTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "QUERY-005")]
     public async Task Question_AppearsInEveryBrowserReadingTheChat()
     {
         var token = TestContext.Current.CancellationToken;
@@ -70,6 +70,8 @@ public sealed class ChatLifetimeTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-010")]
+    [Trait("req", "QUERY-005")]
     public async Task NewChat_EmptiesEveryBrowserReadingIt()
     {
         var token = TestContext.Current.CancellationToken;
@@ -128,6 +130,8 @@ public sealed class ChatLifetimeTests : PageTest
     [Fact]
     [Trait("req", "QUERY-006")]
     [Trait("req", "ACCESS-003")]
+    [Trait("req", "RUNS-003")]
+    [Trait("req", "ACCESS-007")]
     public async Task Question_OffersTheOneControl_AfterItsRunGotNoAnswer()
     {
         var token = TestContext.Current.CancellationToken;

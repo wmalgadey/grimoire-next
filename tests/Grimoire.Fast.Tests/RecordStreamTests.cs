@@ -23,12 +23,12 @@ namespace Grimoire.Fast.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "ACCESS-006")]
 public sealed class RecordStreamTests
 {
     private const string Text = "Ada Lovelace wrote the first program.";
 
     [Fact]
+    [Trait("req", "ACCESS-006")]
     public async Task Record_OpensWithTheRecordSoFar()
     {
         await using var hub = new HostedHub();
@@ -47,6 +47,7 @@ public sealed class RecordStreamTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-006")]
     public async Task Record_CarriesOnlyTheBytesAppendedSinceTheLastEvent_WhenItGrows()
     {
         await using var hub = new HostedHub();
@@ -75,6 +76,7 @@ public sealed class RecordStreamTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-006")]
     public async Task Record_OpensWithTheWholeRecord_WhenASecondReaderJoinsAfterItGrew()
     {
         await using var hub = new HostedHub();
@@ -101,7 +103,7 @@ public sealed class RecordStreamTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-007")]
+    [Trait("req", "ACCESS-006")]
     public async Task Record_CountsLostEntries_WhenTheCountRises()
     {
         await using var hub = new HostedHub();
@@ -123,7 +125,7 @@ public sealed class RecordStreamTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-007")]
+    [Trait("req", "ACCESS-006")]
     public async Task Record_CountsLostEntriesAheadOfTheEntryAfterTheGap_WhenAWriteSucceedsAgain()
     {
         await using var hub = new HostedHub();
@@ -153,7 +155,7 @@ public sealed class RecordStreamTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-007")]
+    [Trait("req", "ACCESS-006")]
     public async Task Record_CountsLostEntries_WhenSomeWereLostBeforeItWasOpened()
     {
         await using var hub = new HostedHub();
@@ -202,7 +204,6 @@ public sealed class RecordStreamTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-007")]
     public async Task Record_IsNotFound_WhenItWasNeverWrittenAtAll()
     {
         await using var hub = new HostedHub(recordEverythingFails: true);

@@ -7,7 +7,6 @@ namespace Grimoire.Fast.Tests;
 /// How a run ends: the decision table of <c>contracts/agent-cli-protocol.md</c>, whole (RUNS-005).
 /// </summary>
 [Trait("level", "fast")]
-[Trait("req", "RUNS-005")]
 public sealed class RunOutcomeTests
 {
     private readonly Run run = NewRun();
@@ -67,6 +66,7 @@ public sealed class RunOutcomeTests
 
     [Fact]
     [Trait("req", "RUNS-005")]
+    [Trait("req", "RUNS-008")]
     public void Exit_EndsTheRunDone_WhenTheRunChangedNothingAndStoppedInsideBothCeilings()
     {
         var question = NewQuestionRun();
@@ -102,10 +102,12 @@ public sealed class RunOutcomeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public void AgentStops_EndsTheRunDone_WithTheLogEntryPresent() =>
         Assert.Equal(RunDecision.Done, run.AgentStopped(Stopped(logEntry: true)));
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public void AgentStops_NudgesOnce_WhenLogEntryMissing()
     {
         Assert.Equal(RunDecision.Nudge, run.AgentStopped(Stopped(logEntry: false)));
@@ -113,6 +115,7 @@ public sealed class RunOutcomeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public void AgentStops_EndsTheRunDone_AfterTheNudgeBringsTheEntry()
     {
         run.AgentStopped(Stopped(logEntry: false));
@@ -121,6 +124,7 @@ public sealed class RunOutcomeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public void AgentStops_EndsTheRunFailed_WhenTheEntryIsStillMissingAfterTheNudge()
     {
         run.AgentStopped(Stopped(logEntry: false));
@@ -132,6 +136,7 @@ public sealed class RunOutcomeTests
     [InlineData(true)]
     [InlineData(false)]
     [Trait("req", "GUARD-004")]
+    [Trait("req", "RUNS-005")]
     public void AgentStops_EndsTheRunFailed_WhenTheElapsedCeilingIsReached(bool logEntry) =>
         Assert.Equal(
             RunDecision.Failed,
@@ -141,18 +146,21 @@ public sealed class RunOutcomeTests
     [InlineData(true)]
     [InlineData(false)]
     [Trait("req", "GUARD-004")]
+    [Trait("req", "RUNS-005")]
     public void AgentStops_EndsTheRunFailed_WhenTheCostCeilingIsReached(bool logEntry) =>
         Assert.Equal(
             RunDecision.Failed,
             run.AgentStopped(new AgentStop(logEntry, TimeSpan.Zero, Ceilings.Fixed.Cost)));
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public void AgentStops_EndsTheRunFailed_WhenItDidNotStopOfItsOwnAccord() =>
         Assert.Equal(
             RunDecision.Failed,
             run.AgentStopped(new AgentStop(LogEntryPresent: true, TimeSpan.Zero, CostSpent: 0, EndedAbnormally: true)));
 
     [Fact]
+    [Trait("req", "RUNS-010")]
     public void AgentStops_RecordsWhatTheRunSpent()
     {
         run.AgentStopped(new AgentStop(LogEntryPresent: true, TimeSpan.Zero, CostSpent: 4_211));
@@ -163,6 +171,7 @@ public sealed class RunOutcomeTests
     [Fact]
     [Trait("req", "RUNS-008")]
     [Trait("req", "GUARD-004")]
+    [Trait("req", "RUNS-005")]
     public void Exit_SaysTheTimeCeiling_WhenTheRunStandsExactlyOnIt()
     {
         // Exactly on the ceiling is on it: `Ceilings.ReachedBy` says so, and the reason recorded has
@@ -175,18 +184,22 @@ public sealed class RunOutcomeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public void Log_NamesTheRun_WhenItHoldsTheIdentifierAsPlainText() =>
         Assert.True(run.IsNamedIn($"## 2026-09-20\n\nRun {run.Id} added one page and linked it.\n"));
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public void Log_DoesNotNameTheRun_WithoutTheIdentifierInIt() =>
         Assert.False(run.IsNamedIn($"## 2026-09-20\n\nRun {Guid.NewGuid()} added one page.\n"));
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public void Log_DoesNotNameTheRun_WithoutALogAtAll() =>
         Assert.False(run.IsNamedIn(null));
 
     [Fact]
+    [Trait("req", "RUNS-005")]
     public void Log_NamesTheRun_WithNoFormatImposedOnTheEntry()
     {
         // Nothing about the entry is parsed but the identifier: not its shape, not its prose, not

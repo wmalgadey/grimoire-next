@@ -12,12 +12,13 @@ namespace Grimoire.Fast.Tests;
 /// with <c>FakeTimeProvider</c> rather than waited for — the suite has 15 s in total (DEC-018).
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "RUNS-008")]
 public sealed class RunFrameTests
 {
     private readonly FastHub hub = new();
 
     [Fact]
+    [Trait("req", "RUNS-008")]
+    [Trait("req", "GUARD-003")]
     public async Task Head_HoldsWhatIsKnownWhenTheRunBegins()
     {
         var submission = await hub.AcceptedAsync();
@@ -35,6 +36,7 @@ public sealed class RunFrameTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-007")]
     public async Task Tail_IsNotThere_WhileTheRunIsUnderWay()
     {
         var submission = await hub.AcceptedAsync();
@@ -49,6 +51,7 @@ public sealed class RunFrameTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-008")]
     public async Task Tail_HoldsWhereTheRunStoodAndWhatEachModelSpent()
     {
         var submission = await hub.AcceptedAsync();
@@ -90,6 +93,7 @@ public sealed class RunFrameTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-008")]
     public async Task Tail_SaysTheAgentStoppedWithItsLogEntry_WhenAllThreeAgree()
     {
         var submission = await hub.AcceptedAsync();
@@ -103,6 +107,7 @@ public sealed class RunFrameTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-008")]
     public async Task Tail_SaysTheAgentStoppedWithoutItsLogEntry_AfterTheOneNudge()
     {
         var submission = await hub.AcceptedAsync();
@@ -118,7 +123,7 @@ public sealed class RunFrameTests
     }
 
     [Fact]
-    [Trait("req", "GUARD-004")]
+    [Trait("req", "RUNS-008")]
     public async Task Tail_SaysTheTimeCeiling_WhenTheRunRanOutOfTime()
     {
         var submission = await hub.AcceptedAsync();
@@ -134,7 +139,7 @@ public sealed class RunFrameTests
     }
 
     [Fact]
-    [Trait("req", "GUARD-004")]
+    [Trait("req", "RUNS-008")]
     public async Task Tail_SaysTheCostCeiling_WhenTheRunSpentTooMuch()
     {
         var submission = await hub.AcceptedAsync();
@@ -148,6 +153,7 @@ public sealed class RunFrameTests
 
     [Fact]
     [Trait("req", "GUARD-001")]
+    [Trait("req", "RUNS-008")]
     public async Task Tail_SaysTheToolsWereNotTheGrant_WhenTheAgentReportedAnotherSurface()
     {
         hub.Harness.ReportedSurface = ["mcp__wiki__read_page", "Bash"];
@@ -166,6 +172,7 @@ public sealed class RunFrameTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-008")]
     public async Task Tail_SaysTheAgentProcessDied_WhenItExitedNonZero()
     {
         var submission = await hub.AcceptedAsync();
@@ -182,7 +189,7 @@ public sealed class RunFrameTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-006")]
+    [Trait("req", "RUNS-008")]
     public async Task Tail_SaysGrimoireStopped_WhenTheHubWentDownWithTheRunUnderWay()
     {
         var submission = await hub.AcceptedAsync();
@@ -195,6 +202,7 @@ public sealed class RunFrameTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-008")]
     public void Reasons_AreTheSevenTheSpecNames() =>
         Assert.Equal(
             [

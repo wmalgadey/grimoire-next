@@ -21,12 +21,12 @@ namespace Grimoire.Fast.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "RUNS-002")]
 public sealed class RunBoardTests
 {
     private readonly FastHub hub = new();
 
     [Fact]
+    [Trait("req", "RUNS-002")]
     public async Task Queue_StartsAQuestionAfterASubmissionMadeBeforeIt()
     {
         // The first submission's run holds the queue, so the question waits behind it — and behind the
@@ -50,6 +50,7 @@ public sealed class RunBoardTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-002")]
     public async Task Queue_StartsASubmissionAfterAQuestionAskedBeforeIt()
     {
         // The other way about, which is the half a board holding two lists would get wrong.
@@ -108,6 +109,7 @@ public sealed class RunBoardTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-002")]
     public async Task Queue_HasOneRunInProgress_AcrossBothKinds()
     {
         var submission = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -121,7 +123,6 @@ public sealed class RunBoardTests
     }
 
     [Fact]
-    [Trait("req", "ACCESS-004")]
     public async Task List_AnswersWithTheSubmissionsAlone()
     {
         var submission = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -135,7 +136,6 @@ public sealed class RunBoardTests
     }
 
     [Fact]
-    [Trait("req", "QUERY-005")]
     public async Task List_AnswersWithTheSubmissionsAlone_WhileAQuestionIsBeingAnswered()
     {
         var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
@@ -181,8 +181,7 @@ public sealed class RunBoardTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-004")]
-    [Trait("req", "RUNS-006")]
+    [Trait("req", "RUNS-002")]
     public async Task Queue_LeavesNothingUnderWay_WhenTheRunCouldNotBeWrittenDown()
     {
         var store = new InMemorySubmissionStore();
@@ -211,7 +210,6 @@ public sealed class RunBoardTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-006")]
     public async Task Queue_WatchesNoRun_WhenAQuestionsRunCouldNotBeWrittenDown()
     {
         var store = new InMemorySubmissionStore();

@@ -24,7 +24,6 @@ namespace Grimoire.Contract.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "contract")]
-[Trait("req", "RUNS-004")]
 public sealed class SqliteSubmissionStoreTests : IDisposable
 {
     private readonly string directory = Directory.CreateTempSubdirectory("grimoire-store-").FullName;
@@ -67,6 +66,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     private static readonly DateTimeOffset Noon = new(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    [Trait("req", "RUNS-004")]
     public void Added_IsReadBack_WithItsTextItsTimeAndItsState()
     {
         var submission = ASubmission("Ada Lovelace wrote the first program.", Noon);
@@ -83,6 +83,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-004")]
     public void Added_IsReadBack_WithTheTextWholeAndUntidied()
     {
         // Every run receives what the user pasted (INGEST-002), so the file has to keep it that
@@ -94,6 +95,8 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-004")]
+    [Trait("req", "GUARD-003")]
     public void Run_IsReadBack_WithItsIdentifierAndItsGrantedTools()
     {
         var submission = ASubmission("A text.", Noon);
@@ -117,6 +120,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-006")]
     public void AgentProcess_IsReadBack_AsBothHalvesOfTheIdentity()
     {
         var submission = ASubmission("A text.", Noon);
@@ -134,6 +138,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-004")]
     public void State_IsReadBack_AsItWasLastWritten()
     {
         var submission = ASubmission("A text.", Noon);
@@ -148,6 +153,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-004")]
     public void Acknowledgement_IsReadBack()
     {
         var submission = ASubmission("A text.", Noon);
@@ -162,6 +168,8 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-004")]
+    [Trait("req", "RUNS-002")]
     public void Load_ReturnsSubmissions_OldestFirst()
     {
         var store = Reopened();
@@ -181,6 +189,8 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
+    [Trait("req", "RUNS-004")]
+    [Trait("req", "RUNS-002")]
     public void Load_ReturnsSubmissions_InTheOrderTheyWereAccepted_AfterTheClockWasPutBack()
     {
         var store = Reopened();
@@ -232,6 +242,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
 
     [Fact]
     [Trait("req", "RUNS-010")]
+    [Trait("req", "RUNS-004")]
     public void Ending_PutsTheTerminalStateAndTheFinalFiguresInTheFileTogether()
     {
         var submission = ASubmission("Ada Lovelace wrote the first program.", Noon);
@@ -260,6 +271,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     [Fact]
     [Trait("req", "RUNS-006")]
     [Trait("req", "RUNS-010")]
+    [Trait("req", "GUARD-003")]
     public void RunWithoutASubmission_RoundTripsThroughTheFile()
     {
         var store = Reopened();
@@ -312,7 +324,6 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
-    [Trait("req", "ACCESS-004")]
     public void RunWithoutASubmission_IsInNoListOfSubmissions()
     {
         var store = Reopened();
@@ -328,7 +339,6 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
-    [Trait("req", "RUNS-006")]
     public void OlderFile_IsRefused_BecauseItsRunTableCannotHoldAQuestionsRun()
     {
         // A file an older Grimoire wrote declares `submission_id` NOT NULL, and a question's run is
@@ -352,7 +362,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
-    [Trait("req", "RUNS-010")]
+    [Trait("req", "RUNS-004")]
     public void FileWithoutThisVersionsColumns_ComesBackWithItsSubmissionsIntactAndItsFiguresAtZero()
     {
         var submissionId = Guid.NewGuid();

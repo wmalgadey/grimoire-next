@@ -23,7 +23,6 @@ namespace Grimoire.Fast.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "QUERY-003")]
 public sealed class QuestionAskedOverHttpTests
 {
     [Fact]
@@ -53,6 +52,7 @@ public sealed class QuestionAskedOverHttpTests
     [Theory]
     [InlineData("", "question-empty")]
     [InlineData("   ", "question-empty")]
+    [Trait("req", "QUERY-003")]
     public async Task Question_IsRefusedWithOneReason_WhenThereIsNothingToAsk(string text, string reason)
     {
         await using var hub = new HostedHub();
@@ -72,6 +72,7 @@ public sealed class QuestionAskedOverHttpTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-003")]
     public async Task Question_IsRefusedForTheQuestionInstruction_WhenItIsNotThere()
     {
         await using var hub = new HostedHub();
@@ -88,6 +89,7 @@ public sealed class QuestionAskedOverHttpTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-003")]
     public async Task Question_IsRefusedForThePurposeDescription_WhenItIsNotThere()
     {
         await using var hub = new HostedHub();
@@ -102,6 +104,7 @@ public sealed class QuestionAskedOverHttpTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-003")]
     public async Task Question_IsRefusedForTheQuestionInstruction_WhenNeitherItNorThePurposeDescriptionIsThere()
     {
         await using var hub = new HostedHub();
@@ -118,7 +121,7 @@ public sealed class QuestionAskedOverHttpTests
     }
 
     [Fact]
-    [Trait("req", "INGEST-003")]
+    [Trait("req", "QUERY-003")]
     public async Task Question_IsAccepted_WithoutTheIngestInstruction()
     {
         await using var hub = new HostedHub();

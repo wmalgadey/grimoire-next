@@ -23,10 +23,10 @@ namespace Grimoire.Contract.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "contract")]
-[Trait("req", "GUARD-005")]
 public sealed class WikiToolDoorTests
 {
     [Fact]
+    [Trait("req", "GUARD-005")]
     public async Task QuestionDoor_ServesTheTwoReadToolsAndNothingElse()
     {
         await using var hub = await RealRun.StartAsync(TestContext.Current.CancellationToken);
