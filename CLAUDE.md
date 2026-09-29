@@ -98,6 +98,8 @@ dotnet run --project src/Grimoire.Hub -- --wiki <dir> --purpose <file> --model <
 
 `Directory.Build.props` turns SDK analyzers up to `Recommended`, switches on `EnforceCodeStyleInBuild` and makes every warning an error. CA1502 (complexity) is an error at threshold 15 from `CodeMetricsConfig.txt` (DEC-007). `tests/.editorconfig` switches off CA1707 and CA1502 for the suites only. Central package versions live in `Directory.Packages.props` — add a `PackageVersion` there, a bare `PackageReference` in the project.
 
+No pattern variable declared in a condition that controls an early return (`if (F() is not { } x) return;`): write `var x = F(); if (x is null) return;`. A mutant of the pattern leaves `x` unassigned, and Stryker then drops every mutant of the method (`specs/004-ask-the-wiki/mutation.md`); `.editorconfig` switches off the two IDE suggestions that would write it back.
+
 ## Architecture
 
 Three bounded contexts plus a composition root (`plan.md`, Structure Decision). Each context declares its own ports and owns its adapters; an external system appears only inside its adapter (V.2).

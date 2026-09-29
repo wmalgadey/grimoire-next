@@ -51,6 +51,17 @@ dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
 dotnet_style_coalesce_expression = true:warning
 dotnet_style_null_propagation = true:warning
 
+# No pattern variable in a condition that controls an early return (CLAUDE.md). IDE0019 turns
+# `var x = o as T; if (x == null) return;` into `if (o is not T x) return;`, and IDE0020 does the
+# same to an `is` check followed by a cast — each writes exactly that guard, and a mutant of it
+# leaves `x` unassigned and puts Stryker into safe mode for the whole method
+# (specs/004-ask-the-wiki/mutation.md). The first option also governs IDE0260, and IDE0038 shares
+# the second; neither of those declares a variable. No other option proposes the pattern — IDE0078,
+# IDE0083 and IDE0170 rewrite a pattern's shape without declaring one — and no analyzer turns the
+# written-out `var x = F(); if (x is null) return;` back into `is not { } x`.
+csharp_style_pattern_matching_over_as_with_null_check = false
+csharp_style_pattern_matching_over_is_with_cast_check = false
+
 # IDE0005 (unused usings) is left at its default: raising it at build time demands
 # GenerateDocumentationFile, and XML documentation files nobody reads are not worth the rule.
 csharp_style_unused_value_expression_statement_preference = discard_variable:silent
