@@ -211,6 +211,14 @@ Medianwerte aus drei Läufen:
 
 Dazu passt: `HostedHub.cs:16–22` begründet den Hub-Server damit, dass nur „the one thing that needs a request to reach an endpoint at all — the record endpoint of ACCESS-006“ ihn brauche. Heute nutzen ihn sechs Klassen.
 
+**Nachtrag nach dem Audit (Branch `004-ask-the-wiki-fast-fixture`, DEC-034).** Die Tabelle oben bleibt als Befund stehen. Ihre Deutung „Kestrel-Starts“ traf nicht zu:
+
+- **Kestrel ist nicht der teure Teil.** Warm kostet ein `HostedHub` rund 205 ms für `HubApplication.Build` und rund 5 ms für den Kestrel-Start (`StartAsync`).
+- **Die Build-Zeit steckt fast ganz in `WebApplication.CreateBuilder`**, nämlich 197 ms. Davon ist der Datei-Watcher der Grund: `CreateBuilder` hängt `appsettings.json` mit Reload-on-Change ein, ob es die Datei gibt oder nicht. Ohne den Watcher dauert `CreateBuilder` 2 ms und `Build` insgesamt 6 ms.
+- **Die Suite ist CPU-gebunden, nicht an ihre längste Klasse gebunden.** Die Aufteilung von `ChatStreamTests` in acht Klassen brachte etwa 1 s, dafür wurde jeder der 32 Tests rund 2,6-mal langsamer. Die CPU-Zeit blieb bei etwa 27 s.
+- **Der Watcher war die Hälfte der Wall-Clock.** Mit ihm liefen je Suite etwa 12 s Kernelzeit an, ohne ihn etwa 2 s. Die Wall-Clock (Test-Executable, 432 Testfälle) fiel von etwa 13 s auf etwa 5,3 s. Ein Hub-Test kostet mit Watcher 0,43 CPU-s, ohne ihn 0,16 CPU-s.
+- **Umsetzung:** DEC-034 entfernt Konfigurationsdatei und Watcher. `HubApplication.Build` nutzt jetzt `CreateEmptyBuilder` und fügt Kestrel, Routing und Konsolen-Logging ausdrücklich hinzu.
+
 ### Die 10 langsamsten Tests je Level
 
 Median aus 3 Läufen, Debug.
@@ -726,7 +734,7 @@ Priorisiert nach Wirkung auf Dev-Loop-Zeit und Aussagekraft. Nur Vorschläge, ni
 
 | # | Maßnahme | Wirkung | Tests betroffen |
 | --- | --- | --- | --- |
-| **1** | **Kestrel-Starts in Fast bündeln:** ein `HostedHub` je Klasse oder Collection (`IClassFixture`) statt je Test, oder die Stream-Tests, die nur Domänenverhalten prüfen, auf `FastHub` zurückführen (Chat vs. ChatStream, SubmissionList, Record-NotFound doppelt) | **Fast lokal ≈ 14,5 s → geschätzt 6–8 s.** Die Messung ohne die sechs Klassen ergibt 5,7 s. Das 15-s-Gate wäre wieder weit weg. | 59 Testfälle in 6 Klassen umbauen, davon etwa 8 streichbar (e: Chat/Stream 4, SubmissionList 1, Record-NotFound 2–3) |
+| **1** | **Zurückgenommen** (Nachtrag in Abschnitt 3, DEC-034): Der Kestrel-Start kostet 5 ms, die Zeit steckte im Datei-Watcher von `CreateBuilder`. Ursprünglicher Vorschlag: **Kestrel-Starts in Fast bündeln:** ein `HostedHub` je Klasse oder Collection (`IClassFixture`) statt je Test, oder die Stream-Tests, die nur Domänenverhalten prüfen, auf `FastHub` zurückführen (Chat vs. ChatStream, SubmissionList, Record-NotFound doppelt) | **Fast lokal ≈ 14,5 s → geschätzt 6–8 s.** Die Messung ohne die sechs Klassen ergibt 5,7 s. Das 15-s-Gate wäre wieder weit weg. | 59 Testfälle in 6 Klassen umbauen, davon etwa 8 streichbar (e: Chat/Stream 4, SubmissionList 1, Record-NotFound 2–3) |
 | **2** | **Leere, tautologische und Double-only-Tests streichen oder reparieren:** `ToolGrantTests.cs:87`, `SubmissionStateTests.cs:95`, `CeilingTests.cs:122`/`:149`/`:250`, `RunEndingTests.cs:58`; `FailedRunTests.cs:26`/`:38` und `RunRecordTests.cs:142`/`:169` gegen den echten Adapter (Contract) statt gegen das Double; `E2E AskingTheWikiTests.cs:188` | Aussagekraft: Diese Tests zählen in trace.md, können aber nicht fehlschlagen oder prüfen das Double | ≈ 6 streichen, 4 verlegen, 1 E2E streichen oder so umbauen, dass der Harness wirklich schreiben *könnte* |
 | **3** | **Theory-Zeilen auf einem Pfad zusammenlegen** (Abschnitt 6 d) | Zählung ehrlicher; `QuestionAskedOverHttpTests.cs:56` spart einen Kestrel-Start | −14 (konservativ) bis −21 Testfälle |
 | **4** | **Obermengen und klassenübergreifende Doppelungen auflösen** (6 a/e, ohne die README-„And“-Regel zu brechen) | Wartung, Lesbarkeit | ≈ 14 Methoden / 18 Testfälle |
