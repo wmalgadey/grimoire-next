@@ -287,4 +287,12 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Made by**: plan `003-live-run-record` (research.md R-10).
 
+## DEC-034 — The hub reads no configuration file, and does not watch for one
+
+**Decision**: the hub's options come from its command line alone (`StartUp.Read`). The host is built without configuration files and without the file watcher the default builder installs for them.
+
+**Reason**: `WebApplication.CreateBuilder` adds `appsettings.json` with reload-on-change, which installs a directory watcher on every start whether or not the file exists. The hub has no such file and no code that reads one; the watcher has no consumer (II.1). Measured on macOS it costs about 200 ms and most of the kernel time of every hub start — in the Fast suite, which builds a hub per test, 11 of 12 seconds of system time and half the wall-clock. Turning it off is removing machinery, not tuning tests: the suite merely made the cost visible.
+
+**Consequence**: whichever mechanism is chosen must be explicit in `HubApplication.Build` — a reader must see that no configuration file is read — and must not silently drop anything the hub uses (console logging, Kestrel on loopback, routing).
+
 ## Superseded
