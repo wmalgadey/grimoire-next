@@ -15,10 +15,17 @@ namespace Grimoire.Fast.Tests;
 /// <remarks>
 /// <para>
 /// <see cref="FastHub"/> is what almost every test here uses: it composes the board, the conductor and
-/// the intake directly, with no server and no files, which is what keeps the suite inside its 15 s.
-/// This one exists for the one thing that needs a request to reach an endpoint at all — the record
-/// endpoint of ACCESS-006 — and it is in the Fast suite because nothing outside the process is
+/// the intake directly, with no server and no files. This one is for what only a request can show —
+/// what an endpoint answers, and what a stream sends (ACCESS-005 to ACCESS-009, the question's
+/// refusals over HTTP) — and it is in the Fast suite because nothing outside the process is
 /// involved: loopback, in-memory adapters, and a clock a test moves itself.
+/// </para>
+/// <para>
+/// Thirteen classes use it, 47 test cases between them, and each builds a hub of its own. A build
+/// costs about 0.16 CPU-seconds once the host reads no configuration file (DEC-034; with the file
+/// watcher it was 0.43, most of it kernel time). Kestrel's own start is about 5 ms of that, so a server
+/// shared by a class would save next to nothing, and a hub shared across tests would share the state
+/// each test needs fresh (specs/004-ask-the-wiki/test-audit.md, §3).
 /// </para>
 /// <para>
 /// The two start-up inputs are real files, because <c>InstructionLoader</c> reads paths and is not
