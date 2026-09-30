@@ -4,6 +4,7 @@ using Grimoire.Hub.Mcp;
 using Grimoire.Runs;
 using Grimoire.Wiki;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -194,11 +195,22 @@ public static class HubApplication
         // The content root is the hub's own base directory rather than whatever directory it was
         // launched from, so the page under wwwroot/ is found the same way whether the hub was
         // started from the command line or built by a test.
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        //
+        // **No configuration file is read, and none is watched** (DEC-034). The empty builder brings
+        // the command line and nothing else — no appsettings.json, no environment variables, no file
+        // watcher, and none of the default log providers — so what the hub uses is added here by
+        // name: Kestrel and routing next, console logging below. The debugger's and EventSource's log
+        // providers are the two defaults left out, and nothing here reads either.
+        var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions
         {
             Args = args,
             ContentRootPath = AppContext.BaseDirectory,
         });
+
+        // Kestrel without its configuration binding: the address is `--urls`, loopback only
+        // (StartUp.Read), and there is no HTTPS to configure.
+        builder.WebHost.UseKestrelCore();
+        builder.Services.AddRouting();
 
         // One line per entry, stamped, so that what the console says can be held against the clock
         // while a run is under way. UTC, because everything else the running system shows is UTC
