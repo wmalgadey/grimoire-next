@@ -11,11 +11,6 @@ namespace Grimoire.Fast.Tests;
 /// The dispatch payload is assembled in process, as <c>DispatchPayloadTests</c> already proves for a
 /// submission, so there is no lower level and nothing outside the process is involved (Constitution
 /// III.6).
-/// <para>
-/// The last test here bears on QUERY-006 and deliberately does not carry that id: it is not registered
-/// until phase 6, and a test may not name a requirement that is not in <c>docs/capabilities/</c> yet
-/// (Constitution IV.2).
-/// </para>
 /// </remarks>
 [Trait("level", "fast")]
 [Trait("req", "QUERY-002")]

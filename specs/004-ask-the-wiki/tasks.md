@@ -680,7 +680,7 @@ Beyond what every phase follows:
       amendment rules out. Check `mutation-badge` (`if: github.ref == 'refs/heads/main'`) still
       fires on the push run. Badge and README stay. **Consequence for T091**: no run happens on
       the PR to main, so its reports come from the local run or a dispatch — **Req:** Principle II.6 | DEC-022
-- [ ] T110 Stale statements (G5c): `CLAUDE.md:95` "aliases are refused (DEC-010)" restricted to
+- [X] T110 Stale statements (G5c): `CLAUDE.md:95` "aliases are refused (DEC-010)" restricted to
       `scripts/run-hub.sh` — the hub (`Program.cs`) refuses none; "three" sign-in tests corrected to
       **four** (DEC-021) in `CLAUDE.md:127`, `ci.yml:32` and `AgentProcessTests.cs:16`; the remark in
       `QuestionPromptTests.cs:14–18` ("QUERY-006 … is not registered until phase 6") removed, as PR

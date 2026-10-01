@@ -92,7 +92,7 @@ Run the hub by hand — `.env` at the root (copy `.env-example`), a real wiki, a
 dotnet run --project src/Grimoire.Hub -- --wiki <dir> --purpose <file> --model <pinned-id> [--state <dir>]
 ```
 
-`GRIMOIRE_MODEL` / `--model` must be a pinned model id; aliases are refused (DEC-010). No `ANTHROPIC_API_KEY` — runs go through the owner's subscription sign-in (DEC-001), and the harness strips the variable from the child.
+`GRIMOIRE_MODEL` / `--model` must be a pinned model id (DEC-010); `scripts/run-hub.sh` refuses an alias, the hub itself (`Program.cs`) refuses none. No `ANTHROPIC_API_KEY` — runs go through the owner's subscription sign-in (DEC-001), and the harness strips the variable from the child.
 
 Implement a feature one phase PR at a time, unattended — repository tooling, not part of Grimoire; `tools/phasepr/README.md` says what it does and where it stops. Its own tests need bats-core:
 
@@ -131,7 +131,7 @@ What surrounds that — the queue, what a failure blocks, what survives a stop �
 - A test proving a requirement carries `[Trait("req", "<CAPABILITY>-NNN")]` (repeatable). E2E and Deploy must; Fast and Contract may. Tests that prove a principle rather than a requirement carry none.
 - Class is `<Subject>Tests` where the subject is the spec's vocabulary; method is `<Action>_<Result>[_<Scenario>]`, scenario starting with When/While/With/Without/After. No implementation names, no status codes, no `Works`/`Succeeds`. A name needing `And` is two tests.
 - Doubles are in-memory adapters at owned ports (`InMemoryAgentHarness`, `InMemoryWikiStore`, `DrivableHarness`) — never generated mocks of our own types. Time comes from `TimeProvider`, with `FakeTimeProvider` in the Fast suite (DEC-018); the Fast suite has 15 s total, so no test waits for real time.
-- Contract tests that drive the real signed-in CLI carry `[Trait("requires", "signin")]` and are excluded in CI; there are at most three (DEC-021).
+- Contract tests that drive the real signed-in CLI carry `[Trait("requires", "signin")]` and are excluded in CI; there are at most four (DEC-021).
 
 ## Branching and PRs
 
