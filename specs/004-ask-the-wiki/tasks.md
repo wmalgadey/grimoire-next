@@ -722,7 +722,7 @@ Beyond what every phase follows:
 - [X] T088 Merge this plan's eleven binding decisions into `docs/decisions.md`, each with its reason
       and "Made by: plan `004-ask-the-wiki`", and **move DEC-032 under "Superseded"** naming the entry
       that replaces it — polling is gone from the chat *and* from the two views that polled — **Req:** Principle II.6
-- [ ] T089 Bring `CLAUDE.md`'s architecture paragraph up to date: `SubmissionBoard` is `RunBoard` over
+- [X] T089 Bring `CLAUDE.md`'s architecture paragraph up to date: `SubmissionBoard` is `RunBoard` over
       one ordered list of `Queued`, the hub serves a second MCP endpoint and a third page, and
       `InstructionLoader` assembles two prompts. The comments carry the reasons, so a stale name in the
       map is a comment that lies — **Req:** Principle II.6
