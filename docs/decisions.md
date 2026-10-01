@@ -295,4 +295,6 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Consequence**: whichever mechanism is chosen must be explicit in `HubApplication.Build` — a reader must see that no configuration file is read — and must not silently drop anything the hub uses (console logging, Kestrel on loopback, routing).
 
+**Made by**: owner, in `004-ask-the-wiki`.
+
 ## Superseded
