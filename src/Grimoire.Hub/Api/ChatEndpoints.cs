@@ -218,6 +218,41 @@ public sealed record ChatView(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     VaultView? Vault = null);
 
+/// <summary>
+/// A <c>question</c> event: one question's state and figures changed, and the total with them
+/// (ACCESS-007, ACCESS-008).
+/// </summary>
+/// <remarks>
+/// A record and not an anonymous object, because <c>because</c>, <c>costSpent</c> and
+/// <c>awaitingAcknowledgement</c> are sent <b>only where</b> they say something, exactly as on the
+/// snapshot's turn: an anonymous object sent them holding <c>null</c>, which is a field the browser
+/// has to interpret (contracts/hub-http-api.md).
+/// </remarks>
+/// <param name="AwaitingAcknowledgement">
+/// <b>Beyond what contracts/hub-http-api.md first listed for this event</b>, and it has to be. The
+/// control ACCESS-003 asks for is offered on the strength of this, and a question's failure arrives as
+/// an increment — a browser that only learnt it from a snapshot would show no control until something
+/// else made it reconnect. Whether a failure is still waiting to be seen is part of the question's
+/// state, which is what this event is for.
+/// </param>
+/// <param name="Total">
+/// Comes with the question's figure because a question's spend is what moves it, and a browser told
+/// one without the other would show a total that does not add up to what is above it (ACCESS-008).
+/// </param>
+public sealed record QuestionChangeView(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("state")] string State,
+    [property: JsonPropertyName("because")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Because,
+    [property: JsonPropertyName("costSpent")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    long? CostSpent,
+    [property: JsonPropertyName("awaitingAcknowledgement")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    bool? AwaitingAcknowledgement,
+    [property: JsonPropertyName("total")] long Total);
+
 /// <summary>What the browser posts to ask the wiki.</summary>
 public sealed record QuestionRequest([property: JsonPropertyName("text")] string? Text);
 
@@ -438,25 +473,12 @@ public static class ChatEndpoints
         };
     }
 
-    private static object QuestionChanged(Chat chat, ChatTurnAsItWas turn)
+    private static QuestionChangeView QuestionChanged(Chat chat, ChatTurnAsItWas turn)
     {
         var view = ChatTurnView.Of(turn);
 
-        return new
-        {
-            id = view.Id,
-            state = view.State,
-            because = view.Because,
-            costSpent = view.CostSpent,
-
-            // **Beyond what contracts/hub-http-api.md lists for this event**, and it has to be. The
-            // control ACCESS-003 asks for is offered on the strength of this, and a question's failure
-            // arrives as an increment — a browser that only learnt it from a snapshot would show no
-            // control until something else made it reconnect. Whether a failure is still waiting to be
-            // seen is part of the question's state, which is what this event is for.
-            awaitingAcknowledgement = view.AwaitingAcknowledgement,
-            total = chat.Total,
-        };
+        return new QuestionChangeView(
+            view.Id, view.State, view.Because, view.CostSpent, view.AwaitingAcknowledgement, chat.Total);
     }
 
     /// <summary>The accepted question's turn, as the stream's snapshot carries one.</summary>

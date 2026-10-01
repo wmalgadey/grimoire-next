@@ -563,7 +563,7 @@ Beyond what every phase follows:
       the last `question` event. Proves the summation path through `Chat.cs` for a failed question
       (spec.md:261, :470–473; contracts/hub-http-api.md:131 "a failed one included"). The behaviour is
       fixed in both documents, so this is no spec clarification — **Req:** ACCESS-008, RUNS-010 | **Level:** Fast — **Why not lower:** the total is the hub's `Chat` summing what the conductor reports; there is no unit below the chat that holds two questions
-- [ ] T097 [P] `QuestionCostTests`: while a question's run is under way and its cost **rises**, the
+- [X] T097 [P] `QuestionCostTests`: while a question's run is under way and its cost **rises**, the
       `question` event carries `id`, `state`, `costSpent` (the new figure) and `total` (risen by the
       same amount), and **no** `awaitingAcknowledgement`; once that run ends failed and unacknowledged,
       the event carries `awaitingAcknowledgement: true` and no longer after the acknowledgement. Field

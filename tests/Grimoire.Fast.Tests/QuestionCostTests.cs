@@ -88,6 +88,75 @@ public sealed class QuestionCostTests : ChatStreamReading
         Assert.Equal(17_000, (await SnapshotAsync(hub)).Total);
     }
 
+    [Fact]
+    [Trait("req", "ACCESS-008")]
+    public async Task QuestionEvent_CarriesTheRisenFigures_WhileItsRunSpends()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        hub.Agent.Spend(question, 3_000);
+
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+        await stream.NextAsync<ChatView>(ChatEvents.Chat);
+
+        hub.Agent.Spend(question, 8_000);
+
+        var risen = await NextQuestionEventAsync(stream, question);
+
+        // The run's new figure and the total risen by as much, and nothing the question is not: no
+        // reason, since it has not failed, and no acknowledgement, since there is nothing to see
+        // (contracts/hub-http-api.md, "only where").
+        Assert.Equal(["id", "state", "costSpent", "total"], FieldsOf(risen.GetRawText()));
+        Assert.Equal(8_000, risen.GetProperty("costSpent").GetInt64());
+        Assert.Equal(8_000, risen.GetProperty("total").GetInt64());
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-008")]
+    [Trait("req", "ACCESS-003")]
+    public async Task QuestionEvent_OffersTheAcknowledgement_WhenItsRunEndsFailed()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+        await stream.NextAsync<ChatView>(ChatEvents.Chat);
+
+        hub.Agent.End(question, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
+
+        // The control is offered by the event itself: a browser that learnt of it only from a snapshot
+        // would show none until it happened to reconnect (ACCESS-003).
+        var ended = await NextQuestionEventAsync(stream, question, "no-answer");
+
+        Assert.True(ended.GetProperty("awaitingAcknowledgement").GetBoolean());
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-008")]
+    [Trait("req", "ACCESS-003")]
+    public async Task QuestionEvent_OffersNoAcknowledgement_AfterTheFailureWasAcknowledged()
+    {
+        await using var hub = new HostedHub();
+
+        var question = await hub.AskAsync(AboutAda);
+
+        hub.Agent.End(question, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
+
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+        await stream.NextAsync<ChatView>(ChatEvents.Chat);
+
+        await AcknowledgeAsync(hub, question);
+
+        // Absent, read off the JSON rather than off a deserialised false: the chat offers the control
+        // or says nothing about it (ACCESS-003).
+        var seen = await NextQuestionEventAsync(stream, question);
+
+        Assert.DoesNotContain("awaitingAcknowledgement", FieldsOf(seen.GetRawText()));
+    }
+
     /// <summary>
     /// The next <c>question</c> event about this question — in a given state, where one is named — as
     /// the JSON it was sent as. Anything else on the stream is read past: a run reporting in is several
