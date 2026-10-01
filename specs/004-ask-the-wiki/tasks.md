@@ -667,7 +667,7 @@ Beyond what every phase follows:
       **T028** and **T034** that their demand ("comes back with its submissions intact") now holds and
       T034's "no table is rebuilt" no longer does; and test-audit.md §7's DEC-031 row marked done
       (T106, T107) — **Req:** Principle II.6
-- [ ] T109 **DEC-022 and the mutation job** (G5c). **Owner text to insert** — but `docs/decisions.md`
+- [X] T109 **DEC-022 and the mutation job** (G5c). **Owner text to insert** — but `docs/decisions.md`
       already carries an "Amended by `004-ask-the-wiki`" paragraph under DEC-022 (schedule and
       dispatch, fourth badge); confirm with the owner whether that is the text or replace it with the
       one they supply.       **The owner's text stands** — the "Amended by `004-ask-the-wiki`" paragraph under DEC-022,
