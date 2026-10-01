@@ -726,7 +726,7 @@ Beyond what every phase follows:
       one ordered list of `Queued`, the hub serves a second MCP endpoint and a third page, and
       `InstructionLoader` assembles two prompts. The comments carry the reasons, so a stale name in the
       map is a comment that lies — **Req:** Principle II.6
-- [ ] T090 Walk `docs/review-checklist.md`, item 3 included as T072 extended it — **Req:** Principle Gov.2
+- [X] T090 Walk `docs/review-checklist.md`, item 3 included as T072 extended it — **Req:** Principle Gov.2
 - [ ] T091 Classify the survivors from the mutation reports into
       `specs/004-ask-the-wiki/mutation.md`: per survivor, the test that should have killed it and does
       not, or the reason none should. A survivor becomes a test only where it names a requirement the
