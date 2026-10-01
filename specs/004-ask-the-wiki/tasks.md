@@ -707,7 +707,7 @@ Beyond what every phase follows:
       stands as the hub holds it: every turn exactly once, nothing missing that arrived while away, the
       answer whole. Exercises the merge in `chat.js:335–380`, which no test reaches. **One test** — the
       only clause of this feature that only a browser can show (ACCESS-007's last sentence) — **Req:** ACCESS-007 | **Level:** E2E — **Why not lower:** the Fast suite proves the hub sends the whole chat on reconnect (`ChatSnapshotTests`); what is untested is `chat.js` merging it into a page already drawn
-- [ ] T084 Run the Contract and E2E suites; both pass, Contract within its 90 s budget. The default
+- [X] T084 Run the Contract and E2E suites; both pass, Contract within its 90 s budget. The default
       run is Fast only, so this is the one place they are exercised before the PR. **No new
       `requires=signin` test**: DEC-021's budget of four is spent and R-06 chose the design that needs
       no fresh evidence from the real CLI — **Req:** Principle III.7
