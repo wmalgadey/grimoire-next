@@ -71,7 +71,11 @@ requires an amendment that retires one.
       action, work blocked by a rule was unblocked by an amendment rather than by an exception, and
       any amendment was its own PR touching only the constitution, the template overrides, this
       checklist and, where an amended rule describes a mechanism by its behaviour, the one
-      `docs/decisions.md` entry that names the tool behind it. *(Gov. 1, 2, 3, 4)*
+      `docs/decisions.md` entry that names the tool behind it. Does every decision this PR relies on
+      stand in `docs/decisions.md`, cited elsewhere by its `DEC-NNN` and stated nowhere else; was
+      anything the owner said that contradicts a decision, a task or a spec drafted as an entry and
+      approved before it was implemented; and did no reviewer's finding stand in for the owner's
+      decision? *(II.7, Gov. 1, 2, 3, 4)*
 
 - [ ] **12. Requirement shape** — Is every requirement one observable behaviour, with the values it
       covers listed inside it and no two requirements differing only in a value? Did every

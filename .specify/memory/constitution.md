@@ -79,6 +79,12 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    later features are merged in when the feature closes; a superseded decision moves under
    "Superseded" and keeps its ID; a plan that departs from one cites it. **Verified:** plan template
    field "Technology decisions"
+7. An owner's decision is recorded in `docs/decisions.md` and nowhere else. Code, tests, specs and
+   research cite it by its `DEC-NNN` and state none of their own. Where something the owner says in
+   conversation contradicts a decision in force, a task or a spec, the agent writes the entry as a
+   draft, puts it to the owner and implements nothing of it until the owner has approved it. A
+   review finding, Copilot's or any other reviewer's, does not stand in for the owner's decision.
+   **Verified:** review
 
 ### III. Testing
 
@@ -179,4 +185,4 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    entry that names the tool behind it, and is not retroactive. Versioning is semantic: MAJOR removal
    or redefinition, MINOR new rule, PATCH wording. **Verified:** review
 
-**Version**: 2.0.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-09-25
+**Version**: 2.1.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-10-01
