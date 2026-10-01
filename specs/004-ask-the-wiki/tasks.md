@@ -617,7 +617,7 @@ Beyond what every phase follows:
 
 ### Decisions and the documents that state them, before T088
 
-- [ ] T105 **Constitution rule on owner decisions** (G5a) — **its own PR, before this branch**
+- [X] T105 **Constitution rule on owner decisions** (G5a) — **its own PR, before this branch**
       (Governance 4), not part of the phase-7 PR; this phase only checks it landed. MINOR amendment
       → 2.1.0. **Scope settled**: the rule is against *stating* a decision, not against the words.
       Text: *an owner decision is recorded only in `docs/decisions.md`; code, tests, specs and
