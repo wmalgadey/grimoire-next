@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using Grimoire.Agent;
 using Grimoire.Hub.Api;
 
 namespace Grimoire.Fast.Tests;
@@ -152,6 +153,28 @@ public sealed class RecordStreamTests
             string.Create(CultureInfo.InvariantCulture, $"{missing.EntriesLost} entries"),
             after.Append,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-006")]
+    public async Task Record_CarriesGrimoiresNudge_WhenTheAgentStopsWithoutItsLogEntry()
+    {
+        await using var hub = new HostedHub();
+
+        var submission = await hub.SubmitAsync(Text);
+        hub.Agent.ReportIn(submission);
+
+        await using var stream = await hub.WatchAsync($"/api/submissions/{submission}/record/events");
+        _ = await stream.NextAsync<RunRecordEvent>("record");
+
+        // The agent stops with no log entry, so Grimoire tells it once — and then nothing happens until
+        // the agent answers. The nudge is in the record from that moment, and a reader watching it is
+        // owed it then, not whenever the agent next does something (ACCESS-006, RUNS-005).
+        await hub.Agent.StoppedAsync(submission);
+
+        var nudged = await stream.NextAsync<RunRecordEvent>("record");
+
+        Assert.Contains(IAgentHarness.LogEntryMissing, nudged.Append, StringComparison.Ordinal);
     }
 
     [Fact]

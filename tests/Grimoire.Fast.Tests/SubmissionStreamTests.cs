@@ -111,6 +111,53 @@ public sealed class SubmissionStreamTests
     }
 
     [Fact]
+    public async Task Stream_SendsTheWholeList_WhenATextWasAcceptedWhileAnotherRuns()
+    {
+        await using var hub = new HostedHub();
+
+        var running = await hub.SubmitAsync("Ada Lovelace wrote the first program.");
+        hub.Agent.ReportIn(running);
+
+        await using var stream = await hub.WatchAsync("/api/submissions/events");
+
+        var opening = await stream.NextAsync<SubmissionListView>("submissions");
+        Assert.Single(opening.Submissions);
+
+        // Accepted behind a run under way, so nothing starts and no run changes: the acceptance is
+        // the only change there is, and a list left open must still come to show it (ACCESS-005).
+        // The read is bounded, so a stream that sends nothing fails here rather than hangs.
+        var waiting = await hub.SubmitAsync("Grace Hopper found the first bug.");
+
+        var sent = await stream.NextAsync<SubmissionListView>("submissions");
+
+        Assert.Equal(
+            [waiting.ToString(), running.ToString()],
+            sent.Submissions.Select(s => s.Id));
+        Assert.Equal("submitted", sent.Submissions[0].State);
+    }
+
+    [Fact]
+    public async Task Stream_SendsTheRunningState_AfterTheAgentReportedIn()
+    {
+        await using var hub = new HostedHub();
+
+        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.");
+
+        await using var stream = await hub.WatchAsync("/api/submissions/events");
+
+        var opening = await stream.NextAsync<SubmissionListView>("submissions");
+        Assert.Equal("submitted", Assert.Single(opening.Submissions).State);
+
+        // The agent reporting in and nothing after it: no tool call and no figure, whose own event
+        // would carry the new state along and hide a report-in that sent none (ACCESS-005, RUNS-001).
+        hub.Agent.ReportIn(submission);
+
+        var sent = await stream.NextAsync<SubmissionListView>("submissions");
+
+        Assert.Equal("running", Assert.Single(sent.Submissions).State);
+    }
+
+    [Fact]
     [Trait("req", "RUNS-010")]
     public async Task Stream_SendsTheFiguresTheListAnswersWith_AfterARunSpent()
     {

@@ -63,4 +63,22 @@ public sealed class DispatchPayloadTests
 
         Assert.Equal(hub.Conductor.Of(submission.Id)!.Grant, hub.Harness.Dispatched.Single().Grant);
     }
+
+    [Fact]
+    [Trait("req", "GUARD-002")]
+    public async Task Dispatch_CarriesTheIngestGrantAtItsDoor_ForASubmission()
+    {
+        await hub.AcceptedAsync();
+
+        var grant = hub.Harness.Dispatched.Single().Grant;
+
+        // Which grant a run gets follows from what caused it. A submission's run given the question's
+        // two reads would be dispatched at the questions door and could write nothing it was asked to
+        // write — and the grant read off the run it was recorded on would agree with itself all the
+        // same, so it is held against the five here (GUARD-002, GUARD-005).
+        Assert.Equal(
+            ["list_pages", "read_page", "write_page", "write_index", "append_log"],
+            grant.ToolNames);
+        Assert.Equal("runs", grant.Endpoint);
+    }
 }

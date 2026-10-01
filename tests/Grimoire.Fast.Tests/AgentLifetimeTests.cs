@@ -71,6 +71,37 @@ public sealed class AgentLifetimeTests
 
     [Fact]
     [Trait("req", "RUNS-006")]
+    public async Task HubStops_StartsNothingAfterwards_WhenATextArrives()
+    {
+        await before.StopEverythingAsync();
+
+        // Nothing was under way, so no failure holds the queue (RUNS-003): only the stop itself
+        // stands between this text and an agent nothing would ever stop.
+        var late = await before.AcceptedAsync("The text that arrives after Grimoire began to stop.");
+
+        Assert.Empty(before.Harness.Dispatched);
+        Assert.Null(late.RunId);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public async Task Restart_TerminatesNothing_WhenAQuestionsRunHadAlreadyEnded()
+    {
+        before.Harness.AgentProcess = TheAgent;
+        var question = await before.AskedAsync();
+        before.Harness.ReportIn(question.Id);
+        before.Harness.End(question.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+
+        var after = before.Restarted();
+
+        // A question's run is ended in the store by its run alone, there being no submission to set
+        // done. An ending that never reached it would leave the run in progress there, and the
+        // start-up would terminate a number that may belong to another process by now.
+        Assert.Empty(after.Harness.Terminated);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
     public async Task Restart_TerminatesTheAgentOfARunThatWasInProgress()
     {
         before.Harness.AgentProcess = TheAgent;

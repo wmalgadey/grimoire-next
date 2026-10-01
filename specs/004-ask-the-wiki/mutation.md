@@ -1,7 +1,8 @@
 # Mutation — `004-ask-the-wiki`
 
-T091 classifies the survivors of the mutation artifact of the PR to `main` here. This page begins
-before that, with two changes to what the measurement can see: `Grimoire.Hub` is in scope for the
+T091 classifies the survivors of a local run of `./scripts/mutation.sh` here — local, because since
+T109 the `mutation` job no longer runs on the PR to `main` — under "The survivors" below. This page
+begins before that, with two changes to what the measurement can see: `Grimoire.Hub` is in scope for the
 first time, and the guards that hid thirteen of its methods from Stryker are written so that they
 no longer do.
 
@@ -76,3 +77,165 @@ pattern would bring one back, which is what `scripts/mutation.sh` tells a reader
 
 Measured on a 4-core i7-6820HQ with the Fast suite at 441 tests. The RunConductor run then tested
 91 mutants in 1:40, and killed 69.
+
+## The survivors (T091)
+
+One local run of `./scripts/mutation.sh` at `fd824fd`, alone on the machine (load 2.68 at the
+start), Fast suite at 442 tests, the same 4-core i7-6820HQ. The whole script took **22 minutes**,
+not the 45 to 60 its header estimates; `Grimoire.Hub` took seven of them. `StrykerOutput/` is kept,
+one `mutation-report.json` per project with `killedBy` for every mutant, for the deletions under
+"Later" in `test-audit.md` §6.
+
+| Project | Created | Tested | Killed | Timeout | Survived | Not covered | Compile errors | Score |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Grimoire.Agent | 168 | 116 | 103 | 0 | 13 | 1 | 39 | 88.03 % |
+| Grimoire.Runs | 411 | 281 | 199 | 1 | 81 | 16 | 40 | 67.34 % |
+| Grimoire.Hub | 760 | 468 | 299 | 12 | 157 | 69 | 51 | 57.91 % |
+| Grimoire.Wiki | 126 | 105 | 90 | 1 | 14 | 1 | 3 | 85.85 % |
+| Grimoire.Trace | 376 | 117 | 97 | 0 | 20 | 10 | 28 | 76.38 % |
+
+"Tested" is killed, timed out and survived; the score is Stryker's, over tested and not covered.
+The Hub's **compile errors are 51**, against the 97 of the reference above — a fall, not the rise
+that would mean a pattern-variable guard came back.
+
+**Two "Safe Mode!" lines**, neither of them the guard CLAUDE.md forbids:
+
+- `RecordText.Counts` (`Grimoire.Runs`): a string mutation inside the interpolation handed to
+  `string.Create` breaks the handler's `ref` argument (CS1620), which Stryker cannot pin on one
+  mutant. The method is one line of wording (III.8), so nothing measurable is lost; it is a limit of
+  Stryker's string mutator on `string.Create`, not a construction of ours to rewrite.
+- `HarnessProcess.Terminate` (`Grimoire.Agent`): `process` is assigned inside a `try` and read after
+  it (CS0165). The file is an adapter outside the `--mutate` filter, so none of its mutants is
+  measured in any case; the line only says that Stryker compiles every file of the project.
+
+### What was read
+
+Of the 335 mutants that survived or were not covered in `Runs`, `Agent` and `Hub`, **260** are read
+here: every one on a line this feature wrote (155, by `git blame` against `main`), and every one in
+`Grimoire.Hub`, which no measurement has read before (105 on lines older than this feature). The
+other 75 are on lines of `Runs` and `Agent` that 001 to 003 wrote and classified; and `Wiki` and
+`Trace` (35 more), which this feature did not touch, are not this feature's to classify — the same
+cut `003-live-run-record/mutation.md` made.
+
+Every claimed gap was checked the only way that settles it: the mutation made in the source and the
+whole Fast suite run. Each of the ones below passed all 442 tests, which is what makes it a gap
+rather than an opinion — and each fails now.
+
+### Became tests — (a) and (a′)
+
+Eighteen new Fast tests, for twenty-two survivors. Each was seen red against its mutant, made in
+the source and taken out again; the `red against:` lines are in the commit message.
+
+| Survivor | Why it is a gap | Test |
+| --- | --- | --- |
+| `RunConductor.cs:141` — `question ?` → `true ?` | A **submission's** run would be dispatched with the question's two reads at the `questions` door. Every test held the dispatched grant against the grant the run recorded, which agree with each other whichever was chosen. | `DispatchPayloadTests.Dispatch_CarriesTheIngestGrantAtItsDoor_ForASubmission` (GUARD-002) |
+| `RunConductor.cs:398`, `:326` — a question's tool call not counted, its figures not raised | RUNS-010 says *every* run; only a submission's count was asserted. | `RunFiguresTests.ToolCalls_AreCounted_WhileAQuestionsRunIsInProgress` (RUNS-010) |
+| `RunConductor.cs:639` `false`, `RunBoard.cs:600` — the lost entries left out of the final figures | `TerminalState_AndTheFinalFigures_ArePublishedTogether` asserts with `Assert.All` over a set both mutants leave empty, so it passed for the wrong reason. | `RunFiguresTests.EntriesLost_StandInTheFinalFigures_WhenTheTailCouldNotBeWritten` (RUNS-007) |
+| `RunConductor.cs:505` — the nudge not published to an open record | The nudge reached a reader only when the agent next did something; no stream test nudged. | `RecordStreamTests.Record_CarriesGrimoiresNudge_WhenTheAgentStopsWithoutItsLogEntry` (ACCESS-006) |
+| `RunConductor.cs:512`, `:353` — the depth after a nudge, and after a result while an earlier call waits | The nesting is in the file (003's `contracts/run-record.md`, rule 1), as 003's `RecordText.cs:81` was. | `RunNarrativeTests.Call_StaysAtTheTop_AfterGrimoiresNudge`, `…Result_IsNotPutUnderTheCallAbove_WhileAnEarlierCallStillWaits` |
+| `RunBoard.cs:284` — no list event for a text accepted while another runs | Every stream test submitted before opening the stream. | `SubmissionStreamTests.Stream_SendsTheWholeList_WhenATextWasAcceptedWhileAnotherRuns` (ACCESS-005) |
+| `RunBoard.cs:564` — no list event when the agent reports in | The test for a change hid it: the tool call after the report-in sends one anyway. | `SubmissionStreamTests.Stream_SendsTheRunningState_AfterTheAgentReportedIn` (ACCESS-005) |
+| `RunBoard.cs:618` — a question's ended run never written to the store | The run stays in progress there, and the next start terminates a process number that may be another program's by then. Only a submission's run was restarted over. | `AgentLifetimeTests.Restart_TerminatesNothing_WhenAQuestionsRunHadAlreadyEnded` (RUNS-006) |
+| `RunQueue.cs:75`, `:142` — the queue not closed at the stop, or a pump not stopped by it | The existing test stopped a run under way, whose failure holds the queue anyway (RUNS-003). | `AgentLifetimeTests.HubStops_StartsNothingAfterwards_WhenATextArrives` (RUNS-006) |
+| `SubmissionsEndpoints.cs:229`, `:233`, `:237` — the three wire reasons (not covered at all) | No Fast test posted a refused submission; the board's `Refusal` was proven, the name the page reads was not — what `QuestionAskedOverHttpTests` closed for questions. | `SubmissionSubmittedOverHttpTests`, three methods (INGEST-003, INGEST-004) |
+| `StartUp.cs:231`, `:238` — a link on an *ancestor* of `--state` never resolved | `--state <vault-link>/wiki/state` was accepted, inside the wiki. The link test linked straight to the wiki. | `StartUpTests.Start_IsRefused_WhenTheStateDirectoryReachesIntoTheWikiThroughALinkAboveIt` (RUNS-007) |
+| `WikiToolsServer.cs:44` — the actor without `grimoire/` | The stamp's own tests hand it an actor; no test read the actor `write_page` actually records. | `ProvenanceStampTests.WritePage_RecordsGrimoireAndTheModel_WhenARunWritesAPage` (WIKI-002) |
+| `WikiToolsServer.cs:119`, `:128`, `:143` — `write_index` refusing every index or writing nothing, `append_log` appending nothing | No Fast or Contract test called either tool. | `WikiToolTests`, three methods (GUARD-002) |
+
+
+### Proven at another level
+
+Stryker runs the Fast suite alone; these are killed by a Contract or E2E test that exists.
+
+- **The MCP doors** — `HubApplication.cs:243`, `:252`, `:346`–`:347` (the two `MapMcp` calls and
+  their routes), `WikiToolSurfaces.cs:72` (both conditionals), `:92`, `:94`,
+  `WikiReadToolsServer.cs:30` (two of three), `WikiToolsServer.cs:81`, `:94`, `:98`: Contract
+  `WikiToolDoorTests` (GUARD-002, GUARD-005, WIKI-002), which opens a real MCP session at both doors
+  without a sign-in. `WikiToolsServer.cs:103` (the page never written) is killed only by the
+  sign-in test `HarnessProcessTests.Run_ReachesTheWikiAndNothingElse`.
+- **The static pages** — `HubApplication.cs:261`–`:262`: every E2E test loads them.
+- **The record's tail arriving live** — `RunConductor.cs:624`: E2E
+  `RunRecordViewTests.Moments_ArriveBelowWhatIsThere_WithoutDisturbingIt`.
+- **Restoring after a stop, called from `Build`** — `HubApplication.cs:349`: E2E `RestartTests`;
+  the method itself is proven through `FastHub` (`RestartTests`, `AgentLifetimeTests`).
+
+### (d) — not asserted by design
+
+- **Argument guards** (`ArgumentNullException.ThrowIfNull` removed), 49 of them: `ChatEndpoints.cs`
+  :60, :72, :274–:279; `Chat.cs:272`; `InstructionLoader.cs:72`, :131; `LiveUpdates.cs:168`–:169;
+  `RunRecordEndpoint.cs:58`–:61; `SubmissionsEndpoints.cs:65`, :152–:154; `HubApplication.cs`
+  :91–:95, :174–:175, :191–:193; `RunConductor.cs:133`, :158; `WikiToolSurfaces.cs:70`;
+  `RunBoard.cs:249`, :304, :351–:352, :469, :695; `Submission.cs:227`; and `Queued.cs:122`, :146,
+  which throw on a double hand-out and on an ending that is neither done nor failed — invariants the
+  queue rule keeps, so (b′) rather than (d) for those two.
+- **Wording** (III.8): the refusal and error messages — `ChatEndpoints.cs:114`, :116–:119 (why a
+  question has no answer, as a sentence; `ChatChangeTests` asserts that a reason is there, which is
+  the depth QUERY-006 asks for), :488, :499, :502; `SubmissionsEndpoints.cs:230`, :234, :238;
+  `StartUp.cs:77`, :86, :116–:118, :131 (what a refused start prints; the refusal itself is
+  asserted); `WikiReadToolsServer.cs:31`, :36 and `WikiToolsServer.cs:87`–:88, :108, :123, :133
+  (the tools' refusal reasons and messages, read by the agent and named by no requirement);
+  `Queued.cs:122`, :146 and `Submission.cs:260` (exception text). And the prompt's layout:
+  `InstructionLoader.cs:104` (two blank lines before a first question), :134 (the separator between
+  earlier turns), :137 (an answered turn whose answer is empty) — `QuestionPromptTests` asserts what
+  the prompt holds and in which order, not its whitespace.
+- **Argument parsing and static configuration** (III.8): `StartUp.cs:22`, :59 (twice), :60,
+  :64–:65, :68–:69, :250, :255 (twice) — reading `--state`, `--instruction`, `--question-instruction`
+  and their defaults; `SubmissionsEndpoints.cs:159` and `ChatEndpoints.cs:284`, a request body with
+  no `text` field read as empty text — the same refusal follows, and the empty and whitespace cases
+  are asserted over HTTP.
+- **Wiring** (III.8): `HubApplication.cs:220`–:224, :231–:233 (console logging and its filters),
+  :238–:241 and `WikiToolSurfaces.cs:53`–:54 (service registrations, which a Contract tool call fails
+  without), :354 and :358 (the framework's start and stop hooks; what they call is proven through
+  `FastHub`).
+
+### (c) — equivalent
+
+- **`ConfigureAwait(true)`**, 29 times across `ChatEndpoints`, `ChatIntake`, `HubApplication`,
+  `LiveUpdates`, `RunConductor`, `RunQueue`, `SubmissionIntake`, `SubmissionsEndpoints` and the two
+  tool servers: ASP.NET Core has no synchronisation context.
+- **`static readonly` initialisers**, which Stryker's switch cannot reach: `RunBoard.cs:19` (three
+  times — 003 recorded the same of `SubmissionBoard.cs:11`), `ToolGrant.cs:63`–:64 (the question
+  grant's two names; changed in the source, `QuestionGrantTests` fails), `LiveUpdates.cs:98` (a
+  channel's performance hint).
+- **Redundant twice over**: `Question.cs:134`, :151 and `Queued.cs:157` (a reason is kept only for
+  a failed ending, and only a failed question reads it); `Queued.cs:88` (003's `Submission.cs:215`,
+  unreachable behind the queue rule); `Queued.cs:179`; `AgentTranscript.cs:163` (a null message
+  already means a null type); `RunConductor.cs:535` (`Ended` repeats the check), :445, :639 `true`
+  (a question's run has no record, so nothing is lost); `ChatEndpoints.cs:406`, :416, :420, :486
+  (the changes and the turns come from one snapshot, so a change always finds its turn — the
+  comment at :413 describes a race the single snapshot rules out), `ChatEndpoints.cs:99`, :507 and
+  `SubmissionsEndpoints.cs:104`, :240 (the default arm of a switch over every enum value);
+  `StartUp.cs:190`–:191, :216 (twice), :218, :238 `false` (the walk up always ends at the root, and
+  `returnFinalTarget` resolves a chain in one pass).
+- **A second event carrying the same state**: `Chat.cs:281` (the board's `changed` follows inside
+  the same lock), `RunBoard.cs:283`, :330, `HubApplication.cs:293`; and `RunBoard.cs:493` and
+  `RunConductor.cs:179` (nobody can be listening yet — a stream opens with a snapshot, and a record
+  is 404 until its head exists).
+- **Unobservable through any port**: `RunBoard.cs:563` (a row restored with a run reads failed
+  whether it was stored submitted or running); `LiveUpdates.cs:110`, :200, :222, :224, :227, :234
+  (a topic shared or a subscriber not removed costs wakes and memory, and every reader still reads
+  past its own offset); `RunConductor.cs:600` (a leaked timer finds no run); `WikiReadToolsServer.cs:89`
+  (both servers are sealed); `WikiToolSurfaces.cs:89`; `RunQueue.cs:94`, :147, :148, :151 (a nested
+  pump dispatches the same runs; the board's lock keeps one at a time, RUNS-002);
+  `ChatIntake.cs:40` and `SubmissionIntake.cs:31` (a refused input pumps a queue that has nothing
+  new).
+- **`Chat.cs:340` and :414** — a run under way when the chat is started again writes descriptors
+  into the new chat's change log. They are never sent (`ChatEndpoints.cs:420` skips a change whose
+  turn is not there) and `Turns` stays empty, which is what `NewChatTests` asserts; QUERY-005 is
+  about what the user sees of the old chat, and nothing of it reaches them.
+- **Only in a race** the Fast suite cannot order: `HubApplication.cs:177`–:179 (the stop's drain),
+  `RunConductor.cs:250`, :260, :297, :308, :462, :581, :663 (a report, a moment or an ending for a
+  run another thread has just ended), `RunQueue.cs:103`, :114, :178, :213, :215, :230, and
+  `RunBoard.cs:594`, :621, :626 (ending what the board never handed out).
+  `RunConductor.cs:392` (an agent text block with no text) is a malformed CLI line, which
+  `AgentTranscript` never produces.
+
+### (b) — candidate for removal
+
+- **`WikiToolsServer.cs:25`, :27 — `RunAddress.RunId`.** It has no caller in `src/` or `tests/`:
+  `WikiToolsServer` reads only `GeneratedBy`, and the door's run is the route's, read by
+  `WikiToolSurfaces`. Its comment's claim that the identifier names the run in the generation record
+  and the log is no longer true (`GeneratedBy`'s own remarks say why the run is not in the actor). With it would go the
+  `IHttpContextAccessor` it reads and its registration at `HubApplication.cs:238`. Nothing built without a
+  consumer (II.1); the deletion is not made here, because T091 classifies and this is a production
+  change — it is an open question for the PR.
