@@ -568,7 +568,7 @@ Beyond what every phase follows:
       same amount), and **no** `awaitingAcknowledgement`; once that run ends failed and unacknowledged,
       the event carries `awaitingAcknowledgement: true` and no longer after the acknowledgement. Field
       presence as contracts/hub-http-api.md:105 and :117–135 state it, including "only where" — **Req:** ACCESS-008, ACCESS-003 | **Level:** Fast — **Why not lower:** what is asserted is the event the hub puts on the stream, read as an `IAsyncEnumerable` — the lowest place it exists
-- [ ] T098 [P] `RestartTests` in `tests/Grimoire.Fast.Tests/`: a question whose run **ended failed
+- [X] T098 [P] `RestartTests` in `tests/Grimoire.Fast.Tests/`: a question whose run **ended failed
       before the stop** and was never acknowledged, then a restart — a submission made afterwards
       starts, the queue is not held. RUNS-003's last clause ("a question's failure goes with the chat
       that held it when Grimoire stops", runs.md:15). `RunBoardTests` covers only the question *in
