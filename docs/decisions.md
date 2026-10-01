@@ -185,7 +185,7 @@ One mechanism for both ceilings because the agent loops model call → tool call
 
 **Made by**: owner, after feature 001.
 
-**Amended by `004-ask-the-wiki`**: the mutation run is no longer manual only. CI runs it as its own job and publishes a fourth badge; both existed since 002 without this entry, which is the drift the 004 test audit found. The job runs on schedule and on dispatch, not on every push — with `Grimoire.Hub` in scope it takes twenty to thirty minutes, and its score is a metric to read, not a gate to wait for. The three metrics of the original decision still run on every push to main; this one reports.
+**Amended by `004-ask-the-wiki`**: the mutation run is no longer manual only. CI runs it as its own job and publishes a fourth badge; both existed since 002 without this entry, which is the drift the 004 test audit found. The job runs on push to main and dispatch, not on pull requests — with `Grimoire.Hub` in scope it takes twenty to thirty minutes, and its score is a metric to read, not a gate to wait for. The three metrics of the original decision still run on every push to main; this one reports.
 
 ## DEC-023 — The submissions live in SQLite, behind a port of the RUNS context
 

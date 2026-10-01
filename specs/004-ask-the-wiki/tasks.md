@@ -519,9 +519,179 @@ it.
 
 **Branch**: `004-ask-the-wiki-phase-7-closing`
 
+**Before this branch starts**: T105 is merged as its own PR (Governance 4) and the constitution reads
+2.1.0; the DEC-031 amendment, DEC-034 and the DEC-022 amendment are in `docs/decisions.md`. If any
+of these is missing, the phase stops at its first task and says which.
+
+**Order**: T096–T104 (the gaps of test-audit.md §7, G1–G4), T106–T110 (G5b–G5c), T083, T111 (G6),
+T084, T085, T086, T087, T088, T089, T090, T091, T092, T093, T095, T094. The gaps come first because
+nothing later in this phase finds them: T083 looks for unbuilt work, T085 `--complete` is green as
+soon as every requirement has *a* test, and T091 measures only what the suite already asserts.
+**T111 runs after T083 and before T084** rather than after T087: T084 then runs the E2E suite with
+it, T085 reads its trait, and T087 generates `docs/trace.md` with its row in it — placed after T087,
+the generated document would be stale on the commit that closes the feature (IV.4).
+
+### Rules for this phase
+
+Beyond what every phase follows:
+
+- **One task, one commit.** A new test is seen red before it is green. A test that has no red phase
+  of its own — replaced (T104) or rewritten against a real fixture (T106) — is shown red **once**
+  against the guard it protects, switched off locally and never committed. The commit message
+  carries the line `red against: <what was switched off>` (tests/README.md).
+- **Constitution 2.1.0 on owner decisions applies.** Where a task finds a spec, a decision or a
+  contract unclear: that task stops, the question goes into the PR description, and the next task
+  that does not depend on it is taken. No guessing and no deciding. A reviewer's finding is not a
+  decision either — it is answered on the PR, and where it asks for a decision the owner is asked.
+- **Deleted tests keep their IDs carried.** T104 deletes one test and T106 deletes two. Every
+  requirement ID a deleted test carried has another carrier in the same commit;
+  `trace-check --complete` runs after each of those commits, not only at T085.
+- **T091 runs alone.** Load under 3 at the start, nothing else on the machine, `StrykerOutput/`
+  kept. Score and the count of CompileError mutants per project go into the PR description; the
+  Hub's reference after G8 is 97 compile errors, a rise means a new pattern-variable guard slipped
+  in against CLAUDE.md.
+- **T095 last.** Only after T091 is in and every question this phase raised has its answer in the
+  PR.
+- **The PR description carries**: requirement → tests before and after this phase; mutation score
+  per project; open questions; and one `red against:` line per new test.
+
+### Gaps from test-audit.md §7, closed before converge
+
+- [ ] T096 [P] `QuestionCostTests` in `tests/Grimoire.Fast.Tests/`: a chat with **at least two
+      questions, one of whose runs ended failed** — the chat's `total` is the sum of every question's
+      `costSpent`, the failed one's included, and it is that sum on the `chat` snapshot as well as on
+      the last `question` event. Proves the summation path through `Chat.cs` for a failed question
+      (spec.md:261, :470–473; contracts/hub-http-api.md:131 "a failed one included"). The behaviour is
+      fixed in both documents, so this is no spec clarification — **Req:** ACCESS-008, RUNS-010 | **Level:** Fast — **Why not lower:** the total is the hub's `Chat` summing what the conductor reports; there is no unit below the chat that holds two questions
+- [ ] T097 [P] `QuestionCostTests`: while a question's run is under way and its cost **rises**, the
+      `question` event carries `id`, `state`, `costSpent` (the new figure) and `total` (risen by the
+      same amount), and **no** `awaitingAcknowledgement`; once that run ends failed and unacknowledged,
+      the event carries `awaitingAcknowledgement: true` and no longer after the acknowledgement. Field
+      presence as contracts/hub-http-api.md:105 and :117–135 state it, including "only where" — **Req:** ACCESS-008, ACCESS-003 | **Level:** Fast — **Why not lower:** what is asserted is the event the hub puts on the stream, read as an `IAsyncEnumerable` — the lowest place it exists
+- [ ] T098 [P] `RestartTests` in `tests/Grimoire.Fast.Tests/`: a question whose run **ended failed
+      before the stop** and was never acknowledged, then a restart — a submission made afterwards
+      starts, the queue is not held. RUNS-003's last clause ("a question's failure goes with the chat
+      that held it when Grimoire stops", runs.md:15). `RunBoardTests` covers only the question *in
+      progress* at the stop, and there by a `FastHub` that builds a new `Chat` anyway — **Req:** RUNS-003, QUERY-005 | **Level:** Fast — **Why not lower:** the failed run's row survives in the store while the chat does not; only the hub's restart reads one without the other
+- [ ] T099 [P] `AgentLifetimeTests` in `tests/Grimoire.Fast.Tests/`: a **question's** run in progress
+      at the stop, its agent still alive — the first restart terminates that agent before the run
+      reads failed and before anything else starts; a **second** restart terminates nothing and starts
+      nothing on that run's account. RUNS-006 for a question's run has so far been proven only at the
+      adapter (`SqliteSubmissionStoreTests`), and the order — terminate, then failed, then the queue —
+      not at all for questions — **Req:** RUNS-006 | **Level:** Fast — **Why not lower:** the order is `HubApplication.RestoreAfterAStop`'s, across the store, the harness and the board; the adapter test sees only the store
+- [ ] T100 [P] `QuestionPromptTests` in `tests/Grimoire.Fast.Tests/`: a chat holding an **answered**
+      question and a **failed** one, then a new chat, then a question — the dispatch carries neither
+      earlier question's text, nor the answer, nor the failure. Today only the absence of a partial
+      answer is checked (`QuestionPromptTests.cs:154`) — **Req:** QUERY-002, QUERY-005 | **Level:** Fast — **Why not lower:** the prompt is assembled by `InstructionLoader` from the chat the hub holds; the dispatch payload is the observable
+- [ ] T101 [P] `SubmissionAcceptanceTests` in `tests/Grimoire.Fast.Tests/`: a hub started **without
+      the question instruction** (`QuestionInstructionPresent: false`) accepts a submission and starts
+      its run. query.md:35 — a submission is refused on the ingest instruction only; no submit test
+      sets that flag today — **Req:** QUERY-003, INGEST-003 | **Level:** Fast — **Why not lower:** the refusal order is the hub's intake reading start-up inputs; the board alone does not know which instruction a kind needs
+- [ ] T102 [P] `ChatSnapshotTests` (or `ChatChangeTests`) in `tests/Grimoire.Fast.Tests/`: **no run
+      identifier** on the chat stream — neither on the `chat` snapshot nor on `asked`, `question` or
+      `answer`, for a question that has a run. So far checked only at the POST answer
+      (`QuestionAskedOverHttpTests.cs:31`).  **Settled**: the test carries **no `req` trait**. contracts/hub-http-api.md:24 names this a
+      design property, `trace-check` requires `req` for E2E and Deploy only, and
+      `SubmissionStateTests.Report_CarriesNoRunIdentifier_WhileAFailureIsUnacknowledged` already runs
+      the same way. A comment on the test names hub-http-api.md:24 as what it guards | **Level:** Fast — **Why not lower:** what is asserted is the serialised event, and that exists only on the stream
+- [ ] T103 `WikiToolDoorTests` in `tests/Grimoire.Contract.Tests/`, **no `requires=signin`, runs in
+      CI**: open an MCP session at `/mcp/questions/{runId}` and **call** `list_pages` and `read_page`
+      against `RealRun`'s wiki with a page written into it beforehand — the list names that page, the
+      read returns its bytes unchanged; then call `write_page` at the same door — refused as an unknown
+      tool, and nothing reaches the disk. **Why this task exists:** since the trait commit `c606e9b`
+      GUARD-005 rests on two Fast tests and one Contract test, and all three compare tool *names*; no
+      test has ever called a tool through the question door, so "allow reading anything inside the
+      wiki" is unproven. **No run needs registering**: `WikiReadToolsServer` takes no `RunAddress`,
+      and `WikiToolSurfaces.For` selects the surface by path prefix alone, so a fresh `Guid` answers —
+      as `ToolsAtAsync` already relies on. Should the door nonetheless not answer, stop and report it
+      rather than building a registration path for the test. **Shown red once** (tests/README.md):
+      with `WikiToolSurfaces.For` serving `WikiToolsServer` at both doors, the `write_page` test fails;
+      with `WikiReads.ReadPageAsync` returning the refusal, the read test fails — **Req:** GUARD-005 | **Level:** Contract — **Why not lower:** the catalogue a session gets is decided per request inside the MCP transport (`ConfigureSessionOptions`); only a real session over HTTP shows what a call reaches
+- [ ] T104 `WikiToolDoorTests`: at the **run** door `/mcp/runs/{runId}`, `write_page` with a page whose
+      `generated` place cannot be read (`generated: a plain string`) — the agent gets the refusal
+      `frontmatter-unreadable` **with its reason**, and the wiki directory is empty afterwards.
+      **Replaces** `FileSystemWikiStoreTests.WritePage_IsRefused_WhenTheFrontmatterCannotBeRead`, which
+      never calls the store and so proves nothing of WIKI-002's "the agent MUST be told why"; that test
+      is deleted in the same commit. **Shown red once** with the `stamped.Page is null` branch in
+      `WikiToolsServer.WritePageAsync` taken out — **Req:** WIKI-002 | **Level:** Contract — **Why not lower:** the refusal is what the agent receives over MCP; the stamp alone (Fast) never sees the tool's answer or the disk
+
+### Decisions and the documents that state them, before T088
+
+- [ ] T105 **Constitution rule on owner decisions** (G5a) — **its own PR, before this branch**
+      (Governance 4), not part of the phase-7 PR; this phase only checks it landed. MINOR amendment
+      → 2.1.0. **Scope settled**: the rule is against *stating* a decision, not against the words.
+      Text: *an owner decision is recorded only in `docs/decisions.md`; code, tests, specs and
+      research refer to one by its number and state none; a reviewer's finding is not a decision;
+      where the owner's statement in chat contradicts a decision, a task or a spec, the agent writes
+      the DEC draft, presents it and waits for approval before implementing.* The constitution keeps
+      the term where it describes the concept. Specs 001–003 are untouched (not retroactive). The
+      three comments in `src/` (`HubApplication.cs:22`, `InstructionLoader.cs:13`, `StartUp.cs:8`)
+      are live code, not archive: each refers to the DEC that carries it, or — where none does — is
+      an undocumented decision, drafted for the owner in that PR's description and left unchanged
+      until approved. The `OWNER DECISION` comment in `SqliteSubmissionStoreTests` falls with T106 —
+      **Req:** Principle Gov.4
+- [ ] T106 `SqliteSubmissionStoreTests` in `tests/Grimoire.Contract.Tests/`: **two fixtures with the
+      real schemata** — the one `002-ingest-queue` wrote (`git show 1c5f1cd:src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs`)
+      and the one `003-live-run-record` left (`origin/main`), each written by hand with no help from
+      the adapter, each holding a submission with a run and, for 003, non-zero figures. One test per
+      fixture: reopened, the list and every figure come back intact, a **question's run is then
+      accepted** (`AddRun` with a null `submission_id` round-trips), `PRAGMA user_version` reads 1, and
+      `submissions.db.before-rebuild` exists beside the file. **Deleted**: the test on the invented
+      intermediate schema (`FileWithoutThisVersionsColumns_…`, nullable with no columns — a state no
+      commit ever wrote) and `OlderFile_IsRefused_BecauseItsRunTableCannotHoldAQuestionsRun`. **Shown
+      red once** each, with the rebuild switched off (DEC-031 as amended) — **Req:** RUNS-004, RUNS-006 | **Level:** Contract — **Why not lower:** what is read is a real file an older Grimoire wrote, and only real SQLite decides whether the rebuilt table holds what the old one held (III.4, DEC-031's precedent)
+- [ ] T107 `src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs`: `RefuseAFileThatCannotHoldAQuestionsRun`
+      becomes `RebuildARunTableThatCannotHoldAQuestionsRun` — **only** where `pragma_table_info('runs')`
+      reports `notnull = 1` on `submission_id`: first a consistent copy to `submissions.db.before-rebuild`
+      (no pooled connection holding the file, or SQLite's `VACUUM INTO`), then in **one transaction**
+      `runs_new` carrying **every column the old table has** (read from `pragma_table_info`, so 003's
+      figures are not lost to the base `CREATE`) with `submission_id` nullable, copy every row, drop,
+      rename; then `PRAGMA user_version = 1`. The column additions (`BringTheRunTableUpToDate`) run after
+      it as before. Where the rebuild fails, the error **names the copy**. **Settled**: every file ends at `user_version = 1` — a fresh file (full `CREATE`, then the
+      pragma), an already-nullable one (the pragma alone) and a rebuilt one. The number names the
+      schema, not the migration history. Reading order: `user_version` 0 → inspect `notnull` →
+      rebuild where needed → write 1. The next feature that changes the schema reads 1, does its
+      step, writes 2 — **Req:** RUNS-004, RUNS-006 | DEC-031
+- [ ] T108 The documents that still say "refused" or "no table rebuilt" (G5c), all against DEC-031 as
+      amended: `research.md` R-04 and its **"Revised while implementing"** paragraph rewritten — the
+      refusal (`7a5aff0`) stated as tried and reverted; `data-model.md`'s migration paragraph
+      (:122–125); `plan.md:36` ("no table rebuilt") and `plan.md:27` ("DEC-031 binds … none departed
+      from" — now: binds as amended, and R-04's sentence is what was departed from); the comments in
+      `SqliteSubmissionStore.cs` — the constructor, the remarks block of the former refusal, and the
+      `BringTheRunTableUpToDate` remark ending "the file is thrown away (GUARD-004)"; a note under
+      **T028** and **T034** that their demand ("comes back with its submissions intact") now holds and
+      T034's "no table is rebuilt" no longer does; and test-audit.md §7's DEC-031 row marked done
+      (T106, T107) — **Req:** Principle II.6
+- [ ] T109 **DEC-022 and the mutation job** (G5c). **Owner text to insert** — but `docs/decisions.md`
+      already carries an "Amended by `004-ask-the-wiki`" paragraph under DEC-022 (schedule and
+      dispatch, fourth badge); confirm with the owner whether that is the text or replace it with the
+      one they supply.       **The owner's text stands** — the "Amended by `004-ask-the-wiki`" paragraph under DEC-022,
+      which says: on push to `main` and on dispatch, **not on pull requests**, and **no schedule**.
+      `ci.yml`'s `mutation` job today runs on pull requests to main and on `workflow_dispatch`
+      (`ci.yml:202–206`): replace the `pull_request` trigger with `push` on `main`, keep
+      `workflow_dispatch`, add no cron. Rewrite the comment above it (`ci.yml:198–201`) with the
+      reason from `scripts/mutation.sh:17–25` and the one from the amendment — the score reports, it
+      does not gate, and a thirty-minute required check on the feature-merge PR is what the
+      amendment rules out. Check `mutation-badge` (`if: github.ref == 'refs/heads/main'`) still
+      fires on the push run. Badge and README stay. **Consequence for T091**: no run happens on
+      the PR to main, so its reports come from the local run or a dispatch — **Req:** Principle II.6 | DEC-022
+- [ ] T110 Stale statements (G5c): `CLAUDE.md:95` "aliases are refused (DEC-010)" restricted to
+      `scripts/run-hub.sh` — the hub (`Program.cs`) refuses none; "three" sign-in tests corrected to
+      **four** (DEC-021) in `CLAUDE.md:127`, `ci.yml:32` and `AgentProcessTests.cs:16`; the remark in
+      `QuestionPromptTests.cs:14–18` ("QUERY-006 … is not registered until phase 6") removed, as PR
+      #63's description notes — **Req:** Principle II.6
+
+### Closing
+
 - [ ] T083 Run `/speckit-converge` once for this feature and classify every finding before acting:
       code defect → a task here; spec defect → `/speckit-clarify`; else dropped. `tasks.md` has no
       converge task of its own, and Governance 2 requires one run — **Req:** Principle Gov.2
+- [ ] T111 `AskingTheWikiTests` in `tests/Grimoire.E2E.Tests/` (G6): with a question's answer
+      arriving, **drop the browser's chat stream and restore it** (Playwright's offline switch on the
+      context, or aborting the route) while further turns and figures arrive — afterwards the chat
+      stands as the hub holds it: every turn exactly once, nothing missing that arrived while away, the
+      answer whole. Exercises the merge in `chat.js:335–380`, which no test reaches. **One test** — the
+      only clause of this feature that only a browser can show (ACCESS-007's last sentence) — **Req:** ACCESS-007 | **Level:** E2E — **Why not lower:** the Fast suite proves the hub sends the whole chat on reconnect (`ChatSnapshotTests`); what is untested is `chat.js` merging it into a page already drawn
 - [ ] T084 Run the Contract and E2E suites; both pass, Contract within its 90 s budget. The default
       run is Fast only, so this is the one place they are exercised before the PR. **No new
       `requires=signin` test**: DEC-021's budget of four is spent and R-06 chose the design that needs
@@ -542,11 +712,16 @@ it.
       `InstructionLoader` assembles two prompts. The comments carry the reasons, so a stale name in the
       map is a comment that lies — **Req:** Principle II.6
 - [ ] T090 Walk `docs/review-checklist.md`, item 3 included as T072 extended it — **Req:** Principle Gov.2
-- [ ] T091 Classify the survivors from the mutation artifact of the PR to main into
+- [ ] T091 Classify the survivors from the mutation reports into
       `specs/004-ask-the-wiki/mutation.md`: per survivor, the test that should have killed it and does
       not, or the reason none should. A survivor becomes a test only where it names a requirement the
-      suite does not actually verify. Nothing here is a threshold and nothing is run locally — CI's
-      `mutation` job is the measurement — **Req:** Principle III.1
+      suite does not actually verify. Nothing here is a threshold. **Changed with T109**: the
+      measurement is `./scripts/mutation.sh` run locally (45–60 minutes by the script's own estimate,
+      `scripts/mutation.sh:17–25`) or CI's `mutation` job on dispatch, since it no longer runs on the PR
+      to main. **Keep `StrykerOutput/` after the run** (it is git-ignored, so nothing deletes it but a
+      person): one `mutation-report.json` per project, with `killedBy` for every mutant — the deletions
+      under "Later" (audit §6 a–e) are decided from which test killed what, and a rerun costs the same
+      hour again — **Req:** Principle III.1
 - [ ] T092 The owner reads what **QUERY-004** is about — the only review-proven requirement of this
       feature — against `instructions/question.md`: that the answer is written for the user to read,
       rests on what the wiki's pages say, names every page it rests on inside its prose as a link in
@@ -651,3 +826,20 @@ description and request the owner's review (Constitution I.11, V.1).
 - A review finding becomes a test only if it names a violated requirement ID (Governance 3);
   otherwise it becomes the smallest code change that resolves it, or is dropped. Findings are
   answered on the PR, never silently dropped.
+
+## Later
+
+Found by test-audit.md and deliberately **not** part of this feature. None of them is in a 004
+requirement's clause, so none of them blocks closing it.
+
+- **argv tests for DEC-010, DEC-011 and DEC-012** over `HarnessProcess.ArgumentsFor` — the pinned
+  `--model`, the deny-by-default flags and `--setting-sources ""` with its own working directory are
+  today proven only indirectly (test-audit.md §7, Entscheidungen).
+- **The kill backstop of DEC-016** — the process kill ten seconds after the interrupt
+  (`HarnessProcess.cs:276–292`) is untested; a stub executable at Contract level would show it.
+- **ACCESS-004's timestamp in the browser** — Fast checks only that the field exists; nothing checks
+  that `app.js` draws it.
+- **Deletions from audit §6 a–e**, once T091's mutation report is in: a test goes where `killedBy`
+  shows another test kills every mutant it kills, and not before.
+- **`WikiToolDoorTests` to the Fast suite** — since DEC-034 a hub per test is cheap enough for the MCP
+  handshake; moving it is a level correction (III.4/III.6), not a 004 behaviour.
