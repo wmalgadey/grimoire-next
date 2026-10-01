@@ -742,7 +742,7 @@ Beyond what every phase follows:
       rests on what the wiki's pages say, names every page it rests on inside its prose as a link in
       the wiki's own form, says nothing is to be written, and where the wiki holds nothing says so
       plainly and names what it looked at — **Req:** Principle I.9
-- [ ] T093 Propose **compressing a conversation** to the owner for `docs/product.md` §Outcomes as a
+- [X] T093 Propose **compressing a conversation** to the owner for `docs/product.md` §Outcomes as a
       Later outcome, with the trigger plan.md names: the first time a real chat fails because it
       outgrew a dispatch. `docs/product.md` is owner-written and an agent edits only an outcome's
       status and spec reference, so this is a proposal and not an edit (Constitution I.4, IV.4) — **Req:** Principle I.4
