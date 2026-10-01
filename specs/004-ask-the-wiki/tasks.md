@@ -594,7 +594,7 @@ Beyond what every phase follows:
       design property, `trace-check` requires `req` for E2E and Deploy only, and
       `SubmissionStateTests.Report_CarriesNoRunIdentifier_WhileAFailureIsUnacknowledged` already runs
       the same way. A comment on the test names hub-http-api.md:24 as what it guards | **Level:** Fast — **Why not lower:** what is asserted is the serialised event, and that exists only on the stream
-- [ ] T103 `WikiToolDoorTests` in `tests/Grimoire.Contract.Tests/`, **no `requires=signin`, runs in
+- [X] T103 `WikiToolDoorTests` in `tests/Grimoire.Contract.Tests/`, **no `requires=signin`, runs in
       CI**: open an MCP session at `/mcp/questions/{runId}` and **call** `list_pages` and `read_page`
       against `RealRun`'s wiki with a page written into it beforehand — the list names that page, the
       read returns its bytes unchanged; then call `write_page` at the same door — refused as an unknown
