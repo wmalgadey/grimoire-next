@@ -339,97 +339,142 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
     }
 
     [Fact]
-    public void OlderFile_IsRefused_BecauseItsRunTableCannotHoldAQuestionsRun()
-    {
-        // A file an older Grimoire wrote declares `submission_id` NOT NULL, and a question's run is
-        // written with a null there. `CREATE TABLE IF NOT EXISTS` does not alter a table that is
-        // already present, and dropping a NOT NULL constraint in SQLite means rebuilding the table —
-        // which `research.md` R-04 asked not to happen, so one of the two had to give.
-        WriteAFileOfTheOlderSchema(Guid.NewGuid(), Guid.NewGuid());
-
-        // OWNER DECISION: the file goes. Nothing runs Grimoire in production yet, so the rows such a
-        // file holds are the owner's own test ingests, and a rebuild would be machinery carried for
-        // ever to keep a file nobody needs.
-        //
-        // Refused at construction and not at the first question, because the first question is the
-        // wrong place to learn it: the insert would fail on a constraint, which is a failure the user
-        // can do nothing about and would not understand. Refusing to start is what this adapter already
-        // does with a state value it cannot read, and for the same reason.
-        var refused = Assert.Throws<InvalidOperationException>(() => Reopened());
-
-        // And it names the file, so the owner knows what to delete.
-        Assert.Contains("submissions.db", refused.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     [Trait("req", "RUNS-004")]
-    public void FileWithoutThisVersionsColumns_ComesBackWithItsSubmissionsIntactAndItsFiguresAtZero()
+    [Trait("req", "RUNS-006")]
+    public void OlderFile_IsRebuilt_WhenThe002QueueWroteIt()
     {
         var submissionId = Guid.NewGuid();
         var runId = Guid.NewGuid();
 
-        // A file whose `runs` table can hold a question's run but is missing columns this Grimoire
-        // added — which is what a database written by an earlier commit of this very feature is. This
-        // is what keeps DEC-031's `PRAGMA table_info` + `ALTER TABLE` a mechanism with a consumer.
-        WriteAFileMissingThisVersionsColumns(submissionId, runId);
+        // `submission_id` NOT NULL and none of the figures: the schema `002-ingest-queue` left
+        // (git show 1c5f1cd:src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs).
+        WriteAFile(submissionId, runId, "The 002 queue wrote this.", columnsAdded: []);
 
-        var read = Assert.Single(Reopened().Load());
+        var store = Reopened();
+        var read = Assert.Single(store.Load());
 
         Assert.Equal(submissionId, read.Id);
-        Assert.Equal("A Grimoire without the later columns wrote this.", read.Text);
+        Assert.Equal("The 002 queue wrote this.", read.Text);
+        Assert.Equal(Noon, read.SubmittedAt);
         Assert.Equal(SubmissionState.Done, read.State);
         Assert.Equal(runId, read.Run!.Id);
+        Assert.Equal(submissionId, read.Run.QueuedId);
         Assert.Equal(ToolGrant.ForIngest, read.Run.GrantedTools);
+        Assert.Equal(new AgentProcessIdentity(4242, Noon), read.Run.AgentProcess);
 
-        // Nothing is known about what such a run spent, and zero is the only honest answer a column can
-        // give. The model is left empty rather than guessed at: the current `--model` would claim the
-        // run had used one it may never have seen.
-        Assert.Equal(string.Empty, read.Run.Model);
+        // The figures it never had come back as the zero an older run is worth, as before the rebuild
+        // (DEC-031).
         Assert.Equal(0, read.Run.CostSpent);
-        Assert.Equal(0, read.Run.ToolCalls);
-        Assert.Equal(0, read.Run.EntriesLost);
+        Assert.Equal(new ModelTokens(0, 0, 0, 0), read.Run.Tokens);
+
+        AssertRebuiltToTakeAQuestionsRun(store);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-004")]
+    [Trait("req", "RUNS-006")]
+    public void OlderFile_IsRebuilt_WhenThe003RecordLeftIt()
+    {
+        var submissionId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+
+        // The schema `003-live-run-record` left on main: 002's table, `submission_id` still NOT NULL,
+        // and the eight columns 003 added with `ALTER TABLE` — in the order it added them, which is the
+        // order they sit in on disk.
+        WriteAFile(submissionId, runId, "The 003 record wrote this.", columnsAdded: Columns003Added);
+
+        var store = Reopened();
+        var read = Assert.Single(store.Load());
+
+        Assert.Equal(submissionId, read.Id);
+        Assert.Equal("The 003 record wrote this.", read.Text);
+        Assert.Equal(runId, read.Run!.Id);
+
+        // **Every figure survived the rebuild.** A rebuild that recreated the table from the base
+        // `CREATE` would carry the seven columns 002 had and lose these eight to their defaults —
+        // which is why the new table is read off the old one, column for column (DEC-031 as amended).
+        Assert.Equal(PinnedModel, read.Run.Model);
+        Assert.Equal(148_233, read.Run.CostSpent);
+        Assert.Equal(Spent, read.Run.Tokens);
+        Assert.Equal(17, read.Run.ToolCalls);
+        Assert.Equal(2, read.Run.EntriesLost);
+
+        AssertRebuiltToTakeAQuestionsRun(store);
     }
 
     /// <summary>
-    /// A file whose <c>runs</c> table takes a null <c>submission_id</c> but has none of the columns
-    /// added after it — a database an earlier commit of <c>004-ask-the-wiki</c> wrote.
+    /// What both fixtures must show once reopened: a question's run is accepted and read back, the
+    /// file reads schema 1, and the copy taken before the rebuild lies beside it (DEC-031 as amended).
     /// </summary>
-    private void WriteAFileMissingThisVersionsColumns(Guid submissionId, Guid runId) =>
-        WriteAFile(
-            submissionId,
-            runId,
-            "A Grimoire without the later columns wrote this.",
-            submissionIdColumn: "submission_id            TEXT NULL,");
-
-    /// <summary>
-    /// A file with the schema <c>002-ingest-queue</c> left, written with no help from the adapter under
-    /// test — a fixture the adapter built would not be an older file at all.
-    /// </summary>
-    private void WriteAFileOfTheOlderSchema(Guid submissionId, Guid runId) =>
-        WriteAFile(
-            submissionId,
-            runId,
-            "An older Grimoire wrote this.",
-            submissionIdColumn: "submission_id            TEXT NOT NULL,");
-
-    /// <summary>
-    /// One writer for both fixtures, so that the only difference between them is the one column the
-    /// tests are about.
-    /// </summary>
-    private void WriteAFile(Guid submissionId, Guid runId, string text, string submissionIdColumn)
+    private void AssertRebuiltToTakeAQuestionsRun(SqliteSubmissionStore store)
     {
-        using var connection = new SqliteConnection(
+        var question = AQuestionsRun();
+        store.AddRun(question);
+
+        Assert.Equal(question.Id, Assert.Single(Reopened().LoadRunsWithoutASubmission()).Id);
+        Assert.Equal(1L, UserVersion());
+        Assert.True(File.Exists(Path.Combine(directory, "submissions.db.before-rebuild")));
+    }
+
+    /// <summary>The columns <c>003-live-run-record</c> added to <c>runs</c>, in the order it added them.</summary>
+    private static readonly string[] Columns003Added =
+    [
+        "model TEXT NOT NULL DEFAULT ''",
+        "cost_spent INTEGER NOT NULL DEFAULT 0",
+        "input_tokens INTEGER NOT NULL DEFAULT 0",
+        "output_tokens INTEGER NOT NULL DEFAULT 0",
+        "cache_read_tokens INTEGER NOT NULL DEFAULT 0",
+        "cache_write_tokens INTEGER NOT NULL DEFAULT 0",
+        "tool_calls INTEGER NOT NULL DEFAULT 0",
+        "entries_lost INTEGER NOT NULL DEFAULT 0",
+    ];
+
+    private SqliteConnection OpenTheFile()
+    {
+        var connection = new SqliteConnection(
             new SqliteConnectionStringBuilder
             {
                 DataSource = Path.Combine(directory, "submissions.db"),
                 Mode = SqliteOpenMode.ReadWriteCreate,
+                Pooling = false,
             }.ToString());
 
         connection.Open();
+        return connection;
+    }
 
+    private long UserVersion()
+    {
+        using var connection = OpenTheFile();
         using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version";
+        return (long)command.ExecuteScalar()!;
+    }
+
+    /// <summary>
+    /// A file an older Grimoire wrote, written by hand with no help from the adapter under test — a
+    /// fixture the adapter built would not be an older file at all. 002's two tables as it created
+    /// them, then whatever later columns that Grimoire added, and one submission with its run; where
+    /// the figures' columns exist they hold figures that are not zero.
+    /// </summary>
+    private void WriteAFile(Guid submissionId, Guid runId, string text, string[] columnsAdded)
+    {
+        using var connection = OpenTheFile();
+        using var command = connection.CreateCommand();
+
+        var added = string.Concat(columnsAdded.Select(c => $"ALTER TABLE runs ADD COLUMN {c};\n"));
+        var figures = columnsAdded.Length == 0
+            ? string.Empty
+            : $"""
+                UPDATE runs SET model = '{PinnedModel}', cost_spent = 148233,
+                    input_tokens = {Spent.InputTokens}, output_tokens = {Spent.OutputTokens},
+                    cache_read_tokens = {Spent.CacheReadInputTokens},
+                    cache_write_tokens = {Spent.CacheCreationInputTokens},
+                    tool_calls = 17, entries_lost = 2;
+                """;
+
         command.CommandText = $"""
-            CREATE TABLE submissions (
+            CREATE TABLE IF NOT EXISTS submissions (
                 id              TEXT PRIMARY KEY,
                 text            TEXT NOT NULL,
                 submitted_at    TEXT NOT NULL,
@@ -438,9 +483,9 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
                 acknowledged_at TEXT NULL
             );
 
-            CREATE TABLE runs (
+            CREATE TABLE IF NOT EXISTS runs (
                 id                       TEXT PRIMARY KEY,
-                {submissionIdColumn}
+                submission_id            TEXT NOT NULL,
                 started_at               TEXT NOT NULL,
                 granted_tools            TEXT NOT NULL,
                 grant_recorded_at        TEXT NOT NULL,
@@ -448,12 +493,16 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
                 agent_process_started_at TEXT NULL
             );
 
+            {added}
             INSERT INTO submissions VALUES
                 ('{submissionId}', '{text}', '{Noon:O}', 'done', '{runId}', NULL);
 
-            INSERT INTO runs VALUES
-                ('{runId}', '{submissionId}', '{Noon:O}',
-                 '{string.Join('\n', ToolGrant.ForIngest)}', '{Noon:O}', NULL, NULL);
+            INSERT INTO runs (id, submission_id, started_at, granted_tools, grant_recorded_at,
+                              agent_process_id, agent_process_started_at)
+            VALUES ('{runId}', '{submissionId}', '{Noon:O}',
+                    '{string.Join('\n', ToolGrant.ForIngest)}', '{Noon:O}', 4242, '{Noon:O}');
+
+            {figures}
             """;
 
         command.ExecuteNonQuery();

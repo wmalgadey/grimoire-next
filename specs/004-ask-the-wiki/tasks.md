@@ -630,7 +630,7 @@ Beyond what every phase follows:
       an undocumented decision, drafted for the owner in that PR's description and left unchanged
       until approved. The `OWNER DECISION` comment in `SqliteSubmissionStoreTests` falls with T106 —
       **Req:** Principle Gov.4
-- [ ] T106 `SqliteSubmissionStoreTests` in `tests/Grimoire.Contract.Tests/`: **two fixtures with the
+- [X] T106 `SqliteSubmissionStoreTests` in `tests/Grimoire.Contract.Tests/`: **two fixtures with the
       real schemata** — the one `002-ingest-queue` wrote (`git show 1c5f1cd:src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs`)
       and the one `003-live-run-record` left (`origin/main`), each written by hand with no help from
       the adapter, each holding a submission with a run and, for 003, non-zero figures. One test per
