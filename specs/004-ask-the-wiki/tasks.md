@@ -579,7 +579,7 @@ Beyond what every phase follows:
       nothing on that run's account. RUNS-006 for a question's run has so far been proven only at the
       adapter (`SqliteSubmissionStoreTests`), and the order — terminate, then failed, then the queue —
       not at all for questions — **Req:** RUNS-006 | **Level:** Fast — **Why not lower:** the order is `HubApplication.RestoreAfterAStop`'s, across the store, the harness and the board; the adapter test sees only the store
-- [ ] T100 [P] `QuestionPromptTests` in `tests/Grimoire.Fast.Tests/`: a chat holding an **answered**
+- [X] T100 [P] `QuestionPromptTests` in `tests/Grimoire.Fast.Tests/`: a chat holding an **answered**
       question and a **failed** one, then a new chat, then a question — the dispatch carries neither
       earlier question's text, nor the answer, nor the failure. Today only the absence of a partial
       answer is checked (`QuestionPromptTests.cs:154`) — **Req:** QUERY-002, QUERY-005 | **Level:** Fast — **Why not lower:** the prompt is assembled by `InstructionLoader` from the chat the hub holds; the dispatch payload is the observable
