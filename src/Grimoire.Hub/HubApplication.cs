@@ -119,7 +119,7 @@ public static class HubApplication
         // so that the next start-up does not read it as one to terminate again.
         foreach (var run in questions)
         {
-            submissions.RunEnded(run.Id, run.CostSpent, run.Tokens, run.ToolCalls, run.EntriesLost);
+            submissions.RunEnded(run.Id, run.CostSpent, run.Tokens, run.ToolCalls, run.EntriesLost, clock.GetUtcNow());
         }
 
         board.Restore(held);

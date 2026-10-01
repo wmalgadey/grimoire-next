@@ -402,7 +402,7 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
     /// leave a run a start-up reads as still in progress beside the figures it ended on, and the
     /// start-up would go looking for an agent that is finished.
     /// </remarks>
-    public void RunEnded(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost) =>
+    public void RunEnded(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost, DateTimeOffset endedAt) =>
         Execute(
             """
             UPDATE runs SET ended_at = $ended_at,
@@ -411,7 +411,7 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
                             cache_read_tokens = $read, cache_write_tokens = $written
             WHERE id = $run
             """,
-            ("$ended_at", Text(DateTimeOffset.UtcNow)),
+            ("$ended_at", Text(endedAt)),
             ("$cost", costSpent),
             ("$calls", toolCalls),
             ("$lost", entriesLost),

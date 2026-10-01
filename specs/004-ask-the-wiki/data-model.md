@@ -111,6 +111,7 @@ run that failed still spent.
 | --- | --- | --- | --- |
 | `SubmissionId` → `QueuedId` | The submission this run works | The submission **or the question** that caused it | One name for one thing, now that two kinds cause runs |
 | `submission_id` column | Always a submission | **Null where a question caused the run** | RUNS-006 needs the agent's process identity on disk for every run; the question itself is not on disk (QUERY-005) |
+| `ended_at` column, new | — | When a run with no submission behind it ended, from the hub's clock (DEC-018); null while it has not. On disk only, never on `StoredRun` | A question's run has no submission state to say it ended, and a start-up must not read it back as one to terminate (RUNS-006) |
 
 Everything else — `StartedAt`, `GrantedTools`, `GrantRecordedAt`, `Model`, `AgentProcess`,
 `CostSpent`, `Tokens`, `ToolCalls`, `EntriesLost` — is unchanged and means the same for both kinds

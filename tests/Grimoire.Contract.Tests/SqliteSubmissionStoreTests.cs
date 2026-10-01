@@ -315,7 +315,7 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         // leave an orphaned `claude` holding the granted tools with no ceiling on it (RUNS-006).
         Assert.Single(Reopened().LoadRunsWithoutASubmission());
 
-        store.RunEnded(run.Id, costSpent: 148_233, Spent, toolCalls: 3, entriesLost: 0);
+        store.RunEnded(run.Id, costSpent: 148_233, Spent, toolCalls: 3, entriesLost: 0, Noon.AddMinutes(4));
 
         // And gone from that reading once it has ended, so the next start-up does not go looking for an
         // agent that is finished. The ending and the figures are one statement: a stop between them

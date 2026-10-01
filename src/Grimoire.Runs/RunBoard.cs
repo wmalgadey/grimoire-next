@@ -615,7 +615,7 @@ public sealed class RunBoard(
                 }
                 else
                 {
-                    store.RunEnded(run, costSpent, tokens, toolCalls, entriesLost);
+                    store.RunEnded(run, costSpent, tokens, toolCalls, entriesLost, clock.GetUtcNow());
                 }
             }
             else if (ending is Submission)

@@ -691,7 +691,7 @@ Beyond what every phase follows:
 - [X] T083 Run `/speckit-converge` once for this feature and classify every finding before acting:
       code defect → a task here; spec defect → `/speckit-clarify`; else dropped. `tasks.md` has no
       converge task of its own, and Governance 2 requires one run — **Req:** Principle Gov.2
-- [ ] T112 `ISubmissionStore.RunEnded` takes the moment the run ended from the caller's clock, and
+- [X] T112 `ISubmissionStore.RunEnded` takes the moment the run ended from the caller's clock, and
       `SqliteSubmissionStore` writes that into `ended_at` instead of `DateTimeOffset.UtcNow`; name the
       `ended_at` column in data-model.md's `StoredRun` — per DEC-018 (contradicts; found by T083)
 - [ ] T113 `RunStateMachine`'s comment on a done run that is not to change the wiki says the reason
