@@ -688,9 +688,19 @@ Beyond what every phase follows:
 
 ### Closing
 
-- [ ] T083 Run `/speckit-converge` once for this feature and classify every finding before acting:
+- [X] T083 Run `/speckit-converge` once for this feature and classify every finding before acting:
       code defect → a task here; spec defect → `/speckit-clarify`; else dropped. `tasks.md` has no
       converge task of its own, and Governance 2 requires one run — **Req:** Principle Gov.2
+- [ ] T112 `ISubmissionStore.RunEnded` takes the moment the run ended from the caller's clock, and
+      `SqliteSubmissionStore` writes that into `ended_at` instead of `DateTimeOffset.UtcNow`; name the
+      `ended_at` column in data-model.md's `StoredRun` — per DEC-018 (contradicts; found by T083)
+- [ ] T113 `RunStateMachine`'s comment on a done run that is not to change the wiki says the reason
+      "names what actually happened", while it returns `StoppedWithItsLogEntry`: reword the comment to
+      what the code does and why no eighth reason is added (RUNS-008's seven) — per RUNS-005, RUNS-008
+      (contradicts; found by T083)
+- [ ] T114 `Chat.cs`: the malformed XML documentation — a `<summary>` closed after an opened
+      `<remarks>` on `Snapshot`, and a duplicated `<summary>` on `Answering` — per Constitution II.6,
+      the comments carry the reasons (partial; found by T083)
 - [ ] T111 `AskingTheWikiTests` in `tests/Grimoire.E2E.Tests/` (G6): with a question's answer
       arriving, **drop the browser's chat stream and restore it** (Playwright's offline switch on the
       context, or aborting the route) while further turns and figures arrive — afterwards the chat
