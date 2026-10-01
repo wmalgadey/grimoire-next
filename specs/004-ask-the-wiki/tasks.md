@@ -557,7 +557,7 @@ Beyond what every phase follows:
 
 ### Gaps from test-audit.md §7, closed before converge
 
-- [ ] T096 [P] `QuestionCostTests` in `tests/Grimoire.Fast.Tests/`: a chat with **at least two
+- [X] T096 [P] `QuestionCostTests` in `tests/Grimoire.Fast.Tests/`: a chat with **at least two
       questions, one of whose runs ended failed** — the chat's `total` is the sum of every question's
       `costSpent`, the failed one's included, and it is that sum on the `chat` snapshot as well as on
       the last `question` event. Proves the summation path through `Chat.cs` for a failed question

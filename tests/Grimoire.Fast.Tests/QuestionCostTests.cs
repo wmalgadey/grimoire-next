@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Grimoire.Agent;
 using Grimoire.Hub;
@@ -53,6 +54,65 @@ public sealed class QuestionCostTests : ChatStreamReading
         Assert.Equal(
             ["costCeiling"],
             FieldsOf(data).Where(field => field.Contains("eiling", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    [Trait("req", "ACCESS-008")]
+    [Trait("req", "RUNS-010")]
+    public async Task Total_IsWhatEveryQuestionSpent_WithAQuestionWhoseRunFailed()
+    {
+        await using var hub = new HostedHub();
+
+        var failed = await hub.AskAsync(AboutAda);
+        var answering = await hub.AskAsync(AboutHerMother);
+
+        hub.Agent.Spend(failed, 12_000);
+        hub.Agent.End(failed, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
+
+        // The failure holds the queue until it is seen, so the second question's run starts only then
+        // (RUNS-003).
+        await AcknowledgeAsync(hub, failed);
+
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+        await stream.NextAsync<ChatView>(ChatEvents.Chat);
+
+        hub.Agent.Spend(answering, 5_000);
+
+        // What the failed run spent was spent: it stays in the total, on the event that moved it and on
+        // the snapshot a browser reads next (ACCESS-008, contracts/hub-http-api.md "a failed one
+        // included").
+        var moved = await NextQuestionEventAsync(stream, answering);
+
+        Assert.Equal(5_000, moved.GetProperty("costSpent").GetInt64());
+        Assert.Equal(17_000, moved.GetProperty("total").GetInt64());
+        Assert.Equal(17_000, (await SnapshotAsync(hub)).Total);
+    }
+
+    /// <summary>
+    /// The next <c>question</c> event about this question — in a given state, where one is named — as
+    /// the JSON it was sent as. Anything else on the stream is read past: a run reporting in is several
+    /// changes, and each is an event of its own (<see cref="ChatStreamReading.NextNewsAsync"/>).
+    /// </summary>
+    private static async Task<JsonElement> NextQuestionEventAsync(
+        EventStream stream, Guid question, string? state = null)
+    {
+        while (true)
+        {
+            var (name, data) = await stream.NextAsync();
+
+            if (!string.Equals(name, ChatEvents.Question, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var sent = JsonDocument.Parse(data).RootElement;
+
+            if (sent.GetProperty("id").GetString() == question.ToString()
+                && (state is null || sent.GetProperty("state").GetString() == state))
+            {
+                return sent;
+            }
+        }
     }
 
     /// <summary>One turn of the snapshot, as far as a test reading raw JSON needs to know it.</summary>
