@@ -719,7 +719,7 @@ Beyond what every phase follows:
       RUNS-005, RUNS-007, RUNS-008 and RUNS-009 keep their IDs with their new sentences. **Nothing is
       retired in this feature**, so the "Retired" sections are untouched — **Req:** Principle IV.2
 - [X] T087 Regenerate and commit `docs/trace.md` — **Req:** Principle IV.4
-- [ ] T088 Merge this plan's eleven binding decisions into `docs/decisions.md`, each with its reason
+- [X] T088 Merge this plan's eleven binding decisions into `docs/decisions.md`, each with its reason
       and "Made by: plan `004-ask-the-wiki`", and **move DEC-032 under "Superseded"** naming the entry
       that replaces it — polling is gone from the chat *and* from the two views that polled — **Req:** Principle II.6
 - [ ] T089 Bring `CLAUDE.md`'s architecture paragraph up to date: `SubmissionBoard` is `RunBoard` over
