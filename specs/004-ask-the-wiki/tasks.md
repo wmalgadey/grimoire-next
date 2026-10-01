@@ -698,7 +698,7 @@ Beyond what every phase follows:
       "names what actually happened", while it returns `StoppedWithItsLogEntry`: reword the comment to
       what the code does and why no eighth reason is added (RUNS-008's seven) — per RUNS-005, RUNS-008
       (contradicts; found by T083)
-- [ ] T114 `Chat.cs`: the malformed XML documentation — a `<summary>` closed after an opened
+- [X] T114 `Chat.cs`: the malformed XML documentation — a `<summary>` closed after an opened
       `<remarks>` on `Snapshot`, and a duplicated `<summary>` on `Answering` — per Constitution II.6,
       the comments carry the reasons (partial; found by T083)
 - [ ] T111 `AskingTheWikiTests` in `tests/Grimoire.E2E.Tests/` (G6): with a question's answer
