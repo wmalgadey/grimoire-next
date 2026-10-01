@@ -38,19 +38,6 @@ public sealed class FileSystemWikiStoreTests : IDisposable
         Assert.Contains("type: Recipe", onDisk, StringComparison.Ordinal);
     }
 
-    [Fact]
-    [Trait("req", "WIKI-002")]
-    public async Task WritePage_IsRefused_WhenTheFrontmatterCannotBeRead()
-    {
-        var stamped = ProvenanceStamp.Apply("---\ngenerated: a plain string\n---\n\nBody.\n", Record);
-
-        Assert.Null(stamped.Page);
-        Assert.NotNull(stamped.Error);
-
-        // The write fails, so nothing reaches the disk at all.
-        Assert.Empty(await wiki.ListAsync(TestContext.Current.CancellationToken));
-    }
-
     [Theory]
     [InlineData("../escaped.md")]
     [InlineData("recipes/../../escaped.md")]

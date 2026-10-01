@@ -607,7 +607,7 @@ Beyond what every phase follows:
       rather than building a registration path for the test. **Shown red once** (tests/README.md):
       with `WikiToolSurfaces.For` serving `WikiToolsServer` at both doors, the `write_page` test fails;
       with `WikiReads.ReadPageAsync` returning the refusal, the read test fails — **Req:** GUARD-005 | **Level:** Contract — **Why not lower:** the catalogue a session gets is decided per request inside the MCP transport (`ConfigureSessionOptions`); only a real session over HTTP shows what a call reaches
-- [ ] T104 `WikiToolDoorTests`: at the **run** door `/mcp/runs/{runId}`, `write_page` with a page whose
+- [X] T104 `WikiToolDoorTests`: at the **run** door `/mcp/runs/{runId}`, `write_page` with a page whose
       `generated` place cannot be read (`generated: a plain string`) — the agent gets the refusal
       `frontmatter-unreadable` **with its reason**, and the wiki directory is empty afterwards.
       **Replaces** `FileSystemWikiStoreTests.WritePage_IsRefused_WhenTheFrontmatterCannotBeRead`, which

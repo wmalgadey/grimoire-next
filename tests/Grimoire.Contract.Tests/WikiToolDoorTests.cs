@@ -101,6 +101,32 @@ public sealed class WikiToolDoorTests
         Assert.Empty(Directory.EnumerateFileSystemEntries(hub.WikiRoot));
     }
 
+    [Fact]
+    [Trait("req", "WIKI-002")]
+    public async Task RunDoor_RefusesAPage_WhenTheFrontmatterCannotBeRead()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await RealRun.StartAsync(token);
+        await using var session = await SessionAtAsync(hub, ToolGrant.Runs);
+
+        var answer = await session.CallToolAsync(
+            "write_page",
+            new Dictionary<string, object?>
+            {
+                ["path"] = "people/ada-lovelace.md",
+                ["content"] = "---\ngenerated: a plain string\n---\n\nBody.\n",
+            },
+            cancellationToken: token);
+
+        // The write fails and **the agent is told why** — the refusal and its reason are what reaches
+        // it over the protocol, which is the half of WIKI-002 the stamp alone never shows.
+        using var refusal = JsonDocument.Parse(TextOf(answer));
+        Assert.Equal("frontmatter-unreadable", refusal.RootElement.GetProperty("error").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(refusal.RootElement.GetProperty("message").GetString()));
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(hub.WikiRoot));
+    }
+
     /// <summary>The one text block a tool of ours answers with: its JSON.</summary>
     private static string TextOf(CallToolResult result) =>
         Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
