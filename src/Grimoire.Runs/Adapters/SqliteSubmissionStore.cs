@@ -85,51 +85,116 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             );
             """);
 
-        RefuseAFileThatCannotHoldAQuestionsRun();
+        RebuildARunTableThatCannotHoldAQuestionsRun();
         BringTheRunTableUpToDate();
     }
 
     /// <summary>
-    /// A file whose <c>runs</c> table cannot hold a run with no submission behind it is refused rather
-    /// than worked around (RUNS-006, QUERY-005).
+    /// A <c>runs</c> table that cannot hold a run with no submission behind it is rebuilt so that it
+    /// can, keeping every row and every column it has (DEC-031 as amended).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A question's run is written with a null <c>submission_id</c>, and a table declared
-    /// <c>NOT NULL</c> will not take one. <c>CREATE TABLE IF NOT EXISTS</c> does not alter a table that
-    /// is already there and <see cref="BringTheRunTableUpToDate"/> only <em>adds</em> columns, so a file
-    /// an older Grimoire wrote keeps that constraint — and the first question asked against it would
-    /// fail on the insert, which is a failure the user can do nothing about and would not understand.
+    /// A question's run is written with a null <c>submission_id</c>, and every file 002 and 003 wrote
+    /// declares that column <c>NOT NULL</c>. <c>CREATE TABLE IF NOT EXISTS</c> does not alter a table
+    /// that is already there and <c>ADD COLUMN</c> cannot lift a constraint, so the table is rebuilt by
+    /// SQLite's own procedure — create <c>runs_new</c>, copy every row, drop, rename — in one
+    /// transaction. Refusing such a file instead was tried and reverted: it threw away the owner's list
+    /// to save a rebuild.
     /// </para>
     /// <para>
-    /// <b>Refused, and not migrated.</b> Dropping a <c>NOT NULL</c> constraint in SQLite means
-    /// rebuilding the table, and <c>research.md</c> R-04 asked for a change that does not rebuild one —
-    /// which turns out to be impossible, so one of the two had to give. OWNER DECISION: the file goes.
-    /// Nothing runs Grimoire in production yet, so the rows such a file holds are the owner's own test
-    /// ingests, and a rebuild would be machinery carried for ever to save a file nobody needs. The
-    /// first Grimoire that has users to keep files for revisits this.
+    /// <b>The new table is read off the old one</b>, column for column, from
+    /// <c>pragma_table_info</c>. Built from the <c>CREATE</c> in the constructor it would have the seven
+    /// columns 002 had and lose 003's figures to their defaults.
     /// </para>
     /// <para>
-    /// Refusing to start is what this adapter already does with a file it cannot read — a state value it
-    /// does not know throws rather than being guessed at, for the same reason: every submission the user
-    /// made is in that file, and reading one of them wrongly is worse than not starting.
+    /// Before the rebuild the file is copied to <c>submissions.db.before-rebuild</c> beside it, by
+    /// <c>VACUUM INTO</c> so that the copy is consistent whatever connection holds the file; where the
+    /// rebuild fails the error names that copy. Every file then reads <c>user_version</c> 1, which names
+    /// this schema: from here on the store tells one schema from another by that number and not by
+    /// inspecting columns, and the next feature that changes the schema reads 1, does its step and
+    /// writes 2.
     /// </para>
     /// </remarks>
-    private void RefuseAFileThatCannotHoldAQuestionsRun()
+    private void RebuildARunTableThatCannotHoldAQuestionsRun()
+    {
+        if (Scalar("PRAGMA user_version") is long and >= 1)
+        {
+            return;
+        }
+
+        if (Scalar("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'submission_id' AND \"notnull\" = 1") is not null)
+        {
+            var copy = DataSource + ".before-rebuild";
+
+            if (!File.Exists(copy))
+            {
+                Execute("VACUUM INTO $copy", inATransaction: false, ("$copy", copy));
+            }
+
+            try
+            {
+                Execute(RebuildOf(ColumnsOfTheRunTableAsDeclared()));
+            }
+            catch (SqliteException failed)
+            {
+                throw new InvalidOperationException(
+                    $"The runs table in \"{DataSource}\" could not be rebuilt to hold a question's run, "
+                    + $"and the file is as it was. A copy taken before the attempt is at \"{copy}\".",
+                    failed);
+            }
+        }
+
+        Execute("PRAGMA user_version = 1", inATransaction: false);
+    }
+
+    /// <summary>
+    /// The statements that rebuild <c>runs</c> with these columns, <c>submission_id</c> nullable and
+    /// everything else as it was declared.
+    /// </summary>
+    /// <remarks>
+    /// Not parameterised, and it cannot be: column names, types and defaults are not values. Every one
+    /// of them is read off the file's own declaration, which only a Grimoire ever wrote.
+    /// </remarks>
+    private static string RebuildOf(IReadOnlyList<(string Name, string Type, bool NotNull, string? Default, bool Key)> columns)
+    {
+        var declared = columns.Select(c =>
+            $"\"{c.Name}\" {c.Type}"
+            + (c.Key ? " PRIMARY KEY" : string.Empty)
+            + (c.NotNull && c.Name != "submission_id" ? " NOT NULL" : string.Empty)
+            + (c.Default is null ? string.Empty : $" DEFAULT {c.Default}"));
+
+        var names = string.Join(", ", columns.Select(c => $"\"{c.Name}\""));
+
+        return $"""
+            CREATE TABLE runs_new ({string.Join(", ", declared)});
+            INSERT INTO runs_new ({names}) SELECT {names} FROM runs;
+            DROP TABLE runs;
+            ALTER TABLE runs_new RENAME TO runs;
+            """;
+    }
+
+    private List<(string Name, string Type, bool NotNull, string? Default, bool Key)> ColumnsOfTheRunTableAsDeclared()
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
 
-        command.CommandText =
-            "SELECT 1 FROM pragma_table_info('runs') WHERE name = 'submission_id' AND \"notnull\" = 1";
+        command.CommandText = "SELECT name, type, \"notnull\", dflt_value, pk FROM pragma_table_info('runs') ORDER BY cid";
 
-        if (command.ExecuteScalar() is not null)
+        using var rows = command.ExecuteReader();
+        var columns = new List<(string, string, bool, string?, bool)>();
+
+        while (rows.Read())
         {
-            throw new InvalidOperationException(
-                $"The state file at \"{DataSource}\" was written by a Grimoire that had no questions, "
-                + "and its runs table cannot hold one. Delete it and start again; nothing in it is "
-                + "needed by this Grimoire.");
+            columns.Add((
+                rows.GetString(0),
+                rows.GetString(1),
+                rows.GetInt64(2) != 0,
+                rows.IsDBNull(3) ? null : rows.GetString(3),
+                rows.GetInt64(4) != 0));
         }
+
+        return columns;
     }
 
     /// <summary>
@@ -492,10 +557,17 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
     /// One statement or several, as one transaction, committed before this returns. There is no
     /// flush and no write at close: nothing may be waiting to be written when a kill lands.
     /// </summary>
-    private void Execute(string sql, params (string Name, object Value)[] parameters)
+    private void Execute(string sql, params (string Name, object Value)[] parameters) =>
+        Execute(sql, inATransaction: true, parameters);
+
+    /// <summary>
+    /// The same, outside a transaction where SQLite refuses one: <c>VACUUM</c> and a pragma that
+    /// writes the file's header both run on their own.
+    /// </summary>
+    private void Execute(string sql, bool inATransaction, params (string Name, object Value)[] parameters)
     {
         using var connection = Open();
-        using var transaction = connection.BeginTransaction();
+        using var transaction = inATransaction ? connection.BeginTransaction() : null;
         using var command = connection.CreateCommand();
 
         command.Transaction = transaction;
@@ -507,7 +579,16 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
         }
 
         command.ExecuteNonQuery();
-        transaction.Commit();
+        transaction?.Commit();
+    }
+
+    private object? Scalar(string sql)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        command.CommandText = sql;
+        return command.ExecuteScalar();
     }
 
     /// <summary>The wire names the browser already uses, so the file reads as the page does.</summary>

@@ -640,7 +640,7 @@ Beyond what every phase follows:
       intermediate schema (`FileWithoutThisVersionsColumns_…`, nullable with no columns — a state no
       commit ever wrote) and `OlderFile_IsRefused_BecauseItsRunTableCannotHoldAQuestionsRun`. **Shown
       red once** each, with the rebuild switched off (DEC-031 as amended) — **Req:** RUNS-004, RUNS-006 | **Level:** Contract — **Why not lower:** what is read is a real file an older Grimoire wrote, and only real SQLite decides whether the rebuilt table holds what the old one held (III.4, DEC-031's precedent)
-- [ ] T107 `src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs`: `RefuseAFileThatCannotHoldAQuestionsRun`
+- [X] T107 `src/Grimoire.Runs/Adapters/SqliteSubmissionStore.cs`: `RefuseAFileThatCannotHoldAQuestionsRun`
       becomes `RebuildARunTableThatCannotHoldAQuestionsRun` — **only** where `pragma_table_info('runs')`
       reports `notnull = 1` on `submission_id`: first a consistent copy to `submissions.db.before-rebuild`
       (no pooled connection holding the file, or SQLite's `VACUUM INTO`), then in **one transaction**
