@@ -587,7 +587,7 @@ Beyond what every phase follows:
       the question instruction** (`QuestionInstructionPresent: false`) accepts a submission and starts
       its run. query.md:35 — a submission is refused on the ingest instruction only; no submit test
       sets that flag today — **Req:** QUERY-003, INGEST-003 | **Level:** Fast — **Why not lower:** the refusal order is the hub's intake reading start-up inputs; the board alone does not know which instruction a kind needs
-- [ ] T102 [P] `ChatSnapshotTests` (or `ChatChangeTests`) in `tests/Grimoire.Fast.Tests/`: **no run
+- [X] T102 [P] `ChatSnapshotTests` (or `ChatChangeTests`) in `tests/Grimoire.Fast.Tests/`: **no run
       identifier** on the chat stream — neither on the `chat` snapshot nor on `asked`, `question` or
       `answer`, for a question that has a run. So far checked only at the POST answer
       (`QuestionAskedOverHttpTests.cs:31`).  **Settled**: the test carries **no `req` trait**. contracts/hub-http-api.md:24 names this a
