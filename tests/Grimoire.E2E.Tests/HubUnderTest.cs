@@ -6,6 +6,7 @@ using Grimoire.Hub.Api;
 using Grimoire.Runs.Adapters;
 using Grimoire.Wiki.Adapters;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 
 namespace Grimoire.E2E.Tests;
 
@@ -235,10 +236,29 @@ internal sealed class HubUnderTest : IAsyncDisposable
             new MarkdownRunRecord(state),
             TimeProvider.System);
 
+        var streams = new ChatStreamLine();
+        app.Use(streams.Through);
+
         await app.StartAsync(cancellationToken).ConfigureAwait(false);
 
-        return new HubUnderTest(app, agent, directory, app.Urls.First(), ownsTheDirectory);
+        return new HubUnderTest(app, agent, directory, app.Urls.First(), ownsTheDirectory) { chatStreams = streams };
     }
+
+    private ChatStreamLine chatStreams = null!;
+
+    /// <summary>
+    /// The browser loses its chat stream: every one open now is cut, and one opened again waits
+    /// until <see cref="ChatStreamRestored"/> (ACCESS-007's last clause).
+    /// </summary>
+    /// <remarks>
+    /// Cut here, at the hub, because the browser offers no way to: Playwright's offline switch stops
+    /// new requests but leaves a stream already open on loopback flowing. What the page sees is the
+    /// same either way — the connection drops, and <c>EventSource</c> makes it again.
+    /// </remarks>
+    public void ChatStreamLost() => chatStreams.Lost();
+
+    /// <summary>The line is back, and the stream the browser is waiting on opens.</summary>
+    public void ChatStreamRestored() => chatStreams.Restored();
 
     /// <summary>
     /// A text submitted the way the page submits it, answering with the accepted submission's id.
@@ -342,5 +362,70 @@ internal sealed class HubUnderTest : IAsyncDisposable
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+}
+
+/// <summary>The chat streams the hub is serving, which a test can cut and let through again.</summary>
+internal sealed class ChatStreamLine
+{
+    private readonly ConcurrentDictionary<HttpContext, byte> open = new();
+    private readonly Lock gate = new();
+    private TaskCompletionSource up = Up();
+
+    public async Task Through(HttpContext context, RequestDelegate next)
+    {
+        if (!context.Request.Path.Equals("/api/chat/events", StringComparison.Ordinal))
+        {
+            await next(context).ConfigureAwait(false);
+            return;
+        }
+
+        Task waitFor;
+
+        lock (gate)
+        {
+            waitFor = up.Task;
+        }
+
+        await waitFor.WaitAsync(context.RequestAborted).ConfigureAwait(false);
+
+        open[context] = 0;
+
+        try
+        {
+            await next(context).ConfigureAwait(false);
+        }
+        finally
+        {
+            open.TryRemove(context, out _);
+        }
+    }
+
+    public void Lost()
+    {
+        lock (gate)
+        {
+            up = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        foreach (var context in open.Keys)
+        {
+            context.Abort();
+        }
+    }
+
+    public void Restored()
+    {
+        lock (gate)
+        {
+            up.TrySetResult();
+        }
+    }
+
+    private static TaskCompletionSource Up()
+    {
+        var open = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        open.SetResult();
+        return open;
     }
 }

@@ -701,7 +701,7 @@ Beyond what every phase follows:
 - [X] T114 `Chat.cs`: the malformed XML documentation — a `<summary>` closed after an opened
       `<remarks>` on `Snapshot`, and a duplicated `<summary>` on `Answering` — per Constitution II.6,
       the comments carry the reasons (partial; found by T083)
-- [ ] T111 `AskingTheWikiTests` in `tests/Grimoire.E2E.Tests/` (G6): with a question's answer
+- [X] T111 `AskingTheWikiTests` in `tests/Grimoire.E2E.Tests/` (G6): with a question's answer
       arriving, **drop the browser's chat stream and restore it** (Playwright's offline switch on the
       context, or aborting the route) while further turns and figures arrive — afterwards the chat
       stands as the hub holds it: every turn exactly once, nothing missing that arrived while away, the
