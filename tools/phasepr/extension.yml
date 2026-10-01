@@ -1,0 +1,52 @@
+schema_version: "1.0"
+
+extension:
+  id: "phasepr"
+  name: "Phase PR Loop"
+  version: "0.1.0"
+  description: "Implement a feature one phase PR at a time: fresh agent per iteration, own gates, Copilot review triage, merge into the feature branch"
+  author: "wmalgadey"
+  repository: "https://github.com/wmalgadey/grimoire-next"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=1.0.0"
+  tools:
+    - name: "git"
+      required: true
+    - name: "gh"
+      required: true
+    - name: "jq"
+      required: true
+    - name: "claude"
+      required: true
+
+provides:
+  commands:
+    - name: "speckit.phasepr.run"
+      file: "commands/run.md"
+      description: "Launch the phasepr orchestrator for the current feature"
+
+    - name: "speckit.phasepr.status"
+      file: "commands/status.md"
+      description: "Show where phasepr stands for the current feature (read-only)"
+
+  config:
+    - name: "phasepr-config.yml"
+      template: "phasepr-config.yml"
+      description: "phasepr configuration (model, agent CLI, review rounds and timeout, reviewer login)"
+      required: false
+
+tags:
+  - "implementation"
+  - "automation"
+  - "pull-request"
+  - "review"
+  - "claude"
+
+defaults:
+  agent_cli: "claude"
+  permission_mode: "auto"
+  max_review_rounds: 3
+  review_timeout: 600
+  reviewer_login: "copilot-pull-request-reviewer[bot]"

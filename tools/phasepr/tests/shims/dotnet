@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#
+# A fake `dotnet` for gates.sh. `dotnet test` takes the first line of $FAKE_GH/test-failures:
+# a line other than "pass" is printed as a failing test and the call exits 1. Every other call
+# passes. Calls are logged to $FAKE_GH/calls.log.
+
+set -euo pipefail
+
+: "${FAKE_GH:?}"
+printf 'dotnet %s\n' "$*" >> "$FAKE_GH/calls.log"
+if [[ "${1:-}" == "test" && -s "$FAKE_GH/test-failures" ]]; then
+    line=$(head -n1 "$FAKE_GH/test-failures")
+    tail -n +2 "$FAKE_GH/test-failures" > "$FAKE_GH/test-failures.tmp"
+    mv "$FAKE_GH/test-failures.tmp" "$FAKE_GH/test-failures"
+    if [[ "$line" != "pass" ]]; then
+        printf '  failed %s (%s ms)\n' "$line" "$RANDOM"
+        printf 'Test run summary: Failed! - total: 12, failed: 1, duration: %s s\n' "$RANDOM"
+        exit 1
+    fi
+fi
+printf 'ok\n'
