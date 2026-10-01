@@ -694,7 +694,7 @@ Beyond what every phase follows:
 - [X] T112 `ISubmissionStore.RunEnded` takes the moment the run ended from the caller's clock, and
       `SqliteSubmissionStore` writes that into `ended_at` instead of `DateTimeOffset.UtcNow`; name the
       `ended_at` column in data-model.md's `StoredRun` — per DEC-018 (contradicts; found by T083)
-- [ ] T113 `RunStateMachine`'s comment on a done run that is not to change the wiki says the reason
+- [X] T113 `RunStateMachine`'s comment on a done run that is not to change the wiki says the reason
       "names what actually happened", while it returns `StoppedWithItsLogEntry`: reword the comment to
       what the code does and why no eighth reason is added (RUNS-008's seven) — per RUNS-005, RUNS-008
       (contradicts; found by T083)
