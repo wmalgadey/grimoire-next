@@ -711,7 +711,7 @@ Beyond what every phase follows:
       run is Fast only, so this is the one place they are exercised before the PR. **No new
       `requires=signin` test**: DEC-021's budget of four is spent and R-06 chose the design that needs
       no fresh evidence from the real CLI — **Req:** Principle III.7
-- [ ] T085 Run `trace-check`; it passes, including `--complete` on the PR to main — every `test`
+- [X] T085 Run `trace-check`; it passes, including `--complete` on the PR to main — every `test`
       requirement of this feature has a test, QUERY-004 is `review` and so not among them, and no test
       carries an unknown or retired ID — **Req:** Principle IV.3
 - [ ] T086 Reconcile `docs/capabilities/query.md`, `access.md`, `guard.md` and `runs.md` with what
