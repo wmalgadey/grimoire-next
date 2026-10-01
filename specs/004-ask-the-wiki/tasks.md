@@ -573,7 +573,7 @@ Beyond what every phase follows:
       starts, the queue is not held. RUNS-003's last clause ("a question's failure goes with the chat
       that held it when Grimoire stops", runs.md:15). `RunBoardTests` covers only the question *in
       progress* at the stop, and there by a `FastHub` that builds a new `Chat` anyway — **Req:** RUNS-003, QUERY-005 | **Level:** Fast — **Why not lower:** the failed run's row survives in the store while the chat does not; only the hub's restart reads one without the other
-- [ ] T099 [P] `AgentLifetimeTests` in `tests/Grimoire.Fast.Tests/`: a **question's** run in progress
+- [X] T099 [P] `AgentLifetimeTests` in `tests/Grimoire.Fast.Tests/`: a **question's** run in progress
       at the stop, its agent still alive — the first restart terminates that agent before the run
       reads failed and before anything else starts; a **second** restart terminates nothing and starts
       nothing on that run's account. RUNS-006 for a question's run has so far been proven only at the

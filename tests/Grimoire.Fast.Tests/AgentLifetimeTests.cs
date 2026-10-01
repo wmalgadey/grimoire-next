@@ -111,6 +111,53 @@ public sealed class AgentLifetimeTests
 
     [Fact]
     [Trait("req", "RUNS-006")]
+    public async Task Restart_TerminatesTheAgentOfAQuestion_BeforeItsRunReadsFailedAndBeforeAnythingStarts()
+    {
+        before.Harness.AgentProcess = TheAgent;
+        var question = await before.AskedAsync();
+        before.Harness.ReportIn(question.Id);
+        var runId = question.RunId!.Value;
+        before.Clock.Advance(TimeSpan.FromMinutes(1));
+        var waiting = await before.AcceptedAsync("The text waiting behind the question.");
+
+        var after = before.Restarted();
+
+        // A question's run has no submission to read failed off; it reads failed by being marked
+        // ended in the store. The order is the one a submission's run keeps: the agent still holding
+        // the granted tools is gone before its run is written off, and nothing starts before that.
+        // The submission starts with no acknowledgement, because the question's failure went with
+        // the chat (RUNS-003, QUERY-005).
+        var terminated = after.Journal.When($"terminated {TheAgent.ProcessId}");
+        var readsFailed = after.Journal.When($"run {runId} ended");
+        var started = after.Journal.When($"dispatched {waiting.Id}");
+
+        Assert.True(terminated >= 0 && readsFailed >= 0 && started >= 0);
+        Assert.True(terminated < readsFailed, "the agent is terminated before its run reads failed");
+        Assert.True(readsFailed < started, "nothing starts before that run has read failed");
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public async Task SecondRestart_TerminatesNothing_AfterAQuestionsAgentWasTerminated()
+    {
+        before.Harness.AgentProcess = TheAgent;
+        var question = await before.AskedAsync();
+        before.Harness.ReportIn(question.Id);
+        var runId = question.RunId!.Value;
+
+        var first = before.Restarted();
+        var second = first.Restarted();
+
+        // The first start-up wrote the run off, so the second finds nothing of it in progress: the
+        // number it once had may belong to another process by now, and a run ended once is not
+        // dispatched, ended or terminated again.
+        Assert.Empty(second.Harness.Terminated);
+        Assert.Empty(second.Harness.Dispatched);
+        Assert.Single(second.Journal.Entries, e => e == $"run {runId} ended");
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
     public async Task Restart_TerminatesNothing_WhenTheRunHadNoAgent()
     {
         // A run dispatched by a harness that never reported a child — and a run that ended before
