@@ -46,7 +46,14 @@ handed over** (QUERY-005, GUARD-005).
   words. So the block is a property of a failure the user can still see, and a start-up terminates such
   a run's agent, marks the run ended failed, and lets the queue go on (RUNS-006, contracts/question-run.md §4).
   A submission's failure is untouched: it is on disk, it is on the screen, and it holds the queue across
-  a restart exactly as it did.
+  a restart exactly as it did. **A new chat reaches the clause's first sentence as surely as a stop
+  does**: it takes the chat's failed question off the screen and with it the only control that could
+  clear it, so that failure no longer holds the queue either (QUERY-005).
+
+RUNS-004 is unchanged in its words and reaches the files older Grimoires wrote. Every `submissions.db`
+002 and 003 left declares a run's submission as required, which a question's run cannot satisfy; such a
+file is copied aside once and its run table rebuilt in place, every row and every figure kept, so the
+owner's list comes back whole rather than the file being refused (DEC-031 as amended).
 
 RUNS-006 and RUNS-010 are untouched and both bind a question's run: no agent outlives its run and a
 start-up terminates what it finds alive — which is why a question's **run** has a row on disk even

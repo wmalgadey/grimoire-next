@@ -87,12 +87,14 @@ user can act on. **What the answer contains is the agent's** (QUERY-004); that t
 followed is Grimoire's.
 
 The agent writes ordinary relative Markdown links, in the wiki's own link form (WIKI-001, OKF §6.1),
-and **the browser** rewrites them — so nothing new goes into a wiki page and the link form lives in
-one place. A reference's target is the page's path **relative to the wiki's root**, which is the one
+and **the browser** makes them followable — so nothing new goes into a wiki page and the link form
+lives in one place. The prose stays as the agent wrote it, and each reference to a page of the wiki is
+drawn as a link in a line beside the answer, appended as the answer grows: rewriting the text the user
+is reading would replace it, which ACCESS-007 forbids. A reference's target is the page's path **relative to the wiki's root**, which is the one
 anchor an answer has: §6.1 writes a link relative to the page it sits on, and an answer sits on no
 page.
 
-The two values the rewrite needs are start-up inputs, `--vault` and `--vault-root`, and they reach the
+The two values a link needs are start-up inputs, `--vault` and `--vault-root`, and they reach the
 browser on the chat stream's opening snapshot — they are the hub's and not the page's, the same
 argument the cost ceiling already makes. `--vault-root` exists because the owner defines the directory
 the in-vault paths hang off; an absolute-path form would have taken that decision away from them.

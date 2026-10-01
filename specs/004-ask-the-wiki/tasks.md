@@ -714,7 +714,7 @@ Beyond what every phase follows:
 - [X] T085 Run `trace-check`; it passes, including `--complete` on the PR to main — every `test`
       requirement of this feature has a test, QUERY-004 is `review` and so not among them, and no test
       carries an unknown or retired ID — **Req:** Principle IV.3
-- [ ] T086 Reconcile `docs/capabilities/query.md`, `access.md`, `guard.md` and `runs.md` with what
+- [X] T086 Reconcile `docs/capabilities/query.md`, `access.md`, `guard.md` and `runs.md` with what
       shipped, as added or changed. QUERY-001…006 and GUARD-005 are new; ACCESS-007…010 are new;
       RUNS-005, RUNS-007, RUNS-008 and RUNS-009 keep their IDs with their new sentences. **Nothing is
       retired in this feature**, so the "Retired" sections are untouched — **Req:** Principle IV.2
