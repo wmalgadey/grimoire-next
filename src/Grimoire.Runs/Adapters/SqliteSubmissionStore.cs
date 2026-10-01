@@ -19,9 +19,11 @@ namespace Grimoire.Runs.Adapters;
 /// they have already made. The alternative is asking them to delete it, which throws their list away
 /// to save eight lines. So: <c>CREATE TABLE IF NOT EXISTS</c> as before, then
 /// <c>PRAGMA table_info(runs)</c> and one <c>ALTER TABLE runs ADD COLUMN</c> for each column that is
-/// not there. No version table and no ordered scripts. That a committed <c>ALTER TABLE</c> survives is
-/// SQLite's decision and is not tested; that an older file comes back with its submissions intact and
-/// its figures at zero is ours, and the Contract suite proves it (research.md R-07).
+/// not there. A table that cannot hold a question's run is rebuilt once first, and every file then
+/// reads <c>user_version</c> 1 (DEC-031 as amended). No version table and no ordered scripts. That a
+/// committed <c>ALTER TABLE</c> survives is SQLite's decision and is not tested; that the files 002 and
+/// 003 wrote come back with their submissions and figures intact is ours, and the Contract suite
+/// proves it (research.md R-04, R-07).
 /// </para>
 /// <para>
 /// Every statement here commits before the call returns, which is SQLite's own default and the
@@ -49,7 +51,8 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
     private string DataSource => new SqliteConnectionStringBuilder(connectionString).DataSource;
 
     /// <summary>
-    /// Creates the file and its two tables where they are not there yet. The directory is
+    /// Creates the file and its two tables where they are not there yet, and brings a file an older
+    /// Grimoire wrote up to this schema — the rebuild first, then the columns. The directory is
     /// Grimoire's own and never the wiki: the queue writes nothing into the wiki, and Grimoire's
     /// bookkeeping inside the user's repository would turn up in their version history
     /// (contracts/submission-store.md).
@@ -210,8 +213,7 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
     /// <c>cost_spent</c> replaced <c>tokens_used</c> when the cost ceiling stopped counting raw tokens,
     /// and <b>nothing is carried over</b>: the two hold different quantities, so a copy would restate
     /// an old run's raw token sum as a cost it never had. A file written by an older Grimoire gains
-    /// the new columns at zero and keeps its own; the runs in it are the owner's test runs and the
-    /// file is thrown away (GUARD-004).
+    /// the new columns at zero and keeps its own (GUARD-004).
     /// </para>
     /// </remarks>
     private void BringTheRunTableUpToDate()

@@ -211,6 +211,8 @@ introduces the chat.
       submission behind it** round-trips through a real file — its identifier, start, granted tools,
       model, agent process and figures — and is read back by `LoadRunsWithoutASubmission()`; a file
       written by the **older** schema comes back with its submissions intact — **Req:** RUNS-006, RUNS-010 | **Level:** Contract — **Why not lower:** what is being read is a real file an older Grimoire wrote, and only the real SQLite decides whether a null `submission_id` round-trips (III.4, DEC-031's precedent)
+      *Note (T108):* "comes back with its submissions intact" did not hold while the older file was
+      refused; it holds since T106/T107 rebuild it (DEC-031 as amended).
 
 ### Implementation for the foundation
 
@@ -241,6 +243,9 @@ introduces the chat.
       `PRAGMA table_info(runs)` then `ALTER TABLE` where something is missing: **no column is renamed
       and no table is rebuilt** (DEC-031, research.md R-04). **The only file in the tree that names
       SQLite** (DEC-023, Constitution V.2) — **Req:** RUNS-006, RUNS-010
+      *Note (T108):* "no table is rebuilt" no longer holds — a `runs` table declaring `submission_id
+      NOT NULL` is rebuilt once (T107, DEC-031 as amended); "comes back with its submissions intact"
+      now does.
 - [X] T035 [P] `src/Grimoire.Agent/ToolGrant.cs`: `ForQuestion` with the two read tools, and
       `Endpoint` — `runs` or `questions` — beside the names, so the grant and the door that serves it
       are one value. GUARD-001's existing equality check then guards it for free (research.md R-06) — **Req:** GUARD-005
@@ -652,7 +657,7 @@ Beyond what every phase follows:
       schema, not the migration history. Reading order: `user_version` 0 → inspect `notnull` →
       rebuild where needed → write 1. The next feature that changes the schema reads 1, does its
       step, writes 2 — **Req:** RUNS-004, RUNS-006 | DEC-031
-- [ ] T108 The documents that still say "refused" or "no table rebuilt" (G5c), all against DEC-031 as
+- [X] T108 The documents that still say "refused" or "no table rebuilt" (G5c), all against DEC-031 as
       amended: `research.md` R-04 and its **"Revised while implementing"** paragraph rewritten — the
       refusal (`7a5aff0`) stated as tried and reverted; `data-model.md`'s migration paragraph
       (:122–125); `plan.md:36` ("no table rebuilt") and `plan.md:27` ("DEC-031 binds … none departed

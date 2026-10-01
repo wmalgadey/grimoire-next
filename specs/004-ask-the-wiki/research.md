@@ -136,28 +136,24 @@ restored into a chat: QUERY-005 empties it.
 DEC-031 settled and for the same reason — the owner's own `submissions.db` holds the ingests they
 have already made. Renaming `submission_id` is avoided: SQLite's `ALTER TABLE … RENAME COLUMN`
 exists, but the cheaper and more honest change is to make the existing column nullable in meaning —
-a run whose `submission_id` is null was caused by a question. No column is renamed, no table is
-rebuilt, and an older file comes back with its submissions intact.
+a run whose `submission_id` is null was caused by a question. This entry first said that no table
+would be rebuilt; that is the sentence that did not survive implementing, below.
 
-**Revised while implementing** (phase 3, raised in review): the last sentence asked for something
-SQLite cannot do. `CREATE TABLE IF NOT EXISTS` does not alter a table that is already there and the
-`ALTER TABLE` step only *adds* columns, so a file an older Grimoire wrote keeps
-`submission_id TEXT NOT NULL` — and the first question asked against it fails on the insert. Dropping
-a `NOT NULL` constraint in SQLite means **rebuilding the table**, so "nullable in meaning, no table
-rebuilt" cannot both hold.
+**Revised while implementing** (phase 3, raised in review; settled in phase 7): "nullable in meaning,
+no table rebuilt" asked for something SQLite cannot do. `CREATE TABLE IF NOT EXISTS` does not alter a
+table that is already there and the `ALTER TABLE` step only *adds* columns, so every file 002 and 003
+wrote keeps `submission_id TEXT NOT NULL` — and the first question asked against it fails on the
+insert. Dropping a `NOT NULL` constraint in SQLite means **rebuilding the table**.
 
-**OWNER DECISION, 2026-09-27: the file goes.** A file whose `runs` table cannot hold a run with no
-submission behind it is refused at start-up, naming itself so the owner knows what to delete. The
-reason is that nothing runs Grimoire in production yet, so the rows such a file holds are the owner's
-own test ingests — and a rebuild would be machinery carried for ever to keep a file nobody needs. The
-first Grimoire that has users with files worth keeping revisits this.
-
-Refusing to start is what the adapter already does with a file it cannot read: a state value it does
-not know throws rather than being guessed at, for the same reason — every submission the user made is
-in that file, and reading one of them wrongly is worse than not starting. **DEC-031's mechanism keeps
-its consumer**: a file written by an earlier commit of this feature takes a null `submission_id` but
-lacks the columns added after it, and `PRAGMA table_info` + `ALTER TABLE` is what brings it up to
-date. A Contract test covers each of the two files.
+**Tried and reverted: refusing the file.** `7a5aff0` refused such a file at start-up, naming it so
+the owner could delete it. That threw the owner's list away to save a rebuild, and it was reverted in
+phase 7 for what **DEC-031 as amended** states: such a table is rebuilt once, by SQLite's own
+procedure inside one transaction and only where `pragma_table_info` reports the constraint, after a
+copy to `submissions.db.before-rebuild`; the new table is declared off the old one column for column,
+so 003's figures are not lost to the base `CREATE`; and every file then reads `user_version` 1, the
+number by which the next schema change tells this schema apart. The column additions run after it as
+before, so DEC-031's mechanism keeps its consumer. A Contract test covers the file each of 002 and 003
+wrote (`SqliteSubmissionStoreTests`).
 
 ---
 
