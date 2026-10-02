@@ -16,8 +16,8 @@ namespace Grimoire.E2E.Tests;
 /// a unit can make (DEC-020).
 /// </para>
 /// <para>
-/// What the stream carries is proven a level down, in <c>ChatStreamTests</c>. What <c>chat.js</c>
-/// makes of it is here.
+/// What the stream carries is proven a level down, in the Fast suite's <c>StepTests</c> and
+/// <c>VaultTests</c>. What <c>chat.js</c> makes of it is here.
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]

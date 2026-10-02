@@ -351,6 +351,10 @@ public sealed class AgentTranscriptTests
 
     [Fact]
     public void Line_SaysNothing_WhenItIsNotJson() =>
+        // Without a basis: the protocol contract (specs/001-first-ingest/contracts/agent-cli-protocol.md)
+        // says nothing of a line that is not JSON, and no requirement does (test-audit.md §7). Kept
+        // anyway, because it pins what the reader does with one today — a change to that should be a
+        // decision, not an accident.
         Assert.Equal(TranscriptSays.Nothing, Transcript().Read(RecordedTranscript.NotJson).Says);
 
     [Fact]
@@ -362,6 +366,8 @@ public sealed class AgentTranscriptTests
 
     [Fact]
     public void Line_SaysNothing_WhenTheSystemMessageIsNotAnInit() =>
+        // Without a basis, as the not-JSON line above: the protocol contract names the `init` system
+        // message and no other. Kept for the same reason — it pins that any other is passed over.
         Assert.Equal(
             TranscriptSays.Nothing,
             Transcript().Read("""{"type":"system","subtype":"compact_boundary"}""").Says);

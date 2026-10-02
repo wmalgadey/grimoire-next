@@ -317,7 +317,7 @@ followed is Grimoire's.
 ### Changed in this feature
 
 The sentences keep their IDs; `docs/capabilities/` carries the current wording and these rows are the
-change record (Constitution IV.1, IV.2). All four follow from one thing: a question is a run that
+change record (Constitution IV.1, IV.2). All five follow from one thing: a question is a run that
 changes nothing in the wiki and is watched rather than handed over.
 
 | ID | Status | Was | Is now, and why |
@@ -488,6 +488,6 @@ the criteria. Numbering continues from `003-live-run-record`, which ended at SC-
 
 Three user stories and one acceptance scenario — ask, read the answer forming, check what it rests
 on, follow it up — which every story advances (Constitution I.7). Eleven requirements are registered,
-four are reworded and keep their IDs, and none is retired. They become permanent when they are
+five are reworded and keep their IDs, and none is retired. They become permanent when they are
 registered in `docs/capabilities/`, which happens before this feature's first test (Constitution
 IV.2). QUERY gets its first capability file.

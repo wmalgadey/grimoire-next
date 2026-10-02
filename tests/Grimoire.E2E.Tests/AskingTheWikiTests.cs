@@ -14,8 +14,8 @@ namespace Grimoire.E2E.Tests;
 /// Only a real browser can settle any of this. "Content arriving must not move what the user is
 /// already reading" is <b>geometry</b>, and a layout is something only a browser has (DEC-020); that a
 /// figure rises without moving what is beside it is the same claim about a number. What the stream
-/// carries is proven a level down, in the Fast suite's <c>ChatStreamTests</c>, and what <c>chat.js</c>
-/// makes of it is only observable here.
+/// carries is proven a level down, in the Fast suite's <c>ChatChangeTests</c> and
+/// <c>QuestionCostTests</c>, and what <c>chat.js</c> makes of it is only observable here.
 /// </para>
 /// <para>
 /// The agent is driven from outside, so nothing waits for a model: the moments are the ones a
