@@ -271,6 +271,8 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Departs from**: research.md R-04's "no table is rebuilt", which asked for something SQLite cannot do.
 
+**Clarified after closing 004**: the copy is taken before *every* rebuild, not only where none exists — a stale copy named by an error would mislead. The column additions are part of the one step from `user_version` 0 to 1 and never run at 1 or above; "not by inspecting columns" means that, once stamped, the store reads the number and nothing else.
+
 ## DEC-033 — A record that cannot be written costs the run nothing; the gap is counted and shown
 
 **Decision**: no member of `IRunRecord` throws. The adapter catches its own IO failures, counts them, and the count travels with the run's figures; the record says how many entries were lost once a write succeeds again, and the browser says lines are missing wherever the count is above zero.
@@ -380,6 +382,8 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 **Reason**: `docs/ux.md` withholds navigation chrome until a second job exists, and a third exists now — ACCESS-010 is its consumer. It stays what the pages already are: text-first, a line of links, no bar and no menu. DEC-019 is untouched: static files, no bundler and no npm (research.md R-14).
 
 **Made by**: plan `004-ask-the-wiki`.
+
+---
 
 ## Superseded
 
