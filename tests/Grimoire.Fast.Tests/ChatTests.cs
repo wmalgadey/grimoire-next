@@ -280,7 +280,6 @@ public sealed class ChatTests
 
     [Fact]
     [Trait("req", "RUNS-002")]
-    [Trait("req", "QUERY-005")]
     public async Task Chat_ShowsTheQuestionsInTheOrderTheyWillRun_WhenSeveralAreAskedAtOnce()
     {
         const int AtOnce = 16;
@@ -322,7 +321,6 @@ public sealed class ChatTests
     }
 
     [Fact]
-    [Trait("req", "QUERY-005")]
     public async Task Chat_IsWrittenTo_WhileAnotherThreadHoldsTheBoard()
     {
         var store = new InMemorySubmissionStore();

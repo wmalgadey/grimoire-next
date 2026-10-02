@@ -132,7 +132,6 @@ public sealed class ChatChangeTests : ChatStreamReading
     }
 
     [Fact]
-    [Trait("req", "QUERY-001")]
     [Trait("req", "ACCESS-007")]
     public async Task Asked_ReachesTheBrowser_WhileTheQuestionWaitsBehindSomethingElse()
     {

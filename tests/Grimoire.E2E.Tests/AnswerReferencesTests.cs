@@ -169,7 +169,9 @@ public sealed class AnswerReferencesTests : PageTest
         // A target that climbs out of the wiki names something a reference has no business addressing,
         // however the answer came by it. A reference's target is a path relative to the wiki's root —
         // that is what the contract fixes, and `FileSystemWikiStore` refuses the same shape one layer
-        // down (ACCESS-009, GUARD-005's neighbourhood).
+        // down. ACCESS-009 is carried for its object, not its "changes nothing" clause: it opens a
+        // *wiki page* an answer references, and a target that leaves the wiki is none, so it gets no
+        // link. No requirement says more about such a target than that.
         hub.Agent.Said(
             question,
             "See ([../outside.md](../outside.md)), ([..\\outside.md](..\\outside.md)) "
