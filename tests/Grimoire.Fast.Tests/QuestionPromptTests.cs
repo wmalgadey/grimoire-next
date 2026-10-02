@@ -165,6 +165,23 @@ public sealed class QuestionPromptTests
     }
 
     [Fact]
+    public async Task Dispatch_CarriesAQuestionWhoseAnswerWasEmpty()
+    {
+        var answered = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
+
+        hub.Harness.End(answered.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        await hub.AskedAsync("And who was her mother?");
+
+        // Its run ended done, so it was asked and answered, if with nothing — and a follow-up that
+        // leans on it is read in that light, not as though it had never been asked.
+        var prompt = hub.Harness.Dispatched[^1].Prompt;
+
+        Assert.Contains($"Asked: {answered.Text}", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     [Trait("req", "QUERY-005")]
     public async Task Dispatch_CarriesNothingOfTheChatBefore_AfterANewChatWasStarted()
     {

@@ -118,7 +118,9 @@ public sealed class InstructionLoader(
     /// being asked and the payload carries that whole at the end. One still being answered or waiting,
     /// because there is nothing settled to hand on. And <b>one that got no answer</b>: QUERY-006 says
     /// nothing such a run produced is presented as its answer, and half a sentence from a failed run is
-    /// no more an answer to the next question than it is to its own.
+    /// no more an answer to the next question than it is to its own. A run that ended done with no text
+    /// is <i>not</i> such a turn: its question was asked and answered, if emptily, and the next run is
+    /// told so rather than left to think it was never asked.
     /// </para>
     /// <para>
     /// Public and static so that the Fast suite assembles the conversation the way the hub does rather
@@ -134,7 +136,7 @@ public sealed class InstructionLoader(
             "\n\n",
             chat.Turns
                 .Where(turn => turn.Question.RunId != runId)
-                .Where(turn => turn.Question.State == QuestionState.Answered && turn.Answer.Length > 0)
+                .Where(turn => turn.Question.State == QuestionState.Answered)
                 .Select(turn => $"Asked: {turn.Question.Text}\n\nAnswered: {turn.Answer}"));
     }
 }

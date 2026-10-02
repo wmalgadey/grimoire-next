@@ -99,7 +99,7 @@ first feature is a Later outcome, not an invariant.
 | OUT-15 | stop committing by hand, because a run puts its own changes into the wiki's history                     | Later  | WIKI, RUNS                        |                                    |
 | OUT-23 | see how much of my subscription's usage window my runs have used                                       | Later  | RUNS, ACCESS                      |                                    |
 
-Against the core loop (§3): steps 1 and 2 are OUT-01, step 3 is OUT-02, step 4 is OUT-03. The loop closes once Next is done, not with Now alone.
+Against the core loop (§3): steps 1 and 2 are OUT-01, step 3 is OUT-02, step 4 is OUT-03. The core loop is closed by OUT-03; subsequent outcomes deepen, widen, or protect it.
 
 ## 8. Later: promotion triggers
 
