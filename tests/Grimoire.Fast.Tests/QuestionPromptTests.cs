@@ -1,4 +1,5 @@
 using Grimoire.Agent;
+using Grimoire.Hub.Api;
 
 namespace Grimoire.Fast.Tests;
 
@@ -146,22 +147,41 @@ public sealed class QuestionPromptTests
     }
 
     [Fact]
-    public async Task Dispatch_CarriesNothingOfAQuestionThatGotNoAnswer()
+    public async Task Dispatch_CarriesAQuestionThatGotNoAnswer_WithWhyInPlaceOfItsAnswer()
     {
-        var failed = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
+        var answered = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
+
+        hub.Harness.Did(answered.Id, new TranscriptMoment(RunMomentKind.AgentSaid, null, "She wrote the first program."));
+        hub.Harness.End(answered.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        var failed = await hub.AskedAsync("And who was her mother?");
 
         hub.Harness.Did(failed.Id, new TranscriptMoment(RunMomentKind.AgentSaid, null, "Half a sen"));
         hub.Harness.End(failed.Id, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
         await hub.AcknowledgeQuestionAsync(failed.Id);
 
-        var follow = await hub.AskedAsync("And who was her mother?");
-
-        // Half a sentence from a run that failed is not an answer, and nothing the run had produced is
-        // presented as one (QUERY-006). So it is not context either.
+        var follow = await hub.AskedAsync("What is the Analytical Engine?");
         var prompt = hub.Harness.Dispatched[^1].Prompt;
 
-        Assert.DoesNotContain("Half a sen", prompt, StringComparison.Ordinal);
+        // All three, in the order they were asked: the answered one with its answer, the failed one
+        // **as asked**, and the new one last. An agent not told the question was already asked and
+        // failed walks the same way again (DEC-042, amended after closing 004).
+        var first = prompt.IndexOf($"Asked: {answered.Text}", StringComparison.Ordinal);
+        var second = prompt.IndexOf($"Asked: {failed.Text}", StringComparison.Ordinal);
+
+        Assert.True(first >= 0 && second > first, prompt);
+        Assert.Contains("Answered: She wrote the first program.", prompt, StringComparison.Ordinal);
         Assert.EndsWith(follow.Text, prompt, StringComparison.Ordinal);
+
+        // Where its answer would stand, why it got none — in the words the chat shows it in.
+        var because = prompt.IndexOf(ChatTurnView.ReasonFor(RunEndedBecause.TimeCeiling), second, StringComparison.Ordinal);
+
+        Assert.True(because > second && because < prompt.LastIndexOf(follow.Text, StringComparison.Ordinal), prompt);
+
+        // And still nothing the failed run produced: half a sentence is not an answer, and is not
+        // presented as one (QUERY-006).
+        Assert.DoesNotContain("Half a sen", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
