@@ -353,6 +353,8 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Reason**: a chat too large for one dispatch ends that run failed and the chat says so (QUERY-006) — the path every failed run takes, with a remedy that exists (a new chat) — while dropping the oldest turns would answer a follow-up in the light of less than the chat shows, silently. A cap, window or summary has no consumer until a real chat reaches the limit (II.1). V.1 keeps one thing putting text into a prompt. The steps are for the user to check, not context the next run needs, and a run's tool results are the largest thing in a chat. Declined beside dropping the oldest turns: *refusing the question* — honest, but it needs a fourth refusal in QUERY-003 and so a requirement the spec does not have (research.md R-07).
 
+**Amended after closing 004**: a question whose run got no answer goes into the next question's prompt as well — as asked, with "got no answer because <reason>" where its answer would stand. An agent that does not know the question was already asked and failed walks the same way again. The steps stay out, as before.
+
 **Made by**: plan `004-ask-the-wiki`.
 
 ## DEC-043 — A page an answer names opens in Obsidian through a link the browser builds
