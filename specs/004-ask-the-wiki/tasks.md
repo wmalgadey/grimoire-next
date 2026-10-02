@@ -844,8 +844,13 @@ description and request the owner's review (Constitution I.11, V.1).
 
 ## Later
 
-Found by test-audit.md and deliberately **not** part of this feature. None of them is in a 004
-requirement's clause, so none of them blocks closing it.
+Found by test-audit.md and deliberately **not** part of this feature. The first five are in no 004
+requirement's clause, so none of them blocks closing it. The four after them were added by the
+closing review (`closing-review.md` §4), and two of those **are** clauses of 004 requirements:
+ACCESS-009's "without that opening changing anything in the wiki" has no test, and QUERY-006's "MUST
+NOT present anything the run had produced" is shown only through a style. Both requirements are
+proven in their other clauses; these two clauses are not yet, and the owner moved them here rather
+than holding the close for them.
 
 - **argv tests for DEC-010, DEC-011 and DEC-012** over `HarnessProcess.ArgumentsFor` — the pinned
   `--model`, the deny-by-default flags and `--setting-sources ""` with its own working directory are
@@ -865,8 +870,8 @@ requirement's clause, so none of them blocks closing it.
   dropped connection (`run.js:600–613`) is proven only on the stream's side; nothing drives a reconnect
   through `EventSource` (test-audit.md §7, ACCESS-006).
 - **ACCESS-009's "without that opening changing anything in the wiki"** — no test follows a link; the
-  link is an `obsidian://` URL the browser hands to the OS, so the clause holds by construction and
-  a test would need Obsidian (test-audit.md §7, ACCESS-009; `spec.md:203`).
+  link is an `obsidian://` URL the browser hands to the OS, so nothing of Grimoire's runs when it is
+  followed — an argument, not a proof, and a test would need Obsidian (test-audit.md §7, ACCESS-009; `spec.md:203`).
 - **QUERY-006's "nothing the run produced is presented as its answer"** without the CSS — today only
   the E2E test (`ChatLifetimeTests`) shows it, and what it sees is a style in `chat.html`
   (`li[data-state="no-answer"] .answer { display: none; }`) hiding the partial answer. The chat's own
