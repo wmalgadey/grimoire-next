@@ -523,7 +523,8 @@ setup() {
 
 @test "a forbidden command that is only quoted or here-document data is no excuse for a denial" {
     jq -n '[{tool_name: "Bash", tool_input: {command: "printf %s '"'"'safe; git reset --hard is text only'"'"'"}},
-            {tool_name: "Bash", tool_input: {command: "git commit -F - <<'"'"'EOF'"'"'\nfix: no; git push here\nEOF"}}]' \
+            {tool_name: "Bash", tool_input: {command: "git commit -F - <<'"'"'EOF'"'"'\nfix: no; git push here\nEOF"}},
+            {tool_name: "Bash", tool_input: {command: "git tag -F - v1 <<\\EOF\nnote: git push here\nEOF"}}]' \
         > "$BATS_TEST_TMPDIR/data.json"
     scenario implement-phase.sh '
         cp "$BATS_TEST_TMPDIR/data.json" "$FAKE_GH/denials.json"
@@ -534,6 +535,7 @@ setup() {
     [[ "$output" == *"phasepr halted: permission-denied"* ]]
     [[ "$output" == *"git reset --hard is text only'"* ]]
     [[ "$output" == *"git commit -F - <<'EOF'"* ]]
+    [[ "$output" == *"git tag -F - v1 <<\EOF"* ]]
 }
 
 @test "a refused git merge-base is not a forbidden git merge" {

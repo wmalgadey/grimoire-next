@@ -479,8 +479,8 @@ forbidden_in() {
             [[ "${line#"${line%%[![:space:]]*}"}" == "$delim" ]] && delim=""
             continue
         fi
-        # `<<WORD`, `<<-'WORD'`; not the here-string `<<<`.
-        [[ "$line" =~ (^|[^\<])\<\<-?[[:space:]]*[\'\"]?([A-Za-z_][A-Za-z0-9_]*) ]] && delim=${BASH_REMATCH[2]}
+        # `<<WORD`, `<<-'WORD'`, `<<\WORD`; not the here-string `<<<`.
+        [[ "$line" =~ (^|[^\<])\<\<-?[[:space:]]*\\?[\'\"]?([A-Za-z_][A-Za-z0-9_]*) ]] && delim=${BASH_REMATCH[2]}
         code+="$line"$'\n'
     done <<< "$s"
     # Leftmost first, so an apostrophe inside double quotes stays inside them.
