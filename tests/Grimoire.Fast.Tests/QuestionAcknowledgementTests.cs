@@ -51,7 +51,7 @@ public sealed class QuestionAcknowledgementTests : ChatStreamReading
     }
 
     [Fact]
-    [Trait("req", "ACCESS-003")]
+    [Trait("req", "RUNS-003")]
     public async Task Acknowledge_ClearsNoSubmission_WhenItsIdIsPostedToTheChat()
     {
         await using var hub = new HostedHub();
@@ -66,7 +66,7 @@ public sealed class QuestionAcknowledgementTests : ChatStreamReading
 
         // The chat's acknowledgement addresses a **question**. Given a submission's id — which the chat
         // never showed and the user could only have from elsewhere — it clears nothing, and the failure
-        // goes on holding the queue until it is acknowledged where it is shown (ACCESS-003).
+        // goes on holding the queue until it is acknowledged where it is shown (RUNS-003).
         var answered = await hub.PostAsync($"/api/chat/questions/{submission}/acknowledgement");
 
         Assert.Equal(HttpStatusCode.NoContent, answered.StatusCode);

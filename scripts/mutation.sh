@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The mutation measurement of feature 001-first-ingest.
+# The mutation measurement: Fast suite, one Stryker run per project in scope.
 #
 #   ./scripts/mutation.sh
 #
@@ -8,21 +8,18 @@
 # Reports land in StrykerOutput/<project>/reports/mutation-report.json, which is git-ignored.
 #
 # This script runs Stryker and collects nothing else. It classifies nothing and analyses nothing;
-# reading the reports is a person's job, and specs/001-first-ingest/mutation.md is where that
-# reading is written down.
+# reading the reports is a person's job, and each feature's specs/<feature>/mutation.md is where
+# that reading is written down (specs/004-ask-the-wiki/mutation.md the latest).
 #
 # This is a measurement. It has no threshold, it is not a gate, and nothing here changes a test,
 # a test runner or a line of production code.
 #
 # How long it takes. Every run pays a fixed part before its first mutant — the build, the initial
-# test run and, under `perTestInIsolation`, one process per test to capture coverage. With the Fast
-# suite at 441 tests (004, Phase 7) that fixed part measured 3:15 to 6:55 for a Grimoire.Hub run on
-# a 4-core i7-6820HQ, most of it the coverage capture, and every one of the five runs below pays
-# it. Mutants then cost about 1.1 seconds each (91 of RunConductor's in 1:40). Grimoire.Hub has 753
-# mutants in scope, 97 of them compile errors (see below), so something over 600 to test.
-# Estimated from that, not measured: 15 to 20 minutes for the Grimoire.Hub run on that machine,
-# 45 to 60 for the whole script. CI's `mutation` job ran the other four projects in 8 to 11 minutes
-# against a smaller suite; with Grimoire.Hub, expect roughly 20 to 30.
+# test run and, under `perTestInIsolation`, one process per test to capture coverage — and every
+# one of the five runs below pays it. Measured, not estimated: with the Fast suite at 442 tests the
+# whole script took 22 minutes on a 4-core i7-6820HQ, 7 of them the Grimoire.Hub run
+# (specs/004-ask-the-wiki/mutation.md, T091). CI's `mutation` job took 31 minutes 36 seconds on
+# f027ee9 (run 36951410197), 11:39 of them the Grimoire.Hub run.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -72,8 +69,8 @@ run Grimoire.Wiki --mutate '**/*' --mutate '!**/Adapters/**'
 # the same file and went unmeasured with it; they are StartUp.cs now, read by StartUpTests, and
 # mutated with everything else.
 #
-# Stryker cannot compile every mutant, and drops those one by one as compile errors: 97 of the 753
-# in scope. What it must not do is fall into safe mode, where a compile error it cannot pin on one
+# Stryker cannot compile every mutant, and drops those one by one as compile errors: 51 of the 760
+# in scope at T091. What it must not do is fall into safe mode, where a compile error it cannot pin on one
 # mutant (CS0165, a variable left unassigned) drops every mutant of the enclosing method. The
 # early-return guards written as `is not { } x` did that to thirteen methods — 269 compile errors,
 # 97 of RunConductor's 145 — and are written as `var x = …; if (x is null)` for that reason

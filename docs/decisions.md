@@ -51,6 +51,8 @@
 
 **Reason**: A test name is read in `docs/trace.md` and in CI failure output, where one glance has to show which behaviour broke and under which condition. Taking the subject from the spec rather than from a class means a rename in the code cannot make a name wrong, which is what keeps a test tied to the requirement it proves (III.1). CA1707 forbids the underscores and is switched off for the test projects alone, in `tests/.editorconfig`.
 
+**Amended after closing 004**: **Where** is a sixth condition word. It names a condition of the setting rather than of the moment — where the wiki is the vault, where a target leaves the wiki — which none of the five says as well; 004's tests had already used it eight times (test-audit.md §8).
+
 **Made by**: plan `001-first-ingest`.
 
 ## DEC-007 — The complexity ceiling is the SDK's own rule, as an absolute error
@@ -181,11 +183,11 @@ One mechanism for both ceilings because the agent loops model call → tool call
 
 **Decision**: CI shows three measurements of this repository, as shields.io endpoint badges read from an orphan badges branch that a metrics job force-pushes on every push to main: requirements proven (Grimoire.Trace summary, from docs/capabilities/ and the test traits), line coverage of the Fast suite over the projects that hold decisions of ours (Grimoire.Runs, Grimoire.Agent, Grimoire.Wiki without their adapters, Grimoire.Trace), and the time to read src/ (cloc's non-blank non-comment count at 20 lines per minute, rounded to 5 minutes). All three use one flat colour, no value is a threshold, and no number is written into README.md — only badge URLs are.
 
-**Reason**: A number that can fail a build is a target, and a target is optimised rather than read (Goodhart); II.2 also makes a new gate an amendment, which these are not. The scope exclusions are what make the numbers legible: Grimoire.Hub is the composition root and the adapters are the ports to the outside, and III.8 tests neither, so their coverage is low by design and including it would only lower the number without saying anything about untested decisions. Every measurement comes from an existing tool (II.3) — Microsoft.Testing.Platform's coverage extension with ReportGenerator, and cloc — and the requirements count reuses the readers trace-check already has, so the badge and the gate cannot disagree. The mutation score gets no badge: scripts/mutation.sh is run by hand, one Stryker run per project, and a badge for a number nothing produces automatically would go stale silently, which is worse than no badge. It becomes a candidate for a fourth badge if and when its run is automated.
+**Reason**: A number that can fail a build is a target, and a target is optimised rather than read (Goodhart); II.2 also makes a new gate an amendment, which these are not. The scope exclusions are what make the numbers legible: Grimoire.Hub is the composition root and the adapters are the ports to the outside, and III.8 tests neither, so their coverage is low by design and including it would only lower the number without saying anything about untested decisions. Every measurement comes from an existing tool (II.3) — Microsoft.Testing.Platform's coverage extension with ReportGenerator, and cloc — and the requirements count reuses the readers trace-check already has, so the badge and the gate cannot disagree. The mutation score gets no badge (superseded by the amendment below): scripts/mutation.sh is run by hand, one Stryker run per project, and a badge for a number nothing produces automatically would go stale silently, which is worse than no badge. It becomes a candidate for a fourth badge if and when its run is automated.
 
 **Made by**: owner, after feature 001.
 
-**Amended by `004-ask-the-wiki`**: the mutation run is no longer manual only. CI runs it as its own job and publishes a fourth badge; both existed since 002 without this entry, which is the drift the 004 test audit found. The job runs on push to main and dispatch, not on pull requests — with `Grimoire.Hub` in scope it takes twenty to thirty minutes, and its score is a metric to read, not a gate to wait for. The three metrics of the original decision still run on every push to main; this one reports.
+**Amended by `004-ask-the-wiki`**: the mutation run is no longer manual only. CI runs it as its own job and publishes a fourth badge; both existed since 002 without this entry, which is the drift the 004 test audit found. The job runs on push to main and dispatch, not on pull requests — with `Grimoire.Hub` in scope it takes about half an hour (31 min 36 s, measured on the first such run, 36951410197), and its score is a metric to read, not a gate to wait for. The three metrics of the original decision still run on every push to main; this one reports.
 
 ## DEC-023 — The submissions live in SQLite, behind a port of the RUNS context
 
@@ -309,7 +311,7 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Decision**: `SubmissionBoard` became `RunBoard`, holding one ordered list of `Queued`, of which `Submission` and `Question` are the two kinds. The queue rule reads that one list; `RunBoard.All` still answers with the submissions alone.
 
-**Reason**: RUNS-002 orders waiting work by when it was made across both kinds, and a list carries that order intrinsically — the same argument `TakeNext` already makes for list position over a clock that is not monotonic. Two lists would need a sequence number of our own beside the ordering the list already is. Two real implementations exist, which is when II.4 allows the abstraction. The board is named for what it holds, because a name naming one of its two kinds would be a comment that lies (research.md R-03).
+**Reason**: RUNS-002 orders waiting work by when it was made across both kinds, and a list carries that order intrinsically — the same argument `TakeNext` already makes for list position over a clock that is not monotonic. Two lists would need a sequence number of our own beside the ordering the list already is. Two real implementations exist, which is when II.4 allows the abstraction. The board is named for what it holds, because a name naming one of its two kinds would be a comment that lies. Declined: *keeping the name* — no rename diff, at the cost of the one class that decides what may run being named after half of what it holds; *two lists and a counter* — no rename and no base class, at the cost of a second ordering mechanism beside the list that already is one (research.md R-03).
 
 **Made by**: plan `004-ask-the-wiki`.
 
@@ -341,7 +343,7 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Decision**: the agent's text is appended to the answer as it arrives; the tool calls and what they returned are the steps, folded shut under it. Nothing new is parsed — `AgentTranscript` already reports the three moments (DEC-028).
 
-**Reason**: ACCESS-007 binds three things at once, and the third decides it: content arriving must not move what the user is already reading. "The final turn's prose" cannot stream, and "the newest prose, demoted when a call follows" moves text the user has read. Of the rules that survive that, this is the one with no exception in it (research.md R-08).
+**Reason**: ACCESS-007 binds three things at once, and the third decides it: content arriving must not move what the user is already reading. "The final turn's prose" cannot stream, and "the newest prose, demoted when a call follows" moves text the user has read. Of the rules that survive that, this is the one with no exception in it. *Only the final turn's prose* reads closer to the brief's walkthrough, but it cannot stream, which is the whole of US1; *everything but the opening block*, folded away as a preamble, is also decidable live and reads closer to the walkthrough, and was declined for the rule with no exception in it (research.md R-08).
 
 **Made by**: plan `004-ask-the-wiki`.
 
@@ -349,7 +351,9 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Decision**: `InstructionLoader` renders each earlier question and the answer it produced into the prompt. The steps are not included. Nothing is trimmed and there is no cap.
 
-**Reason**: a chat too large for one dispatch ends that run failed and the chat says so (QUERY-006) — the path every failed run takes, with a remedy that exists (a new chat) — while dropping the oldest turns would answer a follow-up in the light of less than the chat shows, silently. A cap, window or summary has no consumer until a real chat reaches the limit (II.1). V.1 keeps one thing putting text into a prompt. The steps are for the user to check, not context the next run needs, and a run's tool results are the largest thing in a chat (research.md R-07).
+**Reason**: a chat too large for one dispatch ends that run failed and the chat says so (QUERY-006) — the path every failed run takes, with a remedy that exists (a new chat) — while dropping the oldest turns would answer a follow-up in the light of less than the chat shows, silently. A cap, window or summary has no consumer until a real chat reaches the limit (II.1). V.1 keeps one thing putting text into a prompt. The steps are for the user to check, not context the next run needs, and a run's tool results are the largest thing in a chat. Declined beside dropping the oldest turns: *refusing the question* — honest, but it needs a fourth refusal in QUERY-003 and so a requirement the spec does not have (research.md R-07).
+
+**Amended after closing 004**: a question whose run got no answer goes into the next question's prompt as well — as asked, with "got no answer because <reason>" where its answer would stand. An agent that does not know the question was already asked and failed walks the same way again. The steps stay out, as before.
 
 **Made by**: plan `004-ask-the-wiki`.
 
@@ -365,7 +369,7 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Decision**: `instructions/question.md`, reached by `--question-instruction <path>` with a default and assembled by `InstructionLoader`. `StartUpInputs` carries a third flag: a question is refused on the question instruction and the purpose description, a submission on the ingest instruction and the purpose description, each refusal naming exactly one thing. Where the wiki holds nothing about the question, the instruction has the agent say so plainly, name what it looked at, and stop.
 
-**Reason**: the same shape `--instruction` has, because both instructions are Grimoire's own and versioned here; V.1 keeps `InstructionLoader` the only thing that puts text into a prompt. An answer drawn from the model's own knowledge would not rest on the wiki, which QUERY-004 asks of it; the no-coverage clause refines that clause and adds no requirement id (IV.8) (research.md R-10).
+**Reason**: the same shape `--instruction` has, because both instructions are Grimoire's own and versioned here; V.1 keeps `InstructionLoader` the only thing that puts text into a prompt. An answer drawn from the model's own knowledge would not rest on the wiki, which QUERY-004 asks of it; the no-coverage clause refines that clause and adds no requirement id (IV.8). Declined: *answering from the model's own knowledge, marked as not from the wiki* — useful in the moment, but the answer would no longer rest on the wiki, and a marked sentence is a source with no page behind it (research.md R-10).
 
 **Made by**: plan `004-ask-the-wiki`.
 

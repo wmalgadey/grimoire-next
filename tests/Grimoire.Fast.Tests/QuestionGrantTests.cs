@@ -12,9 +12,10 @@ namespace Grimoire.Fast.Tests;
 /// <para>
 /// The hub's own half of the grant, which is the level GUARD-002's Fast test already sits at
 /// (Constitution III.6). That a real run then reports exactly this surface is GUARD-001's existing
-/// proof, and that the wiki is byte for byte unchanged after a real question is this feature's E2E
-/// half — no new <c>requires=signin</c> test, because R-06 chose the design that needs no fresh
-/// evidence from the real CLI (DEC-021).
+/// proof, and that the door reads the wiki and refuses a write over a real MCP session is the
+/// Contract suite's <c>WikiToolDoorTests</c>. There is no E2E half: no new <c>requires=signin</c>
+/// test either, because R-06 chose the design that needs no fresh evidence from the real CLI
+/// (DEC-021).
 /// </para>
 /// <para>
 /// What is asserted is <b>equality</b>, never containment. A surface that is not the grant ends the
@@ -125,9 +126,10 @@ public sealed class QuestionGrantTests
     [Fact]
     public void QuestionDoor_ServesTheSameTwoReadsTheIngestDoorDoes()
     {
-        // Same names, and — because both wrappers call one implementation — same arguments and same
-        // answers. Nothing about reading the wiki is different for a question; what is different is
-        // that these are all there is (contracts/question-run.md §1).
+        // Same names — which is all this compares. That the same arguments get the same answers at
+        // either door is how the two are written, both wrappers calling `WikiReads`, and is not asserted
+        // here. Nothing about reading the wiki is different for a question; what is different is that
+        // these are all there is (contracts/question-run.md §1).
         Assert.Equal(
             WikiReadToolsServer.ServedNames.Order(),
             WikiToolsServer.ServedNames.Intersect(WikiReadToolsServer.ServedNames).Order());

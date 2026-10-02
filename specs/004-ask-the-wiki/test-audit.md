@@ -561,23 +561,23 @@ Vorbehalte:
 
 | DEC | Kern | Test | Urteil |
 | --- | --- | --- | --- |
-| 001 | Abo-Anmeldung, `ANTHROPIC_API_KEY` wird dem Kind entzogen | keiner. `HarnessProcess.cs:128` entfernt den Schlüssel; der Sign-in-Test startet über `RealRun` und entfernt ihn selbst (`RealRun.cs:97`) | **Lücke** |
+| 001 | Abo-Anmeldung, `ANTHROPIC_API_KEY` wird dem Kind entzogen | keiner. `HarnessProcess.cs:128` entfernt den Schlüssel; der Sign-in-Test startet über `RealRun` und entfernt ihn selbst (`RealRun.cs:97`) | **Lücke** — steht in `tasks.md` Later (Stub-Executable) |
 | 002 | nur .NET, kein npm | – | nicht testbar (CI-Regel „kein `package.json`“ wäre die Prüfung; gibt es nicht) |
 | 003/004/005 | `level`/`req`-Traits; Metadaten statt Runner | `TestCatalogueTests`, `TraceCheckTests` | geprüft |
 | 006 | Namenskonvention | – | Review; siehe 8 |
 | 007/008 | CA1502 ≤ 15; Budgets 15 s / 90 s | – | per Build bzw. CI erzwungen |
 | 009 | `claude`-CLI starten | `HarnessProcessTests.cs:85`, `:124` | geprüft (nur lokal) |
-| 010 | gepinntes `--model`, keine Aliase | `DispatchPayloadTests.cs:47`, `QuestionPromptTests.cs:60` prüfen nur `dispatch.Model`; kein Test prüft das argv | **nur indirekt**; Aliase verweigert nur `scripts/run-hub.sh:104–108`, der Hub (`Program.cs:86`) nicht. Die Aussage in `CLAUDE.md` („aliases are refused“) stimmt für den Hub nicht |
+| 010 | gepinntes `--model`, keine Aliase | `DispatchPayloadTests.cs:47`, `QuestionPromptTests.cs:60` prüfen nur `dispatch.Model`; kein Test prüft das argv | **nur indirekt**; Aliase verweigert nur `scripts/run-hub.sh:104–108`, der Hub (`Program.cs:86`) nicht. Die Aussage in `CLAUDE.md` („aliases are refused“) stimmt für den Hub nicht — `CLAUDE.md` korrigiert (T110); argv-Test in `tasks.md` Later |
 | 011 | Deny-by-default | `AgentTranscriptTests.cs:22–96`, `WikiToolDoorTests`, `HarnessProcessTests.cs:37` | geprüft |
-| 012 | `--setting-sources ""`, eigenes Arbeitsverzeichnis | keiner | **Lücke** (Fast über `HarnessProcess.ArgumentsFor` möglich) |
+| 012 | `--setting-sources ""`, eigenes Arbeitsverzeichnis | keiner | **Lücke** (Fast über `HarnessProcess.ArgumentsFor` möglich) — steht in `tasks.md` Later |
 | 013 | MCP je Lauf | `QuestionGrantTests.cs:98`, `WikiToolDoorTests` | geprüft |
-| 014 | ohne Auth, nur Loopback | Loopback-Ablehnung (`Program.cs:99`) ungetestet | nur indirekt |
+| 014 | ohne Auth, nur Loopback | Loopback-Ablehnung, jetzt in `StartUp.cs`: `StartUpTests.cs:53` (`3201f57`) | geprüft |
 | 015 | gewichtete Kosten, zwei Deckel | `CeilingTests`, `AgentTranscriptTests.cs:104–274`, `HarnessProcessTests.cs:181` | geprüft |
-| 016 | erst Interrupt, dann Kill | Interrupt ja (`HarnessProcessTests.cs:124`, `CeilingTests.cs:108`); **Kill nach 10 s (`HarnessProcess.cs:276–292`) ungetestet** | teilweise |
+| 016 | erst Interrupt, dann Kill | Interrupt ja (`HarnessProcessTests.cs:124`, `CeilingTests.cs:108`); **Kill nach 10 s (`HarnessProcess.cs:276–292`) ungetestet** | teilweise — Kill in `tasks.md` Later |
 | 017 | Nudge über stdin | `HarnessProcessTests.cs:85`, `RunEndingTests.cs:92` | geprüft |
 | 018–020 | TimeProvider, statische Seiten, Playwright | – | Werkzeug / nicht testbar |
 | 021 | ≤ 4 Sign-in-Tests | genau 4 | nicht erzwungen (trace-check-Regel denkbar) |
-| 022 | drei Metriken, **kein** Mutations-Badge | – | **Drift**: `ci.yml:303–330` und `README.md:6`, `:57` veröffentlichen ein viertes Badge |
+| 022 | drei Metriken, **kein** Mutations-Badge | – | **Drift**: `ci.yml:303–330` und `README.md:6`, `:57` veröffentlichen ein viertes Badge — **erledigt** (T109: DEC-022 ergänzt, Job nur auf `main`) |
 | 023–030 | SQLite hinter Port; PID + Startzeit; Record-Port; Kopf/Anhängen/Schluss; Transkript; Fence; Zahlen als Spalten | `SqliteSubmissionStoreTests`, `AgentProcessTests`, `MarkdownRunRecordTests`, `RunNarrativeTests`, `RecordTextTests`, `RunFiguresTests` | geprüft |
 | 031 | ältere Datei bekommt Spalten per `ALTER` | `SqliteSubmissionStoreTests.cs:356` prüft `ALTER` – **aber `:332` prüft, dass eine ältere Datei abgelehnt wird** („OWNER DECISION: the file goes“, im Testkommentar). Der Entscheidungstext (`decisions.md:258`: „asking them to delete it throws their list away“) widerspricht dem | **Test und Entscheidung widersprechen sich** — **erledigt** (T106, T107): DEC-031 ergänzt, die Tabelle wird umgebaut, je ein Contract-Test für die Datei aus 002 und aus 003 |
 | 032 | Polling | im Code ersetzt (`LiveUpdatesTests`, `*StreamTests`) | veraltet; T088 verschiebt ihn |
@@ -588,57 +588,58 @@ Alle aktiven `test`-Requirements haben mindestens einen Test, der sie tatsächli
 
 | Req | Klausel | Befund |
 | --- | --- | --- |
-| ACCESS-004 | „when the submission was made“ | Fast prüft nur, dass das Feld existiert (`SubmissionStateTests.cs:211`); kein Test prüft, dass die Zeit gezeichnet wird (`app.js:87–88`) |
-| ACCESS-006 | Wiederverbindung | Browser-Hälfte (`run.js:600–613`) ungetestet |
-| ACCESS-007 | „Where the browser's connection … is lost and made again, … show the chat as it then stands“ | nur Fast (`ChatStreamTests.cs:219`); **das Zusammenführen in `chat.js:335–380` ist ungetestet** |
-| ACCESS-008 | „for the chat what its questions have spent altogether“ | **nur mit einer Frage getestet.** Die Summe über mehrere Turns und die Kosten einer gescheiterten Frage (`Chat.cs:252`) sind ungetestet; der Inhalt des `question`-Events ebenfalls |
-| ACCESS-009 | „without that opening changing anything in the wiki“ | kein Test; kein Link wird verfolgt |
-| ACCESS-010 | „start a new chat from the chat“ | bewiesen von `ChatLifetimeTests.cs:73`, der die ID **nicht** trägt |
-| GUARD-005 | „allow reading anything inside the wiki“ | nur Namen geprüft (`QuestionGrantTests.cs:40`, `:124`, `WikiToolDoorTests.cs:30`); kein Test ruft `read_page`/`list_pages` an `/mcp/questions/{id}` auf. `E2E AskingTheWikiTests.cs:188` prüft den Grant nicht (s. 5) |
-| QUERY-002 | „in the same chat“ | dass ein Dispatch nach „neuer Chat“ nichts vom alten Chat trägt, ist ungetestet; `QuestionPromptTests.cs:154` prüft nur das Fehlen der Teilantwort, nicht der gescheiterten Frage |
-| QUERY-005 | übersteht keinen Stopp | `RunBoardTests.cs:154` ist in diesem Punkt tautologisch: `FastHub` baut beim Neustart einen neuen `Chat` (`FastHub.cs:48`, `:109`). Echte Beweise: `ChatTests.cs:123`, `QuestionAcceptanceTests.cs:108` |
-| QUERY-006 | „MUST NOT present anything the run had produced as its answer“ | nur im Browser (E2E `ChatLifetimeTests.cs:131`, hängt an CSS) |
-| RUNS-003 | „a question's failure goes with the chat that held it when Grimoire stops“ | getestet nur für eine *laufende* Frage beim Stopp (`RunBoardTests.cs:154`); **eine vor dem Stopp gescheiterte, unquittierte Frage ist ungetestet** |
-| RUNS-006 | Fragelauf beim Neustart als beendet markiert, zweiter Neustart beendet nichts | nur auf Adapter-Ebene (`SqliteSubmissionStoreTests.cs:294`); Reihenfolge für Fragen nicht geprüft |
-| WIKI-002 | „the agent MUST be told why“ | die Ablehnung im Tool (`WikiToolsServer.cs:82–104`) ist ungetestet; `FileSystemWikiStoreTests.cs:43` ruft den Store nicht auf |
-| (query.md:35) | Einreichung wird ohne Frage-Instruktion angenommen | kein Submit-Test setzt `QuestionInstructionPresent: false` |
+| ACCESS-004 | „when the submission was made“ | Fast prüft nur, dass das Feld existiert (`SubmissionStateTests.cs:211`); kein Test prüft, dass die Zeit gezeichnet wird (`app.js:87–88`) — `tasks.md` Later |
+| ACCESS-006 | Wiederverbindung | Browser-Hälfte (`run.js:600–613`) ungetestet — `tasks.md` Later |
+| ACCESS-007 | „Where the browser's connection … is lost and made again, … show the chat as it then stands“ | nur Fast (`ChatStreamTests.cs:219`); **das Zusammenführen in `chat.js:335–380` ist ungetestet** — **erledigt** (T111) |
+| ACCESS-008 | „for the chat what its questions have spent altogether“ | **nur mit einer Frage getestet.** Die Summe über mehrere Turns und die Kosten einer gescheiterten Frage (`Chat.cs:252`) sind ungetestet; der Inhalt des `question`-Events ebenfalls — **erledigt** (T096, T097) |
+| ACCESS-009 | „without that opening changing anything in the wiki“ | kein Test; kein Link wird verfolgt — `tasks.md` Later |
+| ACCESS-010 | „start a new chat from the chat“ | bewiesen von `ChatLifetimeTests.cs:73`, der die ID **nicht** trägt — **erledigt** (`c606e9b`) |
+| GUARD-005 | „allow reading anything inside the wiki“ | nur Namen geprüft (`QuestionGrantTests.cs:40`, `:124`, `WikiToolDoorTests.cs:30`); kein Test ruft `read_page`/`list_pages` an `/mcp/questions/{id}` auf. `E2E AskingTheWikiTests.cs:188` prüft den Grant nicht (s. 5) — **erledigt** (T103) |
+| QUERY-002 | „in the same chat“ | dass ein Dispatch nach „neuer Chat“ nichts vom alten Chat trägt, ist ungetestet; `QuestionPromptTests.cs:154` prüft nur das Fehlen der Teilantwort, nicht der gescheiterten Frage — **erledigt** (T100) |
+| QUERY-005 | übersteht keinen Stopp | `RunBoardTests.cs:154` ist in diesem Punkt tautologisch: `FastHub` baut beim Neustart einen neuen `Chat` (`FastHub.cs:48`, `:109`). Echte Beweise: `ChatTests.cs:123`, `QuestionAcceptanceTests.cs:108` — **erledigt** (T098; die ID ist von `RunBoardTests` genommen, Closing-PR) |
+| QUERY-006 | „MUST NOT present anything the run had produced as its answer“ | nur im Browser (E2E `ChatLifetimeTests.cs:131`, hängt an CSS) — `tasks.md` Later |
+| RUNS-003 | „a question's failure goes with the chat that held it when Grimoire stops“ | getestet nur für eine *laufende* Frage beim Stopp (`RunBoardTests.cs:154`); **eine vor dem Stopp gescheiterte, unquittierte Frage ist ungetestet** — **erledigt** (T098) |
+| RUNS-006 | Fragelauf beim Neustart als beendet markiert, zweiter Neustart beendet nichts | nur auf Adapter-Ebene (`SqliteSubmissionStoreTests.cs:294`); Reihenfolge für Fragen nicht geprüft — **erledigt** (T099) |
+| WIKI-002 | „the agent MUST be told why“ | die Ablehnung im Tool (`WikiToolsServer.cs:82–104`) ist ungetestet; `FileSystemWikiStoreTests.cs:43` ruft den Store nicht auf — **erledigt** (T104) |
+| (query.md:35) | Einreichung wird ohne Frage-Instruktion angenommen | kein Submit-Test setzt `QuestionInstructionPresent: false` — **erledigt** (T101) |
 
 ### Verhalten aus product.md / Spec 004 ohne Test
 
 | Quelle | Verhalten | Level |
 | --- | --- | --- |
-| `spec.md:261`, `:470–473` | Summe enthält die Kosten einer gescheiterten Frage | Fast |
-| `spec.md:260`, `access.md:83` | Summe über mehrere Turns | Fast |
-| `contracts/hub-http-api.md:105` | Felder des `question`-Events (`costSpent`, `total`, `awaitingAcknowledgement`) | Fast |
-| `hub-http-api.md:25` | keine Run-ID im Chat-Stream (nur an der POST-Antwort geprüft, `QuestionAskedOverHttpTests.cs:31`) | Fast |
-| `spec.md:254` | nach Neustart liest der laufende Fragelauf „failed“ | Fast |
-| `runs.md:15` | vor dem Stopp gescheiterte, unquittierte Frage hält die Queue nicht | Fast |
-| `query.md:35` | Einreichung ohne Frage-Instruktion wird angenommen | Fast |
-| QUERY-002 × `spec.md:232` | Folgefrage nach neuem Chat trägt nichts vom alten | Fast |
-| `spec.md:266` | Chat nach Wiederverbindung korrekt | E2E |
-| `spec.md:203` | Klick auf Verweis ändert nichts im Wiki | E2E (geringer Wert, Obsidian öffnet) |
+| `spec.md:261`, `:470–473` | Summe enthält die Kosten einer gescheiterten Frage | Fast — **erledigt** (T096) |
+| `spec.md:260`, `access.md:83` | Summe über mehrere Turns | Fast — **erledigt** (T096) |
+| `contracts/hub-http-api.md:105` | Felder des `question`-Events (`costSpent`, `total`, `awaitingAcknowledgement`) | Fast — **erledigt** (T097) |
+| `hub-http-api.md:25` | keine Run-ID im Chat-Stream (nur an der POST-Antwort geprüft, `QuestionAskedOverHttpTests.cs:31`) | Fast — **erledigt** (T102) |
+| `spec.md:254` | nach Neustart liest der laufende Fragelauf „failed“ | Fast — **erledigt** (T099) |
+| `runs.md:15` | vor dem Stopp gescheiterte, unquittierte Frage hält die Queue nicht | Fast — **erledigt** (T098) |
+| `query.md:35` | Einreichung ohne Frage-Instruktion wird angenommen | Fast — **erledigt** (T101) |
+| QUERY-002 × `spec.md:232` | Folgefrage nach neuem Chat trägt nichts vom alten | Fast — **erledigt** (T100) |
+| `spec.md:266` | Chat nach Wiederverbindung korrekt | E2E — **erledigt** (T111) |
+| `spec.md:203` | Klick auf Verweis ändert nichts im Wiki | E2E (geringer Wert, Obsidian öffnet) — `tasks.md` Later (ACCESS-009) |
 | `spec.md:256`, `:230` | Antwort ohne Seite; Folgefrage live mit eigenen Verweisen | E2E (gering) |
 
 Die Erfolgskriterien SC-025 bis SC-037 (`spec.md:395–427`) enthalten keine Zeitgrenzen. Ihre „100 %“- und „every“-Aussagen misst keine automatisierte Prüfung, nur Einzelfalltests und der Abnahmelauf (T095).
 
 ### Umgekehrt: Tests, deren Verhalten nirgends steht oder deren ID nicht passt
 
-- **Ohne Grundlage:** `AgentTranscriptTests.cs:353` (Nicht-JSON-Zeile) und `:364` (System-Nachricht ≠ init) – im Protokoll-Contract `specs/001-first-ingest/contracts/agent-cli-protocol.md` ist beides nicht geregelt.
+- **Ohne Grundlage:** `AgentTranscriptTests.cs:353` (Nicht-JSON-Zeile) und `:364` (System-Nachricht ≠ init) – im Protokoll-Contract `specs/001-first-ingest/contracts/agent-cli-protocol.md` ist beides nicht geregelt. **Behalten**; der Kommentar sagt jetzt, dass sie ohne Grundlage sind (Closing-PR).
 - **Gegen oder über eine Entscheidung hinaus:**
   - `SqliteSubmissionStoreTests.cs:332` widerspricht DEC-031.
-  - `RunOutcomeTests.cs:70` schreibt `StoppedWithItsLogEntry` für einen Fragelauf fest, der gar keinen Log-Eintrag hat. Das Ende-Grund-Label ist irreführend.
-  - `ChatTests.cs:319` prüft Deadlock-Freiheit, die kein Requirement nennt, trägt aber ACCESS-007.
+  - `RunOutcomeTests.cs:70` schreibt `StoppedWithItsLogEntry` für einen Fragelauf fest, der gar keinen Log-Eintrag hat. Das Ende-Grund-Label ist irreführend. Kommentar im Code: T113; RUNS-008 vom Test genommen (Closing-PR).
+  - `ChatTests.cs:319` prüft Deadlock-Freiheit, die kein Requirement nennt, trägt aber ACCESS-007. Trägt jetzt keine ID (`c606e9b`, Closing-PR).
 - **ID passt nicht zum Körper:**
   - Klassen-Trait ACCESS-007 auf `ChatStreamTests.cs:38`, vererbt an die Vault-Tests `:341–380` und die Quittungstests `:518–549`.
   - `ChatTests.cs:96` zeigt ACCESS-008-Verhalten ohne ACCESS-008.
   - `AgentTranscriptTests.cs:298–327` tragen GUARD-004, prüfen aber RUNS-005 „stopped on its own“.
-  - `QuestionGrantTests.cs:124` behauptet „same arguments, same answers“, vergleicht aber nur Namen.
+  - `QuestionGrantTests.cs:124` behauptet „same arguments, same answers“, vergleicht aber nur Namen. Kommentar berichtigt (Closing-PR).
 - **Fehlende IDs:**
   - `ChatLifetimeTests.cs:73` (ACCESS-010)
   - `RunRecordTests.cs:221` (RUNS-005)
   - `ChatTests.cs:148` (GUARD-003)
   - `FileSystemWikiStoreTests.cs:104` (RUNS-005)
-- **`docs/trace.md` ist auf diesem Branch veraltet:** keine QUERY-Sektion, keine Zeilen für ACCESS-007…010, und in `:17` steht noch der umbenannte `Row_IsNotRebuiltUnderTheUser_WhileTheListPolls`. T087 regeneriert sie.
+- **Klassen-Trait, `ChatTests.cs:96`, `AgentTranscriptTests.cs:298–327` und die fehlenden IDs: erledigt** (`c606e9b`, `eb71e38`).
+- **`docs/trace.md` ist auf diesem Branch veraltet** (erledigt, T087): keine QUERY-Sektion, keine Zeilen für ACCESS-007…010, und in `:17` steht noch der umbenannte `Row_IsNotRebuiltUnderTheUser_WhileTheListPolls`. T087 regeneriert sie.
 
 ---
 
@@ -735,13 +736,13 @@ Priorisiert nach Wirkung auf Dev-Loop-Zeit und Aussagekraft. Nur Vorschläge, ni
 | # | Maßnahme | Wirkung | Tests betroffen |
 | --- | --- | --- | --- |
 | **1** | **Zurückgenommen** (Nachtrag in Abschnitt 3, DEC-034): Der Kestrel-Start kostet 5 ms, die Zeit steckte im Datei-Watcher von `CreateBuilder`. Ursprünglicher Vorschlag: **Kestrel-Starts in Fast bündeln:** ein `HostedHub` je Klasse oder Collection (`IClassFixture`) statt je Test, oder die Stream-Tests, die nur Domänenverhalten prüfen, auf `FastHub` zurückführen (Chat vs. ChatStream, SubmissionList, Record-NotFound doppelt) | **Fast lokal ≈ 14,5 s → geschätzt 6–8 s.** Die Messung ohne die sechs Klassen ergibt 5,7 s. Das 15-s-Gate wäre wieder weit weg. | 59 Testfälle in 6 Klassen umbauen, davon etwa 8 streichbar (e: Chat/Stream 4, SubmissionList 1, Record-NotFound 2–3) |
-| **2** | **Leere, tautologische und Double-only-Tests streichen oder reparieren:** `ToolGrantTests.cs:87`, `SubmissionStateTests.cs:95`, `CeilingTests.cs:122`/`:149`/`:250`, `RunEndingTests.cs:58`; `FailedRunTests.cs:26`/`:38` und `RunRecordTests.cs:142`/`:169` gegen den echten Adapter (Contract) statt gegen das Double; `E2E AskingTheWikiTests.cs:188` | Aussagekraft: Diese Tests zählen in trace.md, können aber nicht fehlschlagen oder prüfen das Double | ≈ 6 streichen, 4 verlegen, 1 E2E streichen oder so umbauen, dass der Harness wirklich schreiben *könnte* |
+| **2** | **Erledigt** (`fcd408c`). **Leere, tautologische und Double-only-Tests streichen oder reparieren:** `ToolGrantTests.cs:87`, `SubmissionStateTests.cs:95`, `CeilingTests.cs:122`/`:149`/`:250`, `RunEndingTests.cs:58`; `FailedRunTests.cs:26`/`:38` und `RunRecordTests.cs:142`/`:169` gegen den echten Adapter (Contract) statt gegen das Double; `E2E AskingTheWikiTests.cs:188` | Aussagekraft: Diese Tests zählen in trace.md, können aber nicht fehlschlagen oder prüfen das Double | ≈ 6 streichen, 4 verlegen, 1 E2E streichen oder so umbauen, dass der Harness wirklich schreiben *könnte* |
 | **3** | **Theory-Zeilen auf einem Pfad zusammenlegen** (Abschnitt 6 d) | Zählung ehrlicher; `QuestionAskedOverHttpTests.cs:56` spart einen Kestrel-Start | −14 (konservativ) bis −21 Testfälle |
 | **4** | **Obermengen und klassenübergreifende Doppelungen auflösen** (6 a/e, ohne die README-„And“-Regel zu brechen) | Wartung, Lesbarkeit | ≈ 14 Methoden / 18 Testfälle |
 | **5** | **Contract bereinigen:** `WikiToolDoorTests` (2) nach Fast, sobald Punkt 1 den MCP-Handshake bezahlbar macht; `FileSystemWikiStoreTests.cs:43` durch einen echten Tool-Test ersetzen (siehe Lücke G4); veraltetes „drei“ in `CLAUDE.md:125`, `ci.yml:31`, `AgentProcessTests.cs:16` korrigieren | Level-Treue (III.4/III.6) | 3 Tests verlegen oder ersetzen |
-| **6** | **E2E straffen:** Navigation 3→1 Durchgang; `RunRecordViewTests.cs:80`+`:109` und `AskingTheWikiTests.cs:34`+`:74` teilen sich je ein Setup; `RunRecordViewTests.cs:236` (ohne Browser) streichen; `AnswerReferencesTests.cs:126`/`:193` zusammenlegen. Die offene Owner-Entscheidung zu III.4 „≤ 2 Szenarien je Story“ treffen | E2E lokal ≈ 36 s → geschätzt 28–30 s; weniger Browser-Starts | 36 → etwa 29–31 |
-| **7** | **Traits korrigieren**, vor T087: Klassen-Trait ACCESS-007 in `ChatStreamTests` auf Methoden verteilen; fehlende IDs ergänzen (`ChatLifetimeTests.cs:73` ACCESS-010, `RunRecordTests.cs:221` RUNS-005, `ChatTests.cs:148` GUARD-003, `ChatTests.cs:96` ACCESS-008, `FileSystemWikiStoreTests.cs:104` RUNS-005); `AgentTranscriptTests.cs:298–327` auf RUNS-005 | trace.md wird nicht gegen aufgeblähte Zahlen gelesen | ≈ 20 Trait-Änderungen, keine Teständerung |
-| 8 | Namens-Abweichungen bei Gelegenheit; „Where“ in `tests/README.md` entscheiden | Lesbarkeit | 84 Methoden (hart), davon ≈ 30 Obergrenzen-Treffer bei „And“ |
+| **6** | **Verschoben in einen eigenen PR (PR B)**, zusammen mit der III.4-Frage. **E2E straffen:** Navigation 3→1 Durchgang; `RunRecordViewTests.cs:80`+`:109` und `AskingTheWikiTests.cs:34`+`:74` teilen sich je ein Setup; `RunRecordViewTests.cs:236` (ohne Browser) streichen; `AnswerReferencesTests.cs:126`/`:193` zusammenlegen. Die offene Owner-Entscheidung zu III.4 „≤ 2 Szenarien je Story“ treffen | E2E lokal ≈ 36 s → geschätzt 28–30 s; weniger Browser-Starts | 36 → etwa 29–31 |
+| **7** | **Erledigt** (`c606e9b`, `eb71e38`); die Reste — `ChatTests.cs:325`, `RunBoardTests.cs:153`, `QuestionGrantTests.cs:126`, `AgentTranscriptTests.cs:353`/`:364` — im Closing-PR. **Traits korrigieren**, vor T087: Klassen-Trait ACCESS-007 in `ChatStreamTests` auf Methoden verteilen; fehlende IDs ergänzen (`ChatLifetimeTests.cs:73` ACCESS-010, `RunRecordTests.cs:221` RUNS-005, `ChatTests.cs:148` GUARD-003, `ChatTests.cs:96` ACCESS-008, `FileSystemWikiStoreTests.cs:104` RUNS-005); `AgentTranscriptTests.cs:298–327` auf RUNS-005 | trace.md wird nicht gegen aufgeblähte Zahlen gelesen | ≈ 20 Trait-Änderungen, keine Teständerung |
+| 8 | **„Where“ entschieden**: sechstes Bedingungswort (`tests/README.md`, DEC-006). Die übrigen Namens-Abweichungen bei Gelegenheit | Lesbarkeit | 84 Methoden (hart), davon ≈ 30 Obergrenzen-Treffer bei „And“ |
 
 **Summe:**
 
@@ -760,28 +761,31 @@ Priorisiert nach Wirkung auf Dev-Loop-Zeit und Aussagekraft. Nur Vorschläge, ni
 
 Priorität:
 
-- **G1 – Fast:** ACCESS-008-Summe über ≥ 2 Fragen, eine davon gescheitert (`Chat.cs:252`), plus die Felder des `question`-Events, wenn eine Zahl steigt.
-- **G2 – Fast:** RUNS-003-Schlussklausel, also ein Neustart mit einer *vor* dem Stopp gescheiterten, unquittierten Frage; dazu RUNS-006 mit doppeltem Neustart für einen Fragelauf.
-- **G3 – Fast:**
+- **G1 – Fast:** ACCESS-008-Summe über ≥ 2 Fragen, eine davon gescheitert (`Chat.cs:252`), plus die Felder des `question`-Events, wenn eine Zahl steigt. **Erledigt** (T096, T097).
+- **G2 – Fast:** RUNS-003-Schlussklausel, also ein Neustart mit einer *vor* dem Stopp gescheiterten, unquittierten Frage; dazu RUNS-006 mit doppeltem Neustart für einen Fragelauf. **Erledigt** (T098, T099).
+- **G3 – Fast:** **Erledigt** (T100, T101, T102).
   - QUERY-002: Folgefrage nach neuem Chat trägt nichts vom alten Chat.
   - Einreichung wird ohne Frage-Instruktion angenommen (`query.md:35`).
   - Keine Run-ID im Chat-Stream (`hub-http-api.md:25`).
-- **G4 – Contract (läuft in CI):**
+- **G4 – Contract (läuft in CI):** **Erledigt** (T103, T104; die Frage-Tür liest ohne registrierten Lauf).
   - GUARD-005 „reading anything“: `read_page` über `/mcp/questions/{id}` tatsächlich aufrufen.
   - WIKI-002 „agent MUST be told why“: `write_page` mit unlesbarem Frontmatter liefert die Ablehnung, und nichts landet auf der Platte. Ersetzt `FileSystemWikiStoreTests.cs:43`.
   - Ob die Frage-Tür ohne registrierten Lauf liest, lässt sich aus dem Repo nicht entscheiden.
 - **G5 – Dokumente, vor T088, keine Tests:**
   - DEC-031 ergänzen oder eine neue Entscheidung für die abgelehnte ältere Datei schreiben (derzeit nur ein Testkommentar, `research.md:149`, `data-model.md:125`). **Erledigt** (T106, T107, T108).
-  - `plan.md:36` korrigieren.
-  - DEC-022-Badge-Drift auflösen.
-  - `CLAUDE.md` „aliases are refused“ richtigstellen (gilt nur für `scripts/run-hub.sh`).
-- **G6 – E2E:** Wiederverbindung in `chat.js:335–380` (ACCESS-007, letzte Klausel). Die einzige Lücke in einer 004-Klausel, die nur ein Browser zeigen kann.
+  - `plan.md:36` korrigieren. **Erledigt** (T108).
+  - DEC-022-Badge-Drift auflösen. **Erledigt** (T109).
+  - `CLAUDE.md` „aliases are refused“ richtigstellen (gilt nur für `scripts/run-hub.sh`). **Erledigt** (T110).
+  - Regel für Owner-Entscheidungen (G5a). **Erledigt** (T105, Constitution II.7).
+- **G6 – E2E:** Wiederverbindung in `chat.js:335–380` (ACCESS-007, letzte Klausel). Die einzige Lücke in einer 004-Klausel, die nur ein Browser zeigen kann. **Erledigt** (T111).
 
 **Kann warten**, ist nicht 004-Umfang:
 
 - argv-Test für DEC-010/011/012 (Fast über `HarnessProcess.ArgumentsFor`).
 - Stub-Executable-Contract-Test für DEC-001 (Schlüssel entfernt) und DEC-016 (Kill-Backstop).
 - ACCESS-004-Zeitstempel im Browser.
+
+Alle drei stehen in `tasks.md` Later (DEC-001 seit dem Closing-PR).
 
 ### Aus dem Repo nicht beantwortbar
 

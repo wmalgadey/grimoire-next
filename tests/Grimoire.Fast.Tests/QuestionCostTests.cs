@@ -114,7 +114,6 @@ public sealed class QuestionCostTests : ChatStreamReading
     }
 
     [Fact]
-    [Trait("req", "ACCESS-008")]
     [Trait("req", "ACCESS-003")]
     public async Task QuestionEvent_OffersTheAcknowledgement_WhenItsRunEndsFailed()
     {
@@ -135,7 +134,6 @@ public sealed class QuestionCostTests : ChatStreamReading
     }
 
     [Fact]
-    [Trait("req", "ACCESS-008")]
     [Trait("req", "ACCESS-003")]
     public async Task QuestionEvent_OffersNoAcknowledgement_AfterTheFailureWasAcknowledged()
     {

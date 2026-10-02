@@ -150,7 +150,6 @@ public sealed class RunBoardTests
     [Fact]
     [Trait("req", "RUNS-003")]
     [Trait("req", "RUNS-006")]
-    [Trait("req", "QUERY-005")]
     public async Task Queue_MovesAfterARestart_WhenTheFailureThatHeldItWasAQuestions()
     {
         hub.Harness.AgentProcess = new AgentProcessIdentity(4_711, FastSuite.Start);

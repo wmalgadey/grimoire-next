@@ -46,7 +46,7 @@ public sealed class RunNarrativeTests
         Assert.Equal(RunMomentKind.ToolReturned, moment.Kind);
 
         // Byte for byte, tabs and newlines included. Nothing is cut and nothing is escaped (RUNS-009,
-        // the owner's decision in the spec's Clarifications).
+        // DEC-029).
         Assert.Equal(RecordedTranscript.ToolResultContent, moment.Content);
 
         // And it says which call returned, from the call before it. A run makes one call at a time in

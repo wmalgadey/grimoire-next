@@ -196,8 +196,8 @@ jobs:
   #     silently, and in the direction of measuring less.
   #
   # On push to main and on workflow_dispatch, never on a pull request, and on no schedule
-  # (DEC-022 as amended by 004-ask-the-wiki). With Grimoire.Hub in scope the run takes twenty to
-  # thirty minutes here (scripts/mutation.sh says where that estimate comes from), and its score
+  # (DEC-022 as amended by 004-ask-the-wiki). With Grimoire.Hub in scope the run takes about half an
+  # hour here (scripts/mutation.sh gives the measured times), and its score
   # reports, it does not gate: on the pull request that merges a feature into main it would be a
   # thirty-minute check to wait for and nothing to decide on, which is what the amendment rules out.
   # The closing task of a feature reads its survivors from a local run or a dispatch instead. It is

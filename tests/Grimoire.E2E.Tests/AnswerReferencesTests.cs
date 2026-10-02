@@ -16,8 +16,8 @@ namespace Grimoire.E2E.Tests;
 /// a unit can make (DEC-020).
 /// </para>
 /// <para>
-/// What the stream carries is proven a level down, in <c>ChatStreamTests</c>. What <c>chat.js</c>
-/// makes of it is here.
+/// What the stream carries is proven a level down, in the Fast suite's <c>StepTests</c> and
+/// <c>VaultTests</c>. What <c>chat.js</c> makes of it is here.
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]
@@ -169,7 +169,8 @@ public sealed class AnswerReferencesTests : PageTest
         // A target that climbs out of the wiki names something a reference has no business addressing,
         // however the answer came by it. A reference's target is a path relative to the wiki's root —
         // that is what the contract fixes, and `FileSystemWikiStore` refuses the same shape one layer
-        // down (ACCESS-009, GUARD-005's neighbourhood).
+        // down. ACCESS-009's clause "a reference that leaves the wiki is shown as text and opens
+        // nothing" is what this proves.
         hub.Agent.Said(
             question,
             "See ([../outside.md](../outside.md)), ([..\\outside.md](..\\outside.md)) "

@@ -18,10 +18,9 @@ Grimoire has no access control of its own: it assumes it runs inside a network t
 | ACCESS-004 | The browser MUST show, for every submission, the opening of the text that was submitted, cut to the same length for every submission, and when the submission was made, so that the user can tell one submission from another. | test |
 | ACCESS-005 | The browser MUST show, for every submission, exactly one of submitted, running, done or failed, and for a submission that has a run also that run's model, what it has spent against the cost ceiling it is held to, and the number of tool calls it has made; while a run is in progress these figures MUST follow it, and a figure changing MUST NOT move the rows of the list. | test |
 | ACCESS-006 | Users MUST be able to open a submission's run from the list and read its record in the browser — its frame, and what the run did in the order it happened — both while the run is in progress, where lines MUST arrive as they are appended, and after it has ended, where the record MUST be shown in the same shape. The user MUST be able to follow what the run did without reading the tool results in full and MUST be able to reach any one result when they want it; and where lines of the record could not be written, the view MUST say that something is missing. | test |
-
 | ACCESS-007 | The browser MUST show, for every question in the chat, exactly one of waiting its turn, being answered, answered, or got no answer and why; an answer MUST appear as the agent produces it, and what the agent did to reach it MUST be readable under it in the shape a run's record is read in (ACCESS-006) — shut by default and openable a step at a time — arriving as it happens; and content arriving MUST NOT move what the user is already reading. Where the browser's connection to Grimoire is lost and made again, the browser MUST show the chat as it then stands, including what arrived while it was away. | test |
 | ACCESS-008 | The browser MUST show, for every question that has a run, what that run has spent against the cost ceiling it is held to, and for the chat what its questions have spent altogether, the total without a ceiling beside it; while a question's run is in progress its figure MUST follow it, and a figure changing MUST NOT move what the user is reading. | test |
-| ACCESS-009 | Users MUST be able to open a wiki page an answer references, from the answer, in the editor the wiki is open in, without that opening changing anything in the wiki. Where Grimoire has not been told what that opening needs, the answer MUST still arrive, the page's name MUST still be readable in it, and the browser MUST say that opening a page is not set up. | test |
+| ACCESS-009 | Users MUST be able to open a wiki page an answer references, from the answer, in the editor the wiki is open in, without that opening changing anything in the wiki — and a reference that leaves the wiki is shown as text and opens nothing. Where Grimoire has not been told what that opening needs, the answer MUST still arrive, the page's name MUST still be readable in it, and the browser MUST say that opening a page is not set up. | test |
 | ACCESS-010 | Users MUST be able to reach each of submitting a source, reading a submission's run, and asking the wiki from the others, and to start a new chat from the chat. | test |
 
 ACCESS-004 is what a user tells one submission from another by, and ACCESS-003 is the one action
@@ -85,6 +84,9 @@ twice: each figure is the run's own (DEC-030, RUNS-010) and the total is a sum o
 ACCESS-009 is the one place OUT-03's promise "with references to wiki pages" becomes something the
 user can act on. **What the answer contains is the agent's** (QUERY-004); that the name in it can be
 followed is Grimoire's.
+
+**Changed**: ACCESS-009's clause on a reference that leaves the wiki — clause added when closing 004,
+closing-review §1 (`specs/004-ask-the-wiki/closing-review.md`). The id is kept (Constitution IV.1).
 
 The agent writes ordinary relative Markdown links, in the wiki's own link form (WIKI-001, OKF §6.1),
 and **the browser** makes them followable — so nothing new goes into a wiki page and the link form

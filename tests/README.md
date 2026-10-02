@@ -40,7 +40,9 @@ implementation. A rename in the code then cannot make a test name wrong.
 
 **A test method is `<Action>_<Result>[_<Scenario>]`.** Each part is PascalCase and exactly one
 underscore separates them. The scenario is present whenever the result depends on a condition, and
-it starts with a condition word: **When**, **While**, **With**, **Without**, **After**.
+it starts with a condition word: **When**, **While**, **With**, **Without**, **After**, **Where**.
+**Where** names a condition of the setting rather than of the moment — where the wiki is the vault,
+where a target leaves the wiki.
 
 **Names use the spec's vocabulary, never the implementation's.** No HTTP status codes, no method
 names, no type names — the spec says "refused", not "422"; "a run is in progress", not

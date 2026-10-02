@@ -53,8 +53,10 @@ methods. Every guard left that declared a variable in a condition controlling an
 — `is not { } x`, `is not T x`, a property pattern, or an `out var` behind `||` — was written out the
 same way: `StartUp.cs` (three), `Program.cs`, `Api/RunRecordEndpoint.cs` (two), `Queued.cs`,
 `RecordText.cs`, `RunBoard.cs` (four) and `Adapters/AgentTranscript.cs` (six). None of them put
-Stryker into safe mode, so the counts below do not move. They are rewritten so that the rule holds
-without exceptions a reader would have to know about.
+Stryker into safe mode, so no method comes back into the measurement; the table below was taken
+before them and is left as it was. They are rewritten so that the rule holds without exceptions a
+reader would have to know about. They did lower the Hub's compile errors one mutant at a time,
+which the T091 run shows (under "The survivors").
 
 RunConductor was rewritten first, on its own, because it was the worst case. The rule was to carry
 on only if its compile errors fell below 20; they fell to 12.
@@ -95,8 +97,38 @@ one `mutation-report.json` per project with `killedBy` for every mutant, for the
 | Grimoire.Trace | 376 | 117 | 97 | 0 | 20 | 10 | 28 | 76.38 % |
 
 "Tested" is killed, timed out and survived; the score is Stryker's, over tested and not covered.
-The Hub's **compile errors are 51**, against the 97 of the reference above — a fall, not the rise
-that would mean a pattern-variable guard came back.
+
+**Overall**, the number the badge shows, computed the way `ci.yml`'s `mutation-badge` job computes
+it over all five reports: (788 killed + 14 timed out) / (1087 tested + 97 not covered) = 802 / 1184
+= **67.7 %**.
+
+**Created is more than tested, not covered and compile errors together** — by 12 (Agent), 74
+(Runs), 172 (Hub), 17 (Wiki) and 221 (Trace). Those are the reports' `Ignored` mutants, which
+Stryker leaves out of the score; the reports give two reasons. *Removed by block already covered
+filter* (Agent 12, Runs 74, Hub 167, Wiki 17, Trace 34): Stryker drops the mutant that empties a
+block where that block already carries mutants of its own. *Removed by mutate filter* (Hub 5, Trace
+187): files the `--mutate` filter excludes but Stryker still lists — the Hub's `Program.cs`, and
+Trace's `Program.cs`, `RepositoryLayout.cs` and `TraceDocument.cs`. Files the other three projects
+exclude (their `Adapters/`) do not appear in their reports at all.
+
+**This is the state after pruning.** The tests that could not fail or proved only the double went
+in `fcd408c` (2026-09-29, test-audit.md recommendation 2), before this run (2026-10-01); there is no
+run from before it to compare against. The pruning by `killedBy` — a test removed where the reports
+show another test kills every mutant it kills (test-audit.md §6 a–e) — is still to come; it is under
+"Later" in `tasks.md`.
+
+The Hub's **compile errors are 51**, against the 97 of the reference above. The 46 fewer are in two
+files: `StartUp.cs` (32 → 1) and `Api/RunRecordEndpoint.cs` (20 → 5) — the two Hub files of the
+rewrite that followed the reference (`b0dcc9f`). Their guards never threw Stryker into safe mode,
+but every mutant of such a condition left its variable unassigned and was dropped on its own as a
+compile error; written out, those mutants compile. Every other file reads as in the reference, and
+the 760 mutants against the reference's 753 are the lines written since. A fall, not the rise that
+would mean a pattern-variable guard came back.
+
+**The first CI run with the Hub in scope** — run 36951410197, job `mutation`, on `f027ee9`, which
+already holds the eighteen tests below — took **31 min 36 s** and published **70.4 %**: Runs
+68.69 % (7 min 26 s), Agent 88.03 % (4 min 14 s), Wiki 85.85 % (4 min 1 s), Hub 62.73 %
+(11 min 39 s), Trace 77.17 % (4 min 2 s).
 
 **Two "Safe Mode!" lines**, neither of them the guard CLAUDE.md forbids:
 
@@ -110,11 +142,11 @@ that would mean a pattern-variable guard came back.
 
 ### What was read
 
-Of the 335 mutants that survived or were not covered in `Runs`, `Agent` and `Hub`, **260** are read
+Of the 337 mutants that survived or were not covered in `Runs`, `Agent` and `Hub`, **260** are read
 here: every one on a line this feature wrote (155, by `git blame` against `main`), and every one in
 `Grimoire.Hub`, which no measurement has read before (105 on lines older than this feature). The
-other 75 are on lines of `Runs` and `Agent` that 001 to 003 wrote and classified; and `Wiki` and
-`Trace` (35 more), which this feature did not touch, are not this feature's to classify — the same
+other 77 are on lines of `Runs` and `Agent` that 001 to 003 wrote and classified; and `Wiki` and
+`Trace` (45 more), which this feature did not touch, are not this feature's to classify — the same
 cut `003-live-run-record/mutation.md` made.
 
 Every claimed gap was checked the only way that settles it: the mutation made in the source and the

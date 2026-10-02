@@ -66,7 +66,6 @@ public sealed class RunOutcomeTests
 
     [Fact]
     [Trait("req", "RUNS-005")]
-    [Trait("req", "RUNS-008")]
     public void Exit_EndsTheRunDone_WhenTheRunChangedNothingAndStoppedInsideBothCeilings()
     {
         var question = NewQuestionRun();
@@ -74,7 +73,7 @@ public sealed class RunOutcomeTests
         question.AgentStopped(Stopped(logEntry: false));
 
         // The verdict where a run actually ends. Stopping on its own inside both ceilings with a clean
-        // exit is the whole of done for a run that was to change nothing (RUNS-005, RUNS-008).
+        // exit is the whole of done for a run that was to change nothing (RUNS-005).
         var ending = question.Exited(exitCode: 0, TimeSpan.FromMinutes(1));
 
         Assert.Equal(RunOutcome.Done, ending.Outcome);

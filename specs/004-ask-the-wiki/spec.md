@@ -66,26 +66,28 @@ beside it.
 
 ### Session 2026-09-27 — decisions carried in with the brief
 
-Four things this feature contradicts, all the owner's decision (brief §5):
+Four things this feature contradicts (brief §5). The reworded requirements are written in
+`docs/capabilities/`, which is where requirement text is kept; what follows says what changed and
+where to read it:
 
-- OWNER DECISION: **RUNS-005 is contradicted.** It ends a run `done` only when `log.md` holds an
-  entry for that run. A question writes nothing in the wiki, so it can never satisfy that. The
-  done-condition, and the one nudge that precedes it, become properties of a run that is to change
-  the wiki rather than of every run. RUNS-005 keeps its ID and is reworded here.
-- OWNER DECISION: **RUNS-007 is contradicted**, and **RUNS-008 and RUNS-009** with it. RUNS-007 says
-  every run must have exactly one record of its own; RUNS-008 and RUNS-009 say what that record
-  holds. A question has no record. All three become properties of a run that is handed over —
-  today, a run a submission causes — rather than of every run. All three keep their IDs and are
-  reworded here. ACCESS-006, which is about reading a *submission's* record, is untouched.
-- OWNER DECISION: **GUARD-002 does not cover a question.** It is the grant for an ingest run and
-  says what that one allows. A question runs under a grant of its own, read-only: no page written,
-  no index written, no log appended. GUARD-002 is untouched; GUARD-005 is registered beside it.
-- OWNER DECISION: **DEC-032 is contradicted.** It makes reading a run a page that polls. Polling is
-  replaced by the browser being sent what happens — on the chat and on the two views that poll
-  today. The wording of ACCESS-005 and ACCESS-006 does not change: both already ask for figures
+- **RUNS-005 is contradicted.** It ends a run `done` only when `log.md` holds an entry for that
+  run. A question writes nothing in the wiki, so it can never satisfy that. The done-condition, and the one nudge that precedes it, become properties of a run that is to change
+  the wiki rather than of every run. RUNS-005 keeps its ID; its wording is in
+  `docs/capabilities/runs.md`.
+- **RUNS-007 is contradicted**, and **RUNS-008 and RUNS-009** with it. RUNS-007 says every run
+  must have exactly one record of its own; RUNS-008 and RUNS-009 say what that record holds. A question has no record. All three become properties of a run that is handed over —
+  today, a run a submission causes — rather than of every run. All three keep their IDs; their
+  wording is in `docs/capabilities/runs.md`. ACCESS-006, which is about reading a *submission's*
+  record, is untouched.
+- **GUARD-002 does not cover a question.** It is the grant for an ingest run and says what that
+  one allows. A question runs under a grant of its own, read-only: no page written,
+  no index written, no log appended. GUARD-002 is untouched; GUARD-005 is registered beside it in
+  `docs/capabilities/guard.md`.
+- **DEC-032 is contradicted**, and superseded by DEC-035. It makes reading a run a page that
+  polls. Polling is replaced by the browser being sent what happens — on the chat and on the two
+  views that poll today. The wording of ACCESS-005 and ACCESS-006 does not change: both already ask for figures
   that follow a run and for lines that arrive as they are appended. What changes is how, which is
-  the plan's decision and the plan's new entry in `docs/decisions.md`; both requirements are proven
-  again under it.
+  DEC-035; both requirements are proven again under it.
 
 ### Session 2026-09-27 — specify
 
@@ -104,9 +106,9 @@ Four things this feature contradicts, all the owner's decision (brief §5):
   the browser, and then asks again. A second acknowledgement path, or letting a question fail
   without blocking, were both rejected — they would make a question a run that plays by different
   rules, and RUNS-002 and RUNS-003 are untouched by this feature.
-- OWNER DECISION: **what the chat shows about a question is one requirement, not one per state.**
-  Waiting, being answered, answered, and got no answer and why are values inside ACCESS-007
-  (Constitution IV.7), as the four submission states are values inside ACCESS-005.
+- **What the chat shows about a question is one requirement, not one per state**, per Constitution
+  IV.7: waiting, being answered, answered, and got no answer and why are values inside ACCESS-007,
+  as the four submission states are values inside ACCESS-005.
 - Q: What happens to a question's run when the person asking it walks away mid-answer — the tab is
   closed, the connection drops — and what does the chat show when they come back? → A: **The run
   runs to its end like any other run, and the chat is held so the answer is there when they return.**
@@ -289,7 +291,7 @@ does not exist yet.
 | GUARD-005 | The grant for a question's run MUST allow reading anything inside the wiki and nothing else: no page, index or log written, nothing deleted and nothing moved. | test |
 | ACCESS-007 | The browser MUST show, for every question in the chat, exactly one of waiting its turn, being answered, answered, or got no answer and why; an answer MUST appear as the agent produces it, and what the agent did to reach it MUST be readable under it in the shape a run's record is read in (ACCESS-006) — shut by default and openable a step at a time — arriving as it happens; and content arriving MUST NOT move what the user is already reading. Where the browser's connection to Grimoire is lost and made again, the browser MUST show the chat as it then stands, including what arrived while it was away. | test |
 | ACCESS-008 | The browser MUST show, for every question that has a run, what that run has spent against the cost ceiling it is held to, and for the chat what its questions have spent altogether, the total without a ceiling beside it; while a question's run is in progress its figure MUST follow it, and a figure changing MUST NOT move what the user is reading. | test |
-| ACCESS-009 | Users MUST be able to open a wiki page an answer references, from the answer, in the editor the wiki is open in, without that opening changing anything in the wiki. Where Grimoire has not been told what that opening needs, the answer MUST still arrive, the page's name MUST still be readable in it, and the browser MUST say that opening a page is not set up. | test |
+| ACCESS-009 | Users MUST be able to open a wiki page an answer references, from the answer, in the editor the wiki is open in, without that opening changing anything in the wiki — and a reference that leaves the wiki is shown as text and opens nothing. Where Grimoire has not been told what that opening needs, the answer MUST still arrive, the page's name MUST still be readable in it, and the browser MUST say that opening a page is not set up. | test |
 | ACCESS-010 | Users MUST be able to reach each of submitting a source, reading a submission's run, and asking the wiki from the others, and to start a new chat from the chat. | test |
 
 QUERY-002 is INGEST-002's counterpart and differs from it in one thing: what the chat has already
@@ -315,7 +317,7 @@ followed is Grimoire's.
 ### Changed in this feature
 
 The sentences keep their IDs; `docs/capabilities/` carries the current wording and these rows are the
-change record (Constitution IV.1, IV.2). All four follow from one thing: a question is a run that
+change record (Constitution IV.1, IV.2). All five follow from one thing: a question is a run that
 changes nothing in the wiki and is watched rather than handed over.
 
 | ID | Status | Was | Is now, and why |
@@ -486,6 +488,6 @@ the criteria. Numbering continues from `003-live-run-record`, which ended at SC-
 
 Three user stories and one acceptance scenario — ask, read the answer forming, check what it rests
 on, follow it up — which every story advances (Constitution I.7). Eleven requirements are registered,
-four are reworded and keep their IDs, and none is retired. They become permanent when they are
+five are reworded and keep their IDs, and none is retired. They become permanent when they are
 registered in `docs/capabilities/`, which happens before this feature's first test (Constitution
 IV.2). QUERY gets its first capability file.

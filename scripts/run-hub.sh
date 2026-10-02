@@ -102,9 +102,10 @@ if (( ${#missing[@]} )); then
 fi
 
 # An alias follows whatever it is pointed at, so a run made with one cannot be repeated
-# and its cost cannot be attributed to a model (DEC-010).
+# and its cost cannot be attributed to a model (DEC-010). `sonnet[1m]` is quoted: unquoted, the
+# brackets are a glob class and would match `sonnet1` or `sonnetm` instead.
 case "$GRIMOIRE_MODEL" in
-  opus|sonnet|haiku|fable|default|"")
+  opus|sonnet|haiku|fable|opusplan|'sonnet[1m]'|default|"")
     refuse "GRIMOIRE_MODEL is the alias '$GRIMOIRE_MODEL'. Name a model in full, e.g. claude-sonnet-5." ;;
 esac
 

@@ -99,11 +99,9 @@ two do: a submission is persisted, carries a text excerpt and appears in the bro
 question is none of those. `Queued` holds only what the queue rule reads — waiting, under way, an
 unacknowledged failure — which is the whole of what the two have in common.
 
-**Why the rename.** OWNER DECISION, 2026-09-27: the rename is taken rather than avoided. A class
-named `SubmissionBoard` that holds questions would be a name that lies, in a tree whose comments
-carry the reasons. The rename is mechanical, lands in one phase, and `CLAUDE.md` is reconciled at
-close. Keeping the old name over the same one list, and keeping two lists ordered by a counter of
-our own, were both put to the owner and both declined — the second for the reason above.
+**Why the rename.** DEC-037 takes it, and gives the reason and the two alternatives declined. What
+is left for here: the rename is mechanical, lands in one phase, and `CLAUDE.md` is reconciled at
+close.
 
 **A question's four values are its run's.** ACCESS-007 asks the chat to show exactly one of waiting
 its turn, being answered, answered, got no answer and why — which is the same four RUNS-001 already
@@ -256,16 +254,9 @@ text into a prompt (V.1). The steps are **not** included: what the agent did to 
 answer is for the user to check, not context the next run needs, and a run's tool results are the
 largest thing in a chat by far.
 
-**Nothing is trimmed, and there is no mechanism for later.** OWNER DECISION, 2026-09-27. This
-answers the brief's open question directly: the first version sends everything. A chat that grows
-past what a dispatch can carry ends that run failed, and the chat says that question got no answer
-and why (QUERY-006) — which is the same path every other failed run takes, and the user's remedy is
-the one the feature already gives them: start a new chat.
-
-Dropping the oldest turns to fit a budget was rejected: a follow-up would then be answered in the
-light of less than the chat shows, silently, which is worse than a failure the user can see.
-Refusing an over-large question was rejected too — it would need a fourth refusal in QUERY-003, and
-so a requirement change the spec does not have.
+**Nothing is trimmed, and there is no mechanism for later.** DEC-042, which answers the brief's
+open question directly and names the two alternatives declined: the first version sends everything,
+and a chat that outgrows a dispatch takes the path every failed run takes (QUERY-006).
 
 **Compressing the conversation is proposed to the owner as a Later outcome** (Constitution I.4), not
 built here. Its trigger is named in [plan.md](plan.md) §Proposed to the owner: the first time a real
@@ -283,7 +274,7 @@ what GUARD-004 and GUARD-005 ask.
 
 ## R-08 — Where the line falls between the answer and the steps
 
-**Decision.** OWNER DECISION, 2026-09-27. **Every piece of the agent's own text is the answer**,
+**Decision.** DEC-041. **Every piece of the agent's own text is the answer**,
 appended in the order it arrives and growing in place. **The steps are the tool calls and what they
 returned** — one entry per call, shut, openable on its own, appended under the answer as they
 happen.
@@ -300,10 +291,9 @@ were weighed:
   streams, and it moves text the user has already read from one place on the screen to another,
   which ACCESS-007 forbids in as many words.
 - **Everything but the opening block, which goes under the fold as a preamble.** This one is
-  decidable live and never revised, so it satisfies all three — it was put to the owner beside the
-  decision above and is the variant they did not take. It reads closer to the brief's walkthrough
-  and costs a rule that exists for exactly one block of a run; the owner chose the rule with no
-  exception in it.
+  decidable live and never revised, so it satisfies all three. It reads closer to the brief's
+  walkthrough and costs a rule that exists for exactly one block of a run; DEC-041 takes the rule
+  with no exception in it.
 
 Only a rule decided at the moment a block arrives and never revised satisfies all three, and this is
 that rule. It is also what QUERY-004 makes the agent's prose *be*: the instruction says the answer is
@@ -372,13 +362,10 @@ link in the wiki's own link form (R-09), and that nothing in the wiki is to be w
 appended. That last sentence is not what enforces it — GUARD-005 and the read-only endpoint are
 (R-06) — it is there so the agent is not left trying a tool that does not exist.
 
-**Where the wiki holds nothing about the question.** OWNER DECISION, 2026-09-27: the instruction
-tells the agent to say plainly that the wiki does not cover it, name what it looked at, and stop.
-Answering from what the model itself knows, marked as not from the wiki, was rejected: the answer
-would then not rest on the wiki, which is what QUERY-004 asks of it, and a marked sentence is a
-source with no page behind it. Answering as far as the wiki goes *and* naming what is missing was
-weighed and is the narrower case of the same rule — the instruction says the gap is named either
-way.
+**Where the wiki holds nothing about the question.** DEC-044: the instruction tells the agent to
+say so plainly, name what it looked at, and stop; the alternative declined is in its reason.
+Answering as far as the wiki goes *and* naming what is missing was weighed and is the narrower case
+of the same rule — the instruction says the gap is named either way.
 
 **This adds no requirement id.** It is an acceptance criterion of QUERY-004's existing clause "rests
 on what the wiki's pages say": where the pages say nothing, resting on them *is* saying so. A

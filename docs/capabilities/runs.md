@@ -21,7 +21,7 @@ Traceability: what a run did, why, how it ended, what it cost; approving lint pr
 | RUNS-009 | A record MUST hold what the run it belongs to did, in the order it happened: every tool call with its arguments, what that call returned — whole, with nothing cut and nothing dropped however large it is — the agent's own text between the calls, and anything Grimoire said to the agent. | test |
 | RUNS-010 | For every run, what it has spent — the same quantity the cost ceiling counts — the four raw token counts behind that figure, and the number of tool calls it has made MUST be kept current while the run is in progress, MUST stand as the run's final figures once it has ended, and MUST survive Grimoire stopping and starting again. | test |
 
-Four of these were reworded by `specs/004-ask-the-wiki`, each keeping its id, and all four follow
+Five of these were reworded by `specs/004-ask-the-wiki`, each keeping its id, and all five follow
 from one thing: **a question is a run that changes nothing in the wiki and is watched rather than
 handed over** (QUERY-005, GUARD-005).
 
