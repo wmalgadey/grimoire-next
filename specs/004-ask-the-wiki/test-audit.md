@@ -579,7 +579,7 @@ Vorbehalte:
 | 021 | ≤ 4 Sign-in-Tests | genau 4 | nicht erzwungen (trace-check-Regel denkbar) |
 | 022 | drei Metriken, **kein** Mutations-Badge | – | **Drift**: `ci.yml:303–330` und `README.md:6`, `:57` veröffentlichen ein viertes Badge |
 | 023–030 | SQLite hinter Port; PID + Startzeit; Record-Port; Kopf/Anhängen/Schluss; Transkript; Fence; Zahlen als Spalten | `SqliteSubmissionStoreTests`, `AgentProcessTests`, `MarkdownRunRecordTests`, `RunNarrativeTests`, `RecordTextTests`, `RunFiguresTests` | geprüft |
-| 031 | ältere Datei bekommt Spalten per `ALTER` | `SqliteSubmissionStoreTests.cs:356` prüft `ALTER` – **aber `:332` prüft, dass eine ältere Datei abgelehnt wird** („OWNER DECISION: the file goes“, im Testkommentar). Der Entscheidungstext (`decisions.md:258`: „asking them to delete it throws their list away“) widerspricht dem | **Test und Entscheidung widersprechen sich** |
+| 031 | ältere Datei bekommt Spalten per `ALTER` | `SqliteSubmissionStoreTests.cs:356` prüft `ALTER` – **aber `:332` prüft, dass eine ältere Datei abgelehnt wird** („OWNER DECISION: the file goes“, im Testkommentar). Der Entscheidungstext (`decisions.md:258`: „asking them to delete it throws their list away“) widerspricht dem | **Test und Entscheidung widersprechen sich** — **erledigt** (T106, T107): DEC-031 ergänzt, die Tabelle wird umgebaut, je ein Contract-Test für die Datei aus 002 und aus 003 |
 | 032 | Polling | im Code ersetzt (`LiveUpdatesTests`, `*StreamTests`) | veraltet; T088 verschiebt ihn |
 
 ### Requirements Klausel für Klausel
@@ -771,7 +771,7 @@ Priorität:
   - WIKI-002 „agent MUST be told why“: `write_page` mit unlesbarem Frontmatter liefert die Ablehnung, und nichts landet auf der Platte. Ersetzt `FileSystemWikiStoreTests.cs:43`.
   - Ob die Frage-Tür ohne registrierten Lauf liest, lässt sich aus dem Repo nicht entscheiden.
 - **G5 – Dokumente, vor T088, keine Tests:**
-  - DEC-031 ergänzen oder eine neue Entscheidung für die abgelehnte ältere Datei schreiben (derzeit nur ein Testkommentar, `research.md:149`, `data-model.md:125`).
+  - DEC-031 ergänzen oder eine neue Entscheidung für die abgelehnte ältere Datei schreiben (derzeit nur ein Testkommentar, `research.md:149`, `data-model.md:125`). **Erledigt** (T106, T107, T108).
   - `plan.md:36` korrigieren.
   - DEC-022-Badge-Drift auflösen.
   - `CLAUDE.md` „aliases are refused“ richtigstellen (gilt nur für `scripts/run-hub.sh`).

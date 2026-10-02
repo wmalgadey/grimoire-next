@@ -95,6 +95,20 @@ public sealed class StartUpTests : IDisposable
 
     [Fact]
     [Trait("req", "RUNS-007")]
+    public void Start_IsRefused_WhenTheStateDirectoryReachesIntoTheWikiThroughALinkAboveIt()
+    {
+        // The link is not on the end but further up: `vlink` is the vault, and `vlink/wiki/state`
+        // lies in the wiki although nothing below the link is one. Resolving only the deepest
+        // directory that exists would leave the link spelled as it is and let the start through.
+        Directory.CreateDirectory(Wiki);
+        var link = Path.Combine(root, "vlink");
+        Directory.CreateSymbolicLink(link, Vault);
+
+        Assert.Null(StartUp.Read(With("--state", Path.Combine(link, "wiki", "state"))));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-007")]
     public void Start_IsAccepted_WhenTheStateDirectoryOnlySharesTheWikisName()
     {
         // `wiki-state` begins with the wiki's path and is not inside it. A comparison that forgot the

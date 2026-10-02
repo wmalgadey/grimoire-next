@@ -93,4 +93,37 @@ public sealed class ChatSnapshotTests : ChatStreamReading
         Assert.Equal(ChatEvents.Answer, next.Event);
         Assert.Equal(" Her mother was Annabella Milbanke.", Read<AnswerSent>(next.Data).Append);
     }
+
+    [Fact]
+    public async Task Stream_CarriesNoRunIdentifier_ForAQuestionThatHasARun()
+    {
+        await using var hub = new HostedHub();
+        await using var stream = await hub.WatchAsync("/api/chat/events");
+
+        var sent = new List<(string Event, string Data)> { await stream.NextAsync() };
+
+        var question = await hub.AskAsync(AboutAda);
+        var runId = hub.Agent.Dispatched.Single(d => d.SubmissionId == question).RunId.ToString();
+
+        Said(hub, question, "She wrote the first program.");
+        hub.Agent.Spend(question, 12_000);
+
+        // Read forward until each increment that could carry it has been seen once; how many events
+        // one question makes is not what this test is about.
+        string[] increments = [ChatEvents.Asked, ChatEvents.Answer, ChatEvents.Question];
+
+        for (var read = 0; read < 12 && !increments.All(e => sent.Exists(s => s.Event == e)); read++)
+        {
+            sent.Add(await stream.NextAsync());
+        }
+
+        await using var again = await hub.WatchAsync("/api/chat/events");
+        sent.Add(await again.NextAsync());
+
+        // No requirement id: contracts/hub-http-api.md:24 names this a design property — the chat
+        // addresses the question, and nothing the browser does needs the run behind it. A test of a
+        // design property carries no id (Constitution IV.3, tests/README.md).
+        Assert.All(increments.Append(ChatEvents.Chat), e => Assert.Contains(sent, s => s.Event == e));
+        Assert.All(sent, s => Assert.DoesNotContain(runId, s.Data, StringComparison.OrdinalIgnoreCase));
+    }
 }

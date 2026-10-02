@@ -111,20 +111,20 @@ run that failed still spent.
 | --- | --- | --- | --- |
 | `SubmissionId` → `QueuedId` | The submission this run works | The submission **or the question** that caused it | One name for one thing, now that two kinds cause runs |
 | `submission_id` column | Always a submission | **Null where a question caused the run** | RUNS-006 needs the agent's process identity on disk for every run; the question itself is not on disk (QUERY-005) |
+| `ended_at` column, new | — | When a run with no submission behind it ended, from the hub's clock (DEC-018); null while it has not. On disk only, never on `StoredRun` | A question's run has no submission state to say it ended, and a start-up must not read it back as one to terminate (RUNS-006) |
 
 Everything else — `StartedAt`, `GrantedTools`, `GrantRecordedAt`, `Model`, `AgentProcess`,
 `CostSpent`, `Tokens`, `ToolCalls`, `EntriesLost` — is unchanged and means the same for both kinds
 (GUARD-003, RUNS-010). `EntriesLost` is always zero for a question's run: it has no record to lose
 entries from.
 
-**The schema change** is DEC-031's mechanism for the columns that are missing:
-`PRAGMA table_info(runs)`, then `ALTER TABLE` for each. No column is renamed on disk and no table is
-rebuilt.
-
-**A file that cannot hold a null `submission_id` is refused**, not migrated — see research.md R-04's
-revision. SQLite cannot drop a `NOT NULL` constraint without rebuilding the table, and the owner
-decided the file goes: nothing runs Grimoire in production yet, so such a file holds their own test
-ingests. It is refused at start-up and names itself, so they know what to delete.
+**The schema change** is DEC-031's, as amended by this feature. A `runs` table that declares
+`submission_id NOT NULL` — every file 002 and 003 wrote — is rebuilt once with that column nullable
+and every other column as it was declared, inside one transaction, after a copy of the file to
+`submissions.db.before-rebuild`; then `PRAGMA user_version` is set to 1, which every file ends at.
+The columns that are missing are added afterwards by `PRAGMA table_info(runs)` and `ALTER TABLE`, as
+before. No column is renamed on disk, and an older file comes back with its submissions and their
+figures intact (research.md R-04).
 
 ---
 

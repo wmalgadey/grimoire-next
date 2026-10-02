@@ -260,6 +260,52 @@ public sealed class RunNarrativeTests
         Assert.Equal(0, called.Depth);
     }
 
+    [Fact]
+    public async Task Call_StaysAtTheTop_AfterGrimoiresNudge()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.Did(submission.Id, Said("Ich schreibe die Seite."));
+        hub.Harness.Called(submission.Id, "write_page", """{"path":"ada.md"}""");
+
+        // The agent stops without its log entry, Grimoire tells it so, and the agent carries on.
+        await hub.Harness.StoppedAsync(submission.Id);
+        hub.Harness.Called(submission.Id, "append_log", """{"entry":"one page"}""");
+
+        // The nudge closes the turn rather than opening one: the call after it is the agent's, and
+        // written inside a section headed "Grimoire" it would read as though Grimoire had made it
+        // (contracts/run-record.md, rule 1).
+        var after = hub.Record.MomentsOf(run.Id)[^1];
+
+        Assert.Equal("append_log", after.Tool);
+        Assert.Equal(0, after.Depth);
+    }
+
+    [Fact]
+    public async Task Result_IsNotPutUnderTheCallAbove_WhileAnEarlierCallStillWaits()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+
+        // Two calls out, one answered — so one is still waiting when a third is made.
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"hopper.md"}""");
+        hub.Harness.Did(submission.Id, Returned("# Ada"));
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"lamarr.md"}""");
+        hub.Harness.Did(submission.Id, Returned("# Hopper"));
+
+        // The call above this result is the third, but two are waiting and results come oldest first,
+        // so it answers the second. Nested under the third it would say a call returned something it
+        // never returned; beside the calls, the order attributes it (contracts/run-record.md, rule 1).
+        var moments = hub.Record.MomentsOf(run.Id);
+
+        Assert.Equal(moments[^2].Depth, moments[^1].Depth);
+    }
+
     private static TranscriptMoment Returned(string content) =>
         new(RunMomentKind.ToolReturned, "read_page", content);
 

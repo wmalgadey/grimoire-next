@@ -269,14 +269,6 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Departs from**: research.md R-04's "no table is rebuilt", which asked for something SQLite cannot do.
 
-## DEC-032 — Reading a run is a second static page, polled and appended to, with no Markdown renderer
-
-**Decision**: `run.html` and `run.js`, reached from the row by a link carrying the submission's identifier. It polls `GET /api/submissions/{id}/record`, which answers with the record's bytes, and renders one element per moment, appending only what is not already on the page and never replacing an element that is.
-
-**Reason**: reading a run is a second job, which is when `docs/ux.md` allows a second page; it gives the back button and a shareable URL for nothing. Appending rather than re-rendering is what makes "arriving lines must not move what the user is reading" true without measuring anything: a segment already on the page is never touched, so the scroll holds and a folded result the user has opened stays open. DEC-019 rules out a bundler and npm, so there is no renderer to reach for, and `docs/ux.md` asks for monospace wherever the content is a log or a file. Range requests were weighed and left out: the poll is over loopback and a record in the low hundreds of kilobytes costs nothing there, so the mechanism has no consumer yet (research.md R-08).
-
-**Made by**: plan `003-live-run-record` (research.md R-08).
-
 ## DEC-033 — A record that cannot be written costs the run nothing; the gap is counted and shown
 
 **Decision**: no member of `IRunRecord` throws. The adapter catches its own IO failures, counts them, and the count travels with the run's figures; the record says how many entries were lost once a write succeeds again, and the browser says lines are missing wherever the count is above zero.
@@ -297,4 +289,102 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Made by**: owner, in `004-ask-the-wiki`.
 
+## DEC-035 — The browser is sent what happens, over Server-Sent Events, and nothing polls
+
+**Decision**: one `text/event-stream` per view, served by ASP.NET Core 10's own `TypedResults.ServerSentEvents` and read with `EventSource`. Each stream opens with a full snapshot and then carries increments; every event's `data` is one line of JSON. Polling is gone from `app.js` and `run.js` as well as from the chat.
+
+**Reason**: the direction is one-way, which is the shape `EventSource` has. SignalR's browser client means npm or a vendored script, which DEC-019 rules out, and its duplex, transports and stateful reconnect have no consumer (II.1). Opening with a snapshot is what answers ACCESS-007's reconnect clause without a replay buffer. The server side is framework (`Microsoft.AspNetCore.App.Ref` 10), so no package is added and none of it is tested (III.8).
+
+**Made by**: plan `004-ask-the-wiki` (research.md R-01). Supersedes DEC-032.
+
+## DEC-036 — There is one chat, an object in the composition root, held in memory only
+
+**Decision**: one `Chat` in the composition root for as long as the hub runs, replaced whole by a new chat. Nothing of it on disk, in the wiki or anywhere else. No port and no interface.
+
+**Reason**: QUERY-005 makes "gone after a restart" a requirement, so a persistent implementation would contradict the spec rather than serve it. Nothing outside the process is involved and no second implementation exists, so II.4 allows no interface. Exactly one, so "a new chat empties both tabs" falls out rather than being built (research.md R-02).
+
+**Made by**: plan `004-ask-the-wiki`.
+
+## DEC-037 — Submissions and questions wait in one ordered list on `RunBoard`
+
+**Decision**: `SubmissionBoard` became `RunBoard`, holding one ordered list of `Queued`, of which `Submission` and `Question` are the two kinds. The queue rule reads that one list; `RunBoard.All` still answers with the submissions alone.
+
+**Reason**: RUNS-002 orders waiting work by when it was made across both kinds, and a list carries that order intrinsically — the same argument `TakeNext` already makes for list position over a clock that is not monotonic. Two lists would need a sequence number of our own beside the ordering the list already is. Two real implementations exist, which is when II.4 allows the abstraction. The board is named for what it holds, because a name naming one of its two kinds would be a comment that lies (research.md R-03).
+
+**Made by**: plan `004-ask-the-wiki`.
+
+## DEC-038 — A question's run keeps its row on disk; the question does not
+
+**Decision**: the `runs` table holds a question's run — identifier, start, grant, the agent's process identity, the figures — with `StoredRun.QueuedId` null where a question caused it, and `ended_at` marking that such a run has ended. The question's text, its answer and its steps are written nowhere.
+
+**Reason**: RUNS-006 has a start-up terminate the agent of every run that was in progress before anything else runs; a run with nothing on disk would leave an orphaned `claude` holding the granted tools with no ceiling on it. The row is also where the answer's cost comes from (DEC-030), so nothing counts twice. How an older file is brought to this schema is DEC-031 as amended (research.md R-04).
+
+**Made by**: plan `004-ask-the-wiki`.
+
+## DEC-039 — The streams are fed by one hub-owned `LiveUpdates`, signalled by delegates
+
+**Decision**: one `LiveUpdates`, a channel per subscriber bounded at one signal with `DropWrite`. `RunBoard` raises one `Changed` delegate the composition root supplies; `RunConductor` publishes a record's growth and the chat's. The record stream sends the bytes past a per-subscriber offset, read through `IRunRecord.Read`.
+
+**Reason**: `RunConductor.NextRunMayStart` is already a delegate the root supplies so that a context can say something happened without knowing who listens — one precedent followed rather than a second mechanism (II.1). A signal carries no payload and the reader reads the current state when it wakes, so one pending signal says what a hundred would, and the write never blocks the board's lock. Reading through `IRunRecord.Read` keeps `MarkdownRunRecord` the only renderer of a record — two renderers of one record can disagree, the seam DEC-030 named (research.md R-05).
+
+**Made by**: plan `004-ask-the-wiki`.
+
+## DEC-040 — A question's run is served the two read tools at a door of its own
+
+**Decision**: a question's run is dispatched at `/mcp/questions/{runId}`, where a session's tool catalogue is built from `WikiReadToolsServer` alone — `list_pages` and `read_page` — chosen per session through `HttpServerTransportOptions.ConfigureSessionOptions`. An ingest run keeps `/mcp/runs/{runId}` and its five tools. `ToolGrant` carries the door's segment beside the names.
+
+**Reason**: DEC-011 makes tools deny-by-default by construction, not by an allow-list of names; naming two of five in `--allowed-tools` would leave `write_page` served at that run's endpoint, one flag away. Two `MapMcp` patterns do not give two catalogues — the library serves one collection at every pattern, measured — so the catalogue is chosen per session. GUARD-001's equality check then guards it for free, and no fresh signed-in probe is needed with DEC-021's budget spent (research.md R-06).
+
+**Made by**: plan `004-ask-the-wiki`.
+
+## DEC-041 — Every piece of the agent's own text is the answer; the steps are folded under it
+
+**Decision**: the agent's text is appended to the answer as it arrives; the tool calls and what they returned are the steps, folded shut under it. Nothing new is parsed — `AgentTranscript` already reports the three moments (DEC-028).
+
+**Reason**: ACCESS-007 binds three things at once, and the third decides it: content arriving must not move what the user is already reading. "The final turn's prose" cannot stream, and "the newest prose, demoted when a call follows" moves text the user has read. Of the rules that survive that, this is the one with no exception in it (research.md R-08).
+
+**Made by**: plan `004-ask-the-wiki`.
+
+## DEC-042 — A follow-up's run is given the whole chat so far, untrimmed, without the steps
+
+**Decision**: `InstructionLoader` renders each earlier question and the answer it produced into the prompt. The steps are not included. Nothing is trimmed and there is no cap.
+
+**Reason**: a chat too large for one dispatch ends that run failed and the chat says so (QUERY-006) — the path every failed run takes, with a remedy that exists (a new chat) — while dropping the oldest turns would answer a follow-up in the light of less than the chat shows, silently. A cap, window or summary has no consumer until a real chat reaches the limit (II.1). V.1 keeps one thing putting text into a prompt. The steps are for the user to check, not context the next run needs, and a run's tool results are the largest thing in a chat (research.md R-07).
+
+**Made by**: plan `004-ask-the-wiki`.
+
+## DEC-043 — A page an answer names opens in Obsidian through a link the browser builds
+
+**Decision**: two optional start-up inputs, `--vault <name>` and `--vault-root <directory>`; the link is `obsidian://open?vault=<name>&file=<path relative to --vault-root>`. The agent writes ordinary relative Markdown links whose target is the page's path relative to the wiki's root, and the browser makes them followable. Without the two inputs nothing is refused: the page's name stays readable and the page says opening is not set up.
+
+**Reason**: nothing new goes into a wiki page, and the link form lives in one place. OKF §6.1 writes a link relative to the page it sits on and an answer sits on no page, so the wiki's root is the one anchor it has. The absolute-path form was rejected because it would take the directory the paths hang off away from the owner. The answer is an answer without the click, so a missing setting refuses nothing (research.md R-09).
+
+**Made by**: plan `004-ask-the-wiki`.
+
+## DEC-044 — The question instruction is Grimoire's own file, assembled by `InstructionLoader`
+
+**Decision**: `instructions/question.md`, reached by `--question-instruction <path>` with a default and assembled by `InstructionLoader`. `StartUpInputs` carries a third flag: a question is refused on the question instruction and the purpose description, a submission on the ingest instruction and the purpose description, each refusal naming exactly one thing. Where the wiki holds nothing about the question, the instruction has the agent say so plainly, name what it looked at, and stop.
+
+**Reason**: the same shape `--instruction` has, because both instructions are Grimoire's own and versioned here; V.1 keeps `InstructionLoader` the only thing that puts text into a prompt. An answer drawn from the model's own knowledge would not rest on the wiki, which QUERY-004 asks of it; the no-coverage clause refines that clause and adds no requirement id (IV.8) (research.md R-10).
+
+**Made by**: plan `004-ask-the-wiki`.
+
+## DEC-045 — Asking the wiki is a third static page, and the three are joined by a line of links
+
+**Decision**: `chat.html` and `chat.js` in `wwwroot/`, and a line of links on each of the three pages.
+
+**Reason**: `docs/ux.md` withholds navigation chrome until a second job exists, and a third exists now — ACCESS-010 is its consumer. It stays what the pages already are: text-first, a line of links, no bar and no menu. DEC-019 is untouched: static files, no bundler and no npm (research.md R-14).
+
+**Made by**: plan `004-ask-the-wiki`.
+
 ## Superseded
+
+## DEC-032 — Reading a run is a second static page, polled and appended to, with no Markdown renderer
+
+**Decision**: `run.html` and `run.js`, reached from the row by a link carrying the submission's identifier. It polls `GET /api/submissions/{id}/record`, which answers with the record's bytes, and renders one element per moment, appending only what is not already on the page and never replacing an element that is.
+
+**Reason**: reading a run is a second job, which is when `docs/ux.md` allows a second page; it gives the back button and a shareable URL for nothing. Appending rather than re-rendering is what makes "arriving lines must not move what the user is reading" true without measuring anything: a segment already on the page is never touched, so the scroll holds and a folded result the user has opened stays open. DEC-019 rules out a bundler and npm, so there is no renderer to reach for, and `docs/ux.md` asks for monospace wherever the content is a log or a file. Range requests were weighed and left out: the poll is over loopback and a record in the low hundreds of kilobytes costs nothing there, so the mechanism has no consumer yet (research.md R-08).
+
+**Made by**: plan `003-live-run-record` (research.md R-08).
+
+**Superseded by**: DEC-035, in `004-ask-the-wiki`. Polling is gone from the run page and the submissions list as well as from the chat; the run page is still a second static page that appends and never replaces, and that part stands in DEC-035 and DEC-039.

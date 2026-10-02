@@ -149,7 +149,7 @@ internal sealed class InMemorySubmissionStore(HubJournal? journal = null) : ISub
     /// <summary>The runs with no submission that have ended. Assumes nothing; guarded by the lock.</summary>
     private readonly HashSet<Guid> ended = [];
 
-    public void RunEnded(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost)
+    public void RunEnded(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost, DateTimeOffset endedAt)
     {
         lock (gate)
         {

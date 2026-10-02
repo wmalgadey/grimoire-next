@@ -303,8 +303,10 @@ public sealed class Run
         }
 
         // The log entry is a condition of a run that is to change the wiki. For any other, stopping on
-        // its own inside both ceilings with a clean exit is done, and the reason names what actually
-        // happened rather than an entry nobody asked for (RUNS-005, RUNS-008).
+        // its own inside both ceilings with a clean exit is done (RUNS-005). The reason is the one of
+        // RUNS-008's seven a done run has, although no log entry was asked for: such a run is a
+        // question's, which has no record for a reason to be written into (RUNS-007) and whose chat
+        // shows no reason beside an answer, so an eighth reason would be a value nothing ever reads.
         if (!IsToChangeTheWiki)
         {
             return new RunEnding(RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);

@@ -183,4 +183,55 @@ public sealed class AskingTheWikiTests : PageTest
             Assert.DoesNotContain(currency, shown, StringComparison.Ordinal);
         }
     }
+
+    [Fact]
+    [Trait("req", "ACCESS-007")]
+    public async Task Chat_StandsAsTheHubHoldsIt_AfterTheConnectionWasLostAndRestored()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        var question = await hub.AskAsync(AboutAda, token);
+
+        await Page.GotoAsync($"{hub.Address}/chat.html");
+        await Expect(Turn(question)).ToBeVisibleAsync();
+
+        // Every time the page's stream opens, counted — so that the test can tell a page that
+        // reconnected from one that simply never lost anything.
+        await Page.EvaluateAsync("() => { window.__opened = 0; events.addEventListener('open', () => window.__opened++); }");
+
+        hub.Agent.Said(question, "She wrote ");
+        await Expect(Turn(question).Locator(".answer")).ToHaveTextAsync("She wrote ");
+
+        // The browser loses its connection, and the run goes on: more of the answer, a step, a figure
+        // and a second question all reach the hub while nothing reaches the page.
+        hub.ChatStreamLost();
+
+        hub.Agent.Said(question, "the first program.");
+        hub.Agent.Called(question, "read_page", """{"path":"people/ada-lovelace.md"}""");
+        hub.Agent.Spend(question, 12_000);
+        var waiting = await hub.AskAsync("And who was her mother?", token);
+
+        // Nothing of it reached the page while the line was down.
+        await Expect(Turn(question).Locator(".answer")).ToHaveTextAsync("She wrote ");
+        await Expect(Turn(waiting)).ToHaveCountAsync(0);
+
+        hub.ChatStreamRestored();
+
+        // `EventSource` makes the connection again on its own and is answered with a fresh snapshot,
+        // which chat.js merges into a page that is already drawn (ACCESS-007's last clause).
+        await Expect(Page.Locator("#chat li")).ToHaveCountAsync(2, new() { Timeout = 30_000 });
+        await Expect(Turn(question).Locator(".answer")).ToHaveTextAsync("She wrote the first program.");
+
+        Assert.True(await Page.EvaluateAsync<int>("() => window.__opened") >= 1, "the stream never opened again");
+
+        // **Every turn exactly once, nothing missing, the answer whole** — the first part not doubled by
+        // the snapshot that carried it again, and what arrived while the page was away all there.
+        await Expect(Turn(question)).ToHaveCountAsync(1);
+        await Expect(Turn(waiting)).ToHaveCountAsync(1);
+        await Expect(Turn(question).Locator("details.steps > details.step")).ToHaveCountAsync(1);
+        await Expect(Turn(question).Locator(".cost")).ToContainTextAsync("12");
+        await Expect(Page.Locator("#total")).ToContainTextAsync("12");
+    }
 }
+

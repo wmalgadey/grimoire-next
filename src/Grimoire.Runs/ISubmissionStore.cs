@@ -186,9 +186,10 @@ public interface ISubmissionStore
     /// terminal state and the figures are <em>one</em> change, and there is no state here to make one
     /// of. What it shares with <see cref="RecordFigures"/> is the statement and not the meaning — this
     /// is the run's last word, and it is also what marks the run as no longer in progress, so a
-    /// start-up does not read it back as one to terminate.
+    /// start-up does not read it back as one to terminate. The moment comes from the caller's clock,
+    /// as every moment in Grimoire does (DEC-018).
     /// </remarks>
-    void RunEnded(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost);
+    void RunEnded(Guid runId, long costSpent, ModelTokens tokens, int toolCalls, int entriesLost, DateTimeOffset endedAt);
 
     /// <summary>
     /// The agent's child process exists. Written as soon as it does, because a kill a moment later

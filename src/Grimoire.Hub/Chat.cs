@@ -365,12 +365,12 @@ public sealed class Chat(Chat.Changed? changed = null)
     /// connected has to be told the one thing that changed, and "the one thing" is only knowable against
     /// what it has already been told. It holds descriptors rather than content, so it is a handful of
     /// integers per event, and it goes with the chat when a new one is started.
-    /// </summary>
-    /// <remarks>
+    /// <para>
     /// The answer and the steps are <b>copied</b> here rather than read from the turns afterwards, and
     /// the position in the change log is taken in the same breath. Read apart, a piece of an answer
     /// arriving between the two would be in the snapshot <em>and</em> past the subscriber's position —
     /// so the next wake would send it again and the browser would show it twice.
+    /// </para>
     /// <para>
     /// The change log comes with them, because a reader of the two has to read one instant: a question
     /// joining the chat between a reading of the changes and a reading of the turns would leave a
@@ -417,10 +417,6 @@ public sealed class Chat(Chat.Changed? changed = null)
         }
     }
 
-    /// <summary>
-    /// The turn this run is answering, or null where there is none — a question whose chat has been
-    /// put away, or a run that is not a question's at all.
-    /// </summary>
     /// <summary>
     /// The turn this run answers, or null where there is none — a question whose chat has been put
     /// away, or a run that is not a question's at all. Assumes the lock.

@@ -29,7 +29,7 @@ jobs:
       - name: Fast suite — time-budget 15 s
         run: dotnet test tests/Grimoire.Fast.Tests --no-build --configuration Release -- --timeout 15s
 
-      # The sign-in marker is named once, here: CI has no subscription sign-in, so the three
+      # The sign-in marker is named once, here: CI has no subscription sign-in, so the four
       # HarnessProcess tests are excluded. They run locally before the PR (research.md R-09).
       #
       - name: Contract suite — time-budget 90 s
@@ -178,41 +178,6 @@ jobs:
           git push --quiet --force \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
 
-  # Whether a pull request to main touches anything the mutation measurement reads: the code
-  # Stryker mutates and what it builds with (src/, tools/Grimoire.Trace/, the build props, the
-  # SDK and tool pins), the Fast suite and what configures it, the instruction the hub copies into
-  # its output, and the measurement itself (mutation.sh, stryker-config.json,
-  # Grimoire.Mutation.slnx, this workflow). A change to docs/, specs/, the Contract or E2E suites
-  # or tools/phasepr/ cannot move the score, so the minutes are not spent on it.
-  #
-  # The checkout is the merge commit GitHub builds for a pull request; its first parent is the
-  # base branch as it is now, so the diff against it is exactly what merging would bring in. Plain
-  # git, no action of someone else's for a path filter.
-  mutation-scope:
-    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
-
-    runs-on: ubuntu-latest
-
-    outputs:
-      relevant: ${{ steps.diff.outputs.relevant }}
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 2
-          persist-credentials: false
-
-      - id: diff
-        run: |
-          git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
-          cat "$RUNNER_TEMP/changed.txt"
-          if grep -qE '^(src/|tools/Grimoire\.Trace/|tests/Grimoire\.Fast\.Tests/|tests/(Directory\.Build\.props|\.editorconfig)$|instructions/|scripts/mutation\.sh$|stryker-config\.json$|Grimoire\.Mutation\.slnx$|Directory\.(Build|Packages)\.props$|CodeMetricsConfig\.txt$|\.editorconfig$|global\.json$|\.config/dotnet-tools\.json$|\.github/workflows/ci\.yml$)' "$RUNNER_TEMP/changed.txt"; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "relevant=false" >> "$GITHUB_OUTPUT"
-            echo "No file the mutation measurement reads has changed; \`mutation\` is skipped." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
   # The mutation measurement: `scripts/mutation.sh`, one Stryker run per project in scope, the Fast
   # suite alone. It produces the reports a person reads to classify the survivors — which is why the
   # reports are uploaded whole, and why the job summary is four lines of arithmetic over them and
@@ -230,26 +195,23 @@ jobs:
   #     named file missing from the report is a scope entry that has stopped selecting anything —
   #     silently, and in the direction of measuring less.
   #
-  # On pull requests to main and on workflow_dispatch, and on no other event. A Stryker run costs
-  # minutes per project; on every push it would be paid for on every commit of every branch, for a
-  # number nobody reads until the PR. It is not in `build-and-test` for the same reason the metrics
-  # are not: a measurement must not hold up the gates.
-  #
-  # On a pull request only when `mutation-scope` found a changed file that can move the
-  # measurement; workflow_dispatch always runs it. `!cancelled()` because `mutation-scope` is
-  # skipped on workflow_dispatch, and a skipped need would otherwise skip this job too.
+  # On push to main and on workflow_dispatch, never on a pull request, and on no schedule
+  # (DEC-022 as amended by 004-ask-the-wiki). With Grimoire.Hub in scope the run takes twenty to
+  # thirty minutes here (scripts/mutation.sh says where that estimate comes from), and its score
+  # reports, it does not gate: on the pull request that merges a feature into main it would be a
+  # thirty-minute check to wait for and nothing to decide on, which is what the amendment rules out.
+  # The closing task of a feature reads its survivors from a local run or a dispatch instead. It is
+  # not in `build-and-test` for the same reason the metrics are not: a measurement must not hold up
+  # the gates.
   mutation:
-    needs: [build-and-test, mutation-scope]
-    if: >-
-      !cancelled() && needs.build-and-test.result == 'success'
-      && (github.event_name == 'workflow_dispatch'
-          || needs.mutation-scope.outputs.relevant == 'true')
+    needs: build-and-test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     runs-on: ubuntu-latest
 
-    # This job runs the code of the branch under review. It keeps the workflow's read-only token
-    # and does not persist it, so nothing a pull request brings with it — `scripts/mutation.sh`
-    # included — can reach a credential that could write to this repository. Publishing the badge
+    # A dispatch runs the code of whichever branch it was dispatched on. The job keeps the
+    # workflow's read-only token and does not persist it, so nothing that branch brings with it —
+    # `scripts/mutation.sh` included — can reach a credential that could write to this repository. Publishing the badge
     # needs a write token and is therefore a job of its own, below, that never runs on a branch.
     steps:
       - uses: actions/checkout@v5
@@ -334,8 +296,8 @@ jobs:
 
   # The fourth endpoint document README.md's badges read, in the same flat colour as the other
   # three: a colour scale would say a score is good or bad, which is what turns a measurement into
-  # a target. Only on main — which, given the job above, means a workflow_dispatch of this workflow
-  # on main; a pull request's score belongs to the pull request.
+  # a target. Only on main — the push that merges into it, or a workflow_dispatch of this workflow
+  # on main; a dispatch on another branch measures that branch and publishes nothing.
   #
   # Its own job because it is the only part of the measurement that needs a token that can write,
   # and the measurement itself runs the code of the branch under review. This job checks nothing

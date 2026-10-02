@@ -83,6 +83,11 @@ produces belongs to the chat that is gone, so nothing of it appears in the new o
 way to stop a run except a ceiling, and building one here would be a mechanism this feature does not
 otherwise need (research.md R-13).
 
+**A question still waiting its turn goes with its chat.** It has no run yet, so there is nothing of it
+to keep: it leaves the queue with the chat it was asked in, and nothing of it ever starts. A failed
+question the new chat takes away no longer holds the queue — it is on no screen any more, which is
+RUNS-003's last clause reached by a new chat rather than by a stop.
+
 **QUERY-006 is the other end of RUNS-003.** A question whose run failed blocks the queue exactly as a
 failed ingest does, and the user must be able to clear it — but there is no row in the submissions
 list to clear it from, because a question is not a submission. The chat offers the one control against

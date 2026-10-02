@@ -11,11 +11,6 @@ namespace Grimoire.Fast.Tests;
 /// The dispatch payload is assembled in process, as <c>DispatchPayloadTests</c> already proves for a
 /// submission, so there is no lower level and nothing outside the process is involved (Constitution
 /// III.6).
-/// <para>
-/// The last test here bears on QUERY-006 and deliberately does not carry that id: it is not registered
-/// until phase 6, and a test may not name a requirement that is not in <c>docs/capabilities/</c> yet
-/// (Constitution IV.2).
-/// </para>
 /// </remarks>
 [Trait("level", "fast")]
 [Trait("req", "QUERY-002")]
@@ -167,5 +162,38 @@ public sealed class QuestionPromptTests
 
         Assert.DoesNotContain("Half a sen", prompt, StringComparison.Ordinal);
         Assert.EndsWith(follow.Text, prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    [Trait("req", "QUERY-005")]
+    public async Task Dispatch_CarriesNothingOfTheChatBefore_AfterANewChatWasStarted()
+    {
+        var answered = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
+
+        hub.Harness.Did(answered.Id, new TranscriptMoment(RunMomentKind.AgentSaid, null, "She wrote the first program."));
+        hub.Harness.End(answered.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        var failed = await hub.AskedAsync("And who was her mother?");
+
+        hub.Harness.Did(failed.Id, new TranscriptMoment(RunMomentKind.AgentSaid, null, "Half a sen"));
+        hub.Harness.End(failed.Id, RunOutcome.Failed, RunEndedBecause.TimeCeiling);
+
+        // The way the chat's endpoint starts a new one: the chat put away under the board's lock, and
+        // the queue asked afterwards (QUERY-005).
+        hub.Board.StartANewChat(hub.Chat.Start);
+        await hub.Queue.PumpAsync();
+
+        var asked = await hub.AskedAsync("What is the Analytical Engine?");
+        var prompt = hub.Harness.Dispatched[^1].Prompt;
+
+        // A new chat is a conversation that begins here: neither earlier question, nor the answer one
+        // of them got, nor what the failed one had produced reaches the run — whether it was answered
+        // or not makes no difference once its chat is gone.
+        Assert.DoesNotContain(answered.Text, prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("She wrote the first program.", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(failed.Text, prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Half a sen", prompt, StringComparison.Ordinal);
+        Assert.EndsWith(asked.Text, prompt, StringComparison.Ordinal);
     }
 }

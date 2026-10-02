@@ -109,6 +109,41 @@ public sealed class RunFiguresTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-007")]
+    public async Task EntriesLost_StandInTheFinalFigures_WhenTheTailCouldNotBeWritten()
+    {
+        var submission = await hub.AcceptedAsync();
+        hub.Harness.ReportIn(submission.Id);
+
+        // Every moment got through; only the ending does not. The count rises at the ending itself, so
+        // the only way it reaches the run's figures is with the final ones (RUNS-007).
+        hub.Record.FailWrites = true;
+        hub.Harness.End(submission.Id, RunOutcome.Failed);
+
+        Assert.Equal(SubmissionState.Failed, submission.State);
+        Assert.Equal(1, submission.Status.Run!.EntriesLost);
+
+        // Recorded with the run, not only held in memory: the row is what a restart reads back.
+        Assert.Equal(1, hub.Store.Load().Single(s => s.Id == submission.Id).Run!.EntriesLost);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-010")]
+    public async Task ToolCalls_AreCounted_WhileAQuestionsRunIsInProgress()
+    {
+        var question = await hub.AskedAsync();
+        hub.Harness.ReportIn(question.Id);
+
+        hub.Harness.Called(question.Id, "read_page", """{"path":"ada.md"}""");
+
+        // A question's run has no record and its moments go to the chat instead — but the count is the
+        // run's own, kept current for every run alike, and the chat reads its cost beside it (RUNS-010,
+        // ACCESS-008).
+        Assert.Equal(QuestionState.Answering, question.State);
+        Assert.Equal(1, question.Status.Run!.ToolCalls);
+    }
+
+    [Fact]
     public async Task Store_IsWrittenOnlyWhereAFigureHasRisen()
     {
         var submission = await hub.AcceptedAsync();

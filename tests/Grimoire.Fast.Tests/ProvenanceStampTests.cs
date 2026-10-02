@@ -1,4 +1,6 @@
+using Grimoire.Hub.Mcp;
 using Grimoire.Wiki;
+using Microsoft.AspNetCore.Http;
 using YamlDotNet.RepresentationModel;
 
 namespace Grimoire.Fast.Tests;
@@ -198,6 +200,21 @@ public sealed class ProvenanceStampTests
 
         Assert.Null(result.Error);
         Assert.Equal(actor, GeneratedBy(result.Page!));
+    }
+
+    [Fact]
+    public async Task WritePage_RecordsGrimoireAndTheModel_WhenARunWritesAPage()
+    {
+        // The tests above stamp an actor they were handed; this one asks the tool a run calls who it
+        // records. `grimoire/<model>` is OKF 0.2's `<producer>/<version>` — the model alone would
+        // say which model wrote the page and not that Grimoire had it written.
+        var wiki = new InMemoryWikiStore();
+        var tools = new WikiToolsServer(
+            wiki, new RunAddress(new HttpContextAccessor(), FastHub.Model), FastSuite.Clock());
+
+        await tools.WritePageAsync("people/ada.md", Page("type: Person"), TestContext.Current.CancellationToken);
+
+        Assert.Equal($"grimoire/{FastHub.Model}", GeneratedBy(wiki.Files["people/ada.md"]));
     }
 
     /// <summary>The <c>generated.by</c> of a stamped page, as a YAML reader gives it back.</summary>
