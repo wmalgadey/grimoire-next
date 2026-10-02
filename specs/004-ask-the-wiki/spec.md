@@ -177,8 +177,9 @@ cost stands beside it against its ceiling. Needs no follow-up and no failure.
 
 ### User Story 2 - See what the answer rests on, and open a page it cites (Priority: P2)
 
-Under the answer, folded shut, is what the agent did to get there — its own text between the steps
-and which wiki pages it opened. The user unfolds one step when they want to see what came back. It
+Under the answer, folded shut, is what the agent did to get there — the tools it called and what
+they returned, which wiki pages it opened among them. Its own text is the answer above the fold, the
+cut plan.md made from what the CLI emits (Clarifications). The user unfolds one step when they want to see what came back. It
 reads the way a run's record reads, so there is no second format to learn. Seeing which pages were
 read is what makes the answer believable; and clicking a page's name in the answer opens that page
 in the editor the user has the wiki open in.
