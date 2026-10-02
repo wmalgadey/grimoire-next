@@ -31,7 +31,10 @@ at the end   scripts/mutation.sh                its table into specs/<NNN-slug>/
              draft -> ready                     never merged to main
 ```
 
-A phase with no tasks ("Phase 1: Setup — There is none") is skipped. A phase whose tasks are all
+A phase whose open tasks are all the owner's — the implement agent names them with
+`{"halt": null, "owner_tasks": [...]}`, and phasepr believes it only when the list is exactly the
+open tasks — goes through gates, PR and review all the same, and halts `owner-tasks` before the
+merge. A phase with no tasks ("Phase 1: Setup — There is none") is skipped. A phase whose tasks are all
 checked on the feature branch counts as done, whoever did it.
 
 ## Running it
@@ -69,12 +72,13 @@ started) and `/speckit.phasepr.status`. That installation has **not** been tried
 Every agent iteration is
 
 ```
-claude -p "<prompt>" --permission-mode auto --output-format json --max-turns N [--model ID] \
+claude -p "<prompt>" --permission-mode auto --output-format stream-json --verbose --max-turns N [--model ID] \
        --disallowedTools "Bash(git push:*)" "Bash(git reset:*)" "Bash(git rebase:*)" \
                          "Bash(git merge:*)" "Bash(git commit --amend:*)" "Bash(gh api:*)" "Bash(gh pr:*)"
 ```
 
-with stdin closed; the JSON output and the prompt are kept in `specs/<feature>/phasepr/logs/`.
+with stdin closed; the prompt, the event stream as it happens (`<log>.jsonl`, for `tail -f`) and
+the final `result` event (`<log>.json`) are kept in `specs/<feature>/phasepr/logs/`.
 
 ### Permissions
 
@@ -219,7 +223,8 @@ owner has to make. Rerun it once that is decided.
 | `review-timeout` | no review of the head within `review_timeout` | checks Copilot review is on and has quota; the rerun re-requests it |
 | `review-rounds` | the agent asks for a further round after the last allowed one, or threads are open after it | answers and resolves the threads; the rerun merges once a review of the head leaves none |
 | `gates-red` | the same gate failed twice in a row for the same reason (error lines, digits stripped) | fixes it, or leaves a hint in `memory.md` |
-| `agent-halt` | an agent ended with `{"halt": "…"}` — owner tasks, instructions, decisions, a blocking rule, unchecked checklists, spec and tasks disagreeing | decides what it names |
+| `agent-halt` | an agent ended with `{"halt": "…"}` — instructions, decisions, a blocking rule, unchecked checklists, spec and tasks disagreeing | decides what it names |
+| `owner-tasks` | the phase PR is reviewed, and the tasks still open are the ones the agent named as the owner's (`"owner_tasks"`) | does them on the phase branch, checks and commits them; the rerun has that head reviewed and merges |
 | `merge-conflict` | the phase PR conflicts with the feature branch | merges the feature branch in (no rebase) |
 | `circuit-breaker` | three agent iterations in a row without progress | reads the logs and the handoff |
 | `protocol-violation` | history rewritten, branch switched, another branch moved, a merge commit, another phase's checkbox moved | repairs by hand; nothing was reset |
@@ -233,9 +238,10 @@ owner has to make. Rerun it once that is decided.
 | `iteration-limit` | `max_implement_iterations` used up | finishes the phase or reruns |
 | `push-rejected`, `github-error`, `mutation-failed`, `phases-open` | what they say | |
 
-The closing phase of a feature will normally halt twice by design: at the owner's own tasks
-(exercising the outcome, setting it Done) and at `owner-review`, because it merges the plan's
-decisions into `docs/decisions.md`.
+The closing phase of a feature will normally halt twice by design, both times with its PR open
+and reviewed: at `owner-tasks` (exercising the outcome, setting it Done), and after the owner's
+commit has been reviewed, at `owner-review`, because it merges the plan's decisions into
+`docs/decisions.md`.
 
 ## State and memory
 
@@ -248,7 +254,7 @@ commits them:
   open PR is found rather than opened again, an existing review counts, a checked phase is done.
   Deleting `state.md` starts the counters over and nothing else.
 - `memory.md` — the agents': the handoff between fresh contexts, from `templates/memory.md`.
-- `logs/` — every prompt, every agent's JSON result, every gates run.
+- `logs/` — every prompt, every agent's event stream and JSON result, every gates run.
 
 ## The prompts
 
