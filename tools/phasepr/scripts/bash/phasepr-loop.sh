@@ -466,15 +466,20 @@ TRUSTED_REVIEW_AUTHORS='["Copilot", "copilot-pull-request-reviewer", "copilot-pu
 FORBIDDEN_COMMANDS=("git push" "git reset" "git rebase" "git merge" "git commit --amend" "gh api" "gh pr")
 
 # Whether a command runs a forbidden one anywhere in it: an agent chains commands
-# (`git status; git reset --hard …`), and the refusal of such a chain is the refusal it must get.
-# `git merge-base` is not `git merge`.
+# (`git status; git reset --hard …`, `if …; then git reset …; fi`), and the refusal of such a chain
+# is the refusal it must get. `git merge-base` is not `git merge`. A miss halts the run as
+# permission-denied, which is safe; this is not a shell parser.
 forbidden_in() {
     local s=$1 sep part f
-    for sep in '&&' '||' ';' '|' '&' '(' ')' '`'; do
+    for sep in '&&' '||' ';' '|' '&' '(' ')' '{' '}' '`'; do
         s=${s//"$sep"/$'\n'}
     done
     while IFS= read -r part; do
         part=${part#"${part%%[![:space:]]*}"}
+        # What can stand before a command without being one: a control word, `!`, an assignment.
+        while [[ "$part" =~ ^(then|do|else|elif|if|while|until|time|exec|command|!|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+(.*)$ ]]; do
+            part=${BASH_REMATCH[2]}
+        done
         for f in "${FORBIDDEN_COMMANDS[@]}"; do
             [[ "$part" == "$f" || "$part" == "$f "* ]] && return 0
         done
@@ -893,11 +898,16 @@ review_loop() {
     done
 }
 
+halt_owner_tasks() {
+    local n=$1 what=$2
+    S_STEP="owner-tasks"
+    halt owner-tasks "$what open are the owner's $(open_tasks "$n" | sed 's/ /, /g'). Do them on '$S_PHASE_BRANCH', check them in $TASKS, commit (type($FEATURE_NUM): …) and rerun: phasepr has that head reviewed, then merges."
+}
+
 merge_phase() {
     local n=$1 owner_paths rc
     if [[ "$DRY_RUN" != "true" ]] && ! "$TASKS_SH" complete "$TASKS" "$n"; then
-        S_STEP="owner-tasks"
-        halt owner-tasks "PR #$S_PHASE_PR is reviewed; left open are the owner's $(open_tasks "$n" | sed 's/ /, /g'). Do them on '$S_PHASE_BRANCH', check them in $TASKS, commit (type($FEATURE_NUM): …) and rerun: phasepr has that head reviewed, then merges."
+        halt_owner_tasks "$n" "PR #$S_PHASE_PR is reviewed; left"
     fi
     S_STEP=merge
     state_write
@@ -979,6 +989,12 @@ run_phase() {
     printf '\n=== phasepr: %s phase %s — %s (branch %s)\n' "$FEATURE" "$n" "$(phase_title "$n")" "$branch"
     ensure_phase_branch "$branch"
     ensure_green "$n"
+    # A phase of owner tasks only may have nothing committed yet, and GitHub opens no PR without a
+    # change: the PR then starts from the owner's commit.
+    if [[ -n "$S_OWNER_TASKS" && -z "$S_PHASE_PR" && "$DRY_RUN" != "true" ]] \
+        && [[ -z "$(git rev-list "origin/$FEATURE..HEAD")" ]]; then
+        halt_owner_tasks "$n" "Nothing is committed on '$branch' to review yet; all that is"
+    fi
     push_branch "$branch"
     open_phase_pr "$n"
     review_loop "$n"

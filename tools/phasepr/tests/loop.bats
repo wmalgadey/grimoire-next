@@ -415,6 +415,25 @@ setup() {
     [ "$(count_calls '^claude implement-phase')" -eq 1 ]
 }
 
+@test "a phase of owner tasks only halts before a PR, and its PR starts from the owner's commit" {
+    scenario implement-phase.sh 'echo "{\"halt\": null, \"owner_tasks\": [\"T002\", \"T001\"]}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: owner-tasks"* ]]
+    [[ "$output" == *"Nothing is committed on '042-demo-phase-2-base' to review yet; all that is open are the owner's T001, T002"* ]]
+    [ ! -f "$FAKE_GH/pulls/102.json" ]
+
+    for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+    echo owner >> src-phase-2.txt; git add -A
+    git commit -qm "docs(042): the owner did T001 and T002"
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    pr_json 102 | jq -e '.merged_at != null'
+    [ "$(count_calls '^claude implement-phase')" -eq 1 ]
+}
+
 @test "owner tasks that are not exactly the open ones are not believed" {
     scenario implement-phase.sh 'echo "{\"halt\": null, \"owner_tasks\": [\"T002\"]}"'
     run phasepr --phase 2
@@ -487,6 +506,19 @@ setup() {
     echo "$output"
     [ "$status" -eq 0 ]
     [[ "$output" == *"refused, as it must be: git status --short; git reset --hard HEAD~1"* ]]
+}
+
+@test "a forbidden command after a control word or an assignment is recognised" {
+    printf '%s' '[{"tool_name": "Bash", "tool_input": {"command": "if git diff --quiet; then git reset --hard HEAD; fi"}}, {"tool_name": "Bash", "tool_input": {"command": "for b in a; do GIT_DIR=.git git push origin $b; done"}}]' > "$BATS_TEST_TMPDIR/ctl.json"
+    scenario implement-phase.sh '
+        cp "$BATS_TEST_TMPDIR/ctl.json" "$FAKE_GH/denials.json"
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git commit -qam "feat(042): base"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"refused, as it must be: if git diff --quiet; then git reset --hard HEAD; fi"* ]]
+    [[ "$output" == *"refused, as it must be: for b in a; do GIT_DIR=.git git push origin"* ]]
 }
 
 @test "a refused git merge-base is not a forbidden git merge" {
