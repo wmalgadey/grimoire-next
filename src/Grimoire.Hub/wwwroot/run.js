@@ -581,6 +581,10 @@ function lost(count) {
     : "";
 }
 
+// Whether the list has said this submission has a run. A record that is refused after that is refused
+// for good — its run began and its head was never written — and asking again would ask forever.
+let theRunHasBegun = false;
+
 // **Nothing polls.** The record arrives as it is appended to: the stream opens with the whole of it and
 // every later event carries only what was written since, joined back here into the one text
 // (ACCESS-006, research.md R-01, R-05). Every draw appends only the segments that are not already on
@@ -604,6 +608,7 @@ function watch() {
 
   events.addEventListener("open", () => {
     awaitingTheSnapshot = true;
+    message.textContent = "";
   });
 
   events.addEventListener("record", (event) => {
@@ -620,15 +625,43 @@ function watch() {
   events.addEventListener("error", () => {
     // `EventSource` makes a dropped connection again by itself and this is not that case: it gives up
     // only where the endpoint answered something other than a stream, which here means the one answer
-    // it has — there is no such run, or its record is not there yet. The head is written as the run
-    // begins, so a page opened in that instant recovers by asking once more; anything else and the
-    // message stands (RUNS-007).
+    // it has — there is no such submission, it has no run yet, or its record is not there (RUNS-007).
     if (events.readyState !== EventSource.CLOSED) {
       return;
     }
 
     message.textContent = "There is no record for this run.";
-    setTimeout(watch, 1000);
+
+    if (!theRunHasBegun) {
+      untilTheRunBegins();
+    }
+  });
+}
+
+// A submission still waiting has no run and so no record. Nothing is asked again on a timer (DEC-035):
+// the list is sent as it changes, and the moment it says this submission has a run, the record's head
+// is on disk — the board writes it under the same lock, before the list is told (RunBoard.TakeNext).
+function untilTheRunBegins() {
+  const list = new EventSource("/api/submissions/events");
+
+  list.addEventListener("submissions", (event) => {
+    const ours = JSON.parse(event.data).submissions.find((s) => s.id === submission);
+
+    // Not in the list: there is no such submission, and nothing will ever make one.
+    if (ours === undefined) {
+      list.close();
+      return;
+    }
+
+    // A submission with no run carries no model; the model is there from the moment the run exists,
+    // which is before its agent has reported in (ACCESS-005).
+    if (ours.model === undefined) {
+      return;
+    }
+
+    theRunHasBegun = true;
+    list.close();
+    watch();
   });
 }
 

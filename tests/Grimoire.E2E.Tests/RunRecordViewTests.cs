@@ -390,6 +390,50 @@ public sealed class RunRecordViewTests : PageTest
         await Expect(calls.Locator(".call").Nth(0).Locator("pre")).ToHaveTextAsync("# Ada");
     }
 
+    [Fact]
+    [Trait("req", "ACCESS-006")]
+    public async Task Record_OpensWhenTheRunBegins_WhereThePageWasOpenedBeforeIt()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync(token);
+
+        // A run under way, and a submission waiting behind it: it has no run, so it has no record yet.
+        var first = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
+        hub.Agent.ReportIn(first);
+
+        var waiting = await hub.SubmitAsync("Grace Hopper found the first bug in a relay.", token);
+
+        // Every request the page makes for the record's stream, counted where it leaves the browser.
+        var asked = 0;
+        await Page.RouteAsync("**/record/events", async route =>
+        {
+            Interlocked.Increment(ref asked);
+            await route.ContinueAsync();
+        });
+
+        await Page.GotoAsync($"{hub.Address}/run.html?submission={waiting}");
+        await Expect(Page.Locator("#message")).Not.ToBeEmptyAsync();
+
+        // **Nothing polls** (DEC-035). Asked once, refused, and not asked again while nothing changed —
+        // a retry on a timer would have asked three times by now.
+        await Page.WaitForTimeoutAsync(3_000);
+        Assert.Equal(1, Volatile.Read(ref asked));
+
+        // The queue reaches it. The page learns that from the list's stream and opens the record's.
+        hub.Agent.End(first, RunOutcome.Done);
+
+        // Its head is there before its agent has said anything.
+        await Expect(Page.Locator("#frame")).ToContainTextAsync("Granted tools");
+
+        hub.Agent.ReportIn(waiting);
+        hub.Agent.Said(waiting, "I will read what the wiki already holds.");
+
+        await Expect(Heading(0)).ToContainTextAsync("the agent");
+        await Expect(Page.Locator("#message")).ToBeEmptyAsync();
+
+        Assert.Equal(2, Volatile.Read(ref asked));
+    }
+
     private ILocator Row(Guid submission) => Page.Locator($"#submissions li[data-id='{submission}']");
 
     private ILocator Segments() => Page.Locator("#record li");

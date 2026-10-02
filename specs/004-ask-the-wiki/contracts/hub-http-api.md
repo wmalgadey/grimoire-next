@@ -206,8 +206,10 @@ are unchanged. A line of links to the other two jobs (ACCESS-010).
 
 **The run's page** (`run.html`, `run.js`): the record drawn from
 `GET /api/submissions/{id}/record/events` instead of a poll, appending exactly what it appended
-before — the segmentation rule is the record's own and has not changed. A line of links
-(ACCESS-010).
+before — the segmentation rule is the record's own and has not changed. Where the record's stream
+answers `404` because the submission has no run yet, the page asks nothing again on a timer: it reads
+`GET /api/submissions/events` and opens the record's stream once the submission has a run (DEC-035).
+A line of links (ACCESS-010).
 
 **The chat** (`chat.html`, `chat.js`): the conversation drawn from `GET /api/chat/events`. Each
 question, the answer growing in place under it as `answer` events arrive, and the steps folded shut
