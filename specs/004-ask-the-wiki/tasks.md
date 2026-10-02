@@ -858,3 +858,17 @@ requirement's clause, so none of them blocks closing it.
   shows another test kills every mutant it kills, and not before.
 - **`WikiToolDoorTests` to the Fast suite** — since DEC-034 a hub per test is cheap enough for the MCP
   handshake; moving it is a level correction (III.4/III.6), not a 004 behaviour.
+- **DEC-001's stripped key** — `HarnessProcess` removes `ANTHROPIC_API_KEY` from the child's
+  environment, and no test shows it: the sign-in tests strip it themselves (`RealRun`). A stub
+  executable at Contract level that reports its environment would (test-audit.md §7, DEC-001).
+- **ACCESS-006's reconnect in the browser** — the snapshot that replaces rather than appends after a
+  dropped connection (`run.js:600–613`) is proven only on the stream's side; nothing drives a reconnect
+  through `EventSource` (test-audit.md §7, ACCESS-006).
+- **ACCESS-009's "without that opening changing anything in the wiki"** — no test follows a link; the
+  link is an `obsidian://` URL the browser hands to the OS, so the clause holds by construction and
+  a test would need Obsidian (test-audit.md §7, ACCESS-009; `spec.md:203`).
+- **QUERY-006's "nothing the run produced is presented as its answer"** without the CSS — today only
+  the E2E test (`ChatLifetimeTests`) shows it, and what it sees is a style in `chat.html`
+  (`li[data-state="no-answer"] .answer { display: none; }`) hiding the partial answer. The chat's own
+  view could carry no answer for a failed question, which a Fast test would read (test-audit.md §7,
+  QUERY-006).
