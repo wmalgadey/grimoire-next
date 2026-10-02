@@ -131,7 +131,7 @@ What surrounds that — the queue, what a failure blocks, what survives a stop �
 - A test proving a requirement carries `[Trait("req", "<CAPABILITY>-NNN")]` (repeatable). E2E and Deploy must; Fast and Contract may. Tests that prove a principle rather than a requirement carry none.
 - Class is `<Subject>Tests` where the subject is the spec's vocabulary; method is `<Action>_<Result>[_<Scenario>]`, scenario starting with When/While/With/Without/After. No implementation names, no status codes, no `Works`/`Succeeds`. A name needing `And` is two tests.
 - Doubles are in-memory adapters at owned ports (`InMemoryAgentHarness`, `InMemoryWikiStore`, `DrivableHarness`) — never generated mocks of our own types. Time comes from `TimeProvider`, with `FakeTimeProvider` in the Fast suite (DEC-018); the Fast suite has 15 s total, so no test waits for real time.
-- Contract tests that drive the real signed-in CLI carry `[Trait("requires", "signin")]` and are excluded in CI; there are at most four (DEC-021).
+- Contract tests that drive the real signed-in CLI carry `[Trait("requires", "signin")]` **on the method** and are excluded in CI; there are at most four (DEC-021), and `trace-check` fails on a fifth.
 
 ## Branching and PRs
 

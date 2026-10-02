@@ -1,15 +1,22 @@
 namespace Grimoire.Trace;
 
 /// <summary>
-/// The gate. Constitution IV.3 names four conditions and this check has those four and no others.
-/// It writes nothing.
+/// The gate. Constitution IV.3 names four conditions, and this check has those four and one more:
+/// DEC-021's budget of four tests that need the owner's sign-in. It writes nothing.
 /// </summary>
 /// <remarks>
-/// Three of them hold at any moment and run on every push. The fourth — a <c>test</c> requirement
+/// <para>
+/// Of IV.3's four, three hold at any moment and run on every push. The fourth — a <c>test</c> requirement
 /// with no test — is red by construction while a feature is in flight, because a requirement is
 /// registered before its test is written (IV.2), so IV.3 applies it where a feature lands on main.
 /// That is <see cref="Run"/> with <c>complete</c> set, which CI calls on a pull request against
 /// main and nowhere else.
+/// </para>
+/// <para>
+/// The fifth is DEC-021's own "at most four", which until now only a reader could hold a class to:
+/// a test that needs the sign-in is a real run on the owner's subscription and is never run in CI,
+/// so one more of them is a cost nothing else would notice. It runs on every push.
+/// </para>
 /// </remarks>
 internal static class TraceCheck
 {
@@ -62,6 +69,19 @@ internal static class TraceCheck
             }
         }
 
+        // 5. More tests needing the owner's sign-in than DEC-021 allows.
+        var signedIn = tests.Where(t => t.NeedsSignIn).Select(t => t.DisplayName).Order(StringComparer.Ordinal).ToList();
+
+        if (signedIn.Count > SignedInBudget)
+        {
+            violations.Add(
+                $"{signedIn.Count} tests carry requires=signin, and DEC-021 allows at most {SignedInBudget}: "
+                + string.Join(", ", signedIn));
+        }
+
         return violations;
     }
+
+    /// <summary>DEC-021: the real CLI with the owner's real sign-in, at most four tests.</summary>
+    private const int SignedInBudget = 4;
 }

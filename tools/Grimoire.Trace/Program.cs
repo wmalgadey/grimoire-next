@@ -4,7 +4,8 @@ using Grimoire.Trace;
 // docs/capabilities/, and the level and req traits carried by the built test assemblies.
 //
 //   check             the gate of Constitution IV.3 — writes nothing. The three conditions that
-//                     hold at any moment; CI calls this on every push
+//                     hold at any moment, and DEC-021's at most four tests needing the sign-in;
+//                     CI calls this on every push
 //   check --complete  those three and the fourth, a `test` requirement with no test. IV.3 applies
 //                     it where a feature lands on main; CI calls this on a PR whose base is main
 //   write             the single documented command of Constitution IV.4 — produces docs/trace.md

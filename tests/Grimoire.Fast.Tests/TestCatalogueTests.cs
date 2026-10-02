@@ -103,6 +103,14 @@ public sealed class TestCatalogueTests
             "fast",
             Describe([new TestTrait("level", "fast"), new TestTrait("level", "sideways")]).Level);
 
+    [Fact]
+    public void Describe_SaysTheTestNeedsTheSignIn_WhenItCarriesRequiresSignIn() =>
+        Assert.True(Describe([new TestTrait("level", "contract"), new TestTrait("requires", "signin")]).NeedsSignIn);
+
+    [Fact]
+    public void Describe_SaysTheTestNeedsNoSignIn_WhenItCarriesNoRequiresSignIn() =>
+        Assert.False(Describe([new TestTrait("level", "contract"), new TestTrait("requires", "network")]).NeedsSignIn);
+
     private static TestMethod Describe(IReadOnlyList<TestTrait> traits) =>
         TestCatalogue.Describe(Suite, $"{Suite}.{nameof(TestCatalogueTests)}", "ATest", traits);
 

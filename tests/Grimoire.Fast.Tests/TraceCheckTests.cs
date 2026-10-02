@@ -16,6 +16,9 @@ public sealed class TraceCheckTests
     private static TestMethod Test(string name, string? level, params string[] requirementIds) =>
         new("Grimoire.Fast.Tests", "Suite", name, level, requirementIds);
 
+    private static TestMethod SignedIn(string name) =>
+        new("Grimoire.Contract.Tests", "Harness", name, "contract", [], NeedsSignIn: true);
+
     [Fact]
     public void CompleteCheck_Fails_WhenATestRequirementHasNoTest()
     {
@@ -82,6 +85,29 @@ public sealed class TraceCheckTests
                 "Grimoire.Fast.Tests: Suite.Deployed is deploy and carries no requirement id",
             ],
             TraceCheck.Run([], tests, complete: true));
+    }
+
+    [Fact]
+    public void Check_Fails_WhenMoreThanFourTestsNeedTheSignIn()
+    {
+        // DEC-021: the real CLI with the owner's sign-in, at most four tests — each one a real run on
+        // the owner's subscription, and none of them run in CI.
+        IReadOnlyList<TestMethod> tests = [SignedIn("A"), SignedIn("B"), SignedIn("C"), SignedIn("D"), SignedIn("E")];
+
+        Assert.Equal(
+            [
+                "5 tests carry requires=signin, and DEC-021 allows at most 4: "
+                + "Harness.A, Harness.B, Harness.C, Harness.D, Harness.E",
+            ],
+            TraceCheck.Run([], tests, complete: false));
+    }
+
+    [Fact]
+    public void Check_Passes_WhenFourTestsNeedTheSignIn()
+    {
+        IReadOnlyList<TestMethod> tests = [SignedIn("A"), SignedIn("B"), SignedIn("C"), SignedIn("D")];
+
+        Assert.Empty(TraceCheck.Run([], tests, complete: false));
     }
 
     [Fact]
