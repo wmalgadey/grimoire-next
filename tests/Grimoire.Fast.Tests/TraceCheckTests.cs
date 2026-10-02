@@ -110,6 +110,69 @@ public sealed class TraceCheckTests
         Assert.Empty(TraceCheck.Run([], tests, complete: false));
     }
 
+    private static readonly DateTimeOffset Built = new(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
+
+    private static readonly string[] OneSuite = ["Grimoire.Fast.Tests"];
+
+    private static BuiltAssembly Assembly(string configuration, DateTimeOffset builtAt) =>
+        new("Grimoire.Fast.Tests", configuration, $"tests/Grimoire.Fast.Tests/bin/{configuration}/net10.0/Grimoire.Fast.Tests.dll", builtAt);
+
+    private static SourceFile Source(DateTimeOffset writtenAt) =>
+        new("Grimoire.Fast.Tests", "tests/Grimoire.Fast.Tests/ChatTests.cs", writtenAt);
+
+    [Fact]
+    public void Check_RefusesToRead_WhenTheAssemblyIsOlderThanASourceOfItsSuite()
+    {
+        // #70 wrote docs/trace.md from Release assemblies older than the tests they claimed to list,
+        // and the gate was green: what it read was not the tree it was asked about.
+        var refused = Assert.Throws<TraceInputException>(() => RepositoryLayout.Choose(
+            OneSuite,
+            [Assembly("Release", Built), Assembly("Debug", Built)],
+            [Source(Built.AddMinutes(1))],
+            configuration: null));
+
+        // The message names the build and the path, so the reader knows what to rebuild and why.
+        Assert.Contains("Release", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("tests/Grimoire.Fast.Tests/bin/Release/net10.0/Grimoire.Fast.Tests.dll", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("tests/Grimoire.Fast.Tests/ChatTests.cs", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Check_ReadsRelease_WhenItIsFresh()
+    {
+        var chosen = RepositoryLayout.Choose(
+            OneSuite,
+            [Assembly("Release", Built), Assembly("Debug", Built)],
+            [Source(Built.AddMinutes(-1))],
+            configuration: null);
+
+        Assert.Contains("/Release/", Assert.Single(chosen).Path, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Check_ReadsDebug_WhereReleaseIsOlderThanASource()
+    {
+        // Release is preferred only where it is fresh. A Debug build made after the last edit is the
+        // tree as it stands.
+        var chosen = RepositoryLayout.Choose(
+            OneSuite,
+            [Assembly("Release", Built), Assembly("Debug", Built.AddMinutes(2))],
+            [Source(Built.AddMinutes(1))],
+            configuration: null);
+
+        Assert.Contains("/Debug/", Assert.Single(chosen).Path, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Check_RefusesToRead_WhenTheConfigurationAskedForIsOlderThanASource()
+    {
+        Assert.Throws<TraceInputException>(() => RepositoryLayout.Choose(
+            OneSuite,
+            [Assembly("Release", Built.AddMinutes(2)), Assembly("Debug", Built)],
+            [Source(Built.AddMinutes(1))],
+            configuration: "Debug"));
+    }
+
     [Fact]
     public void Check_Passes_WhenEveryTestMatchesTheRegistry()
     {

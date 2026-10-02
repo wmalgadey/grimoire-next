@@ -24,12 +24,17 @@ through the Microsoft.Testing.Platform entry point that .NET 10's `dotnet test` 
 the gate to a runner flag would tie it to a configuration detail (research.md R-05).
 
 The check therefore needs the tree **built** before it runs. It says so rather than guessing when
-it is not.
+it is not — and it reads **no assembly older than a source file of its suite** (`tests/<Suite>/**/*.cs`,
+`bin/` and `obj/` aside). Such an assembly carries the traits of a tree that no longer exists: #70
+wrote `docs/trace.md` from Release assemblies older than the tests it listed, and the gate was green.
+Without `--configuration`, Release is read where every suite has a fresh one and Debug otherwise;
+where the configuration it would read is stale, `check`, `write` and `summary` end with exit code 2,
+naming the build and the path.
 
 ## `check` — the gate
 
-Writes nothing. Constitution IV.3 names four conditions, and this check has those four and no
-others:
+Writes nothing. Constitution IV.3 names four conditions, and this check has those four and one
+more, DEC-021's budget of tests that need the owner's sign-in:
 
 | # | Condition | Where it runs |
 | --- | --- | --- |
@@ -37,6 +42,7 @@ others:
 | 2 | a test carrying an unknown, retired or reserved id (`OUT-*` and `DEC-*` are reserved by I.2) | every push |
 | 3 | a test carrying no level | every push |
 | 4 | an E2E or Deploy test carrying no requirement id | every push |
+| 5 | more than four tests carrying `requires=signin` (DEC-021) | every push |
 
 **Why the first one is split off.** IV.2 registers a requirement in `docs/capabilities/` *before*
 its test is written, so "a `test` requirement with no test" is red by construction for as long as
