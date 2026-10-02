@@ -117,53 +117,61 @@ public sealed class AgentLifetimeTests
 
     [Fact]
     [Trait("req", "RUNS-006")]
-    public async Task Restart_TerminatesTheAgent_BeforeTheRunReadsFailedAndBeforeAnythingStarts()
+    public async Task Restart_TerminatesTheAgent_BeforeTheRunReadsFailed()
     {
-        before.Harness.AgentProcess = TheAgent;
-        var interrupted = await before.AcceptedAsync("The text being worked when Grimoire was killed.");
-        before.Harness.ReportIn(interrupted.Id);
-        before.Clock.Advance(TimeSpan.FromMinutes(1));
-        var waiting = await before.AcceptedAsync("The text waiting behind it.");
-
-        var after = before.Restarted();
-        await after.AcknowledgeAsync(interrupted.Id);
+        var (after, interrupted, _) = await RestartedWithASubmissionInterruptedAsync();
 
         // The order is the requirement's, not an implementation detail: the browser must never
-        // show failed while the agent is still at work, and no second run may begin beside a first
-        // that is still writing (research.md R-11).
+        // show failed while the agent is still at work (research.md R-11).
         var terminated = after.Journal.When($"terminated {TheAgent.ProcessId}");
+        var readsFailed = after.Journal.When($"{interrupted.Id} reads {SubmissionState.Failed}");
+
+        Assert.True(terminated >= 0 && readsFailed >= 0);
+        Assert.True(terminated < readsFailed, "the agent is terminated before its run reads failed");
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public async Task Restart_StartsNothing_BeforeTheInterruptedRunReadsFailed()
+    {
+        var (after, interrupted, waiting) = await RestartedWithASubmissionInterruptedAsync();
+
+        // No second run may begin beside a first that is still writing (research.md R-11).
         var readsFailed = after.Journal.When($"{interrupted.Id} reads {SubmissionState.Failed}");
         var started = after.Journal.When($"dispatched {waiting.Id}");
 
-        Assert.True(terminated >= 0 && readsFailed >= 0 && started >= 0);
-        Assert.True(terminated < readsFailed, "the agent is terminated before its run reads failed");
+        Assert.True(readsFailed >= 0 && started >= 0);
         Assert.True(readsFailed < started, "nothing starts before that run has read failed");
     }
 
     [Fact]
     [Trait("req", "RUNS-006")]
-    public async Task Restart_TerminatesTheAgentOfAQuestion_BeforeItsRunReadsFailedAndBeforeAnythingStarts()
+    public async Task Restart_TerminatesTheAgentOfAQuestion_BeforeItsRunReadsFailed()
     {
-        before.Harness.AgentProcess = TheAgent;
-        var question = await before.AskedAsync();
-        before.Harness.ReportIn(question.Id);
-        var runId = question.RunId!.Value;
-        before.Clock.Advance(TimeSpan.FromMinutes(1));
-        var waiting = await before.AcceptedAsync("The text waiting behind the question.");
-
-        var after = before.Restarted();
+        var (after, runId, _) = await RestartedWithAQuestionInterruptedAsync();
 
         // A question's run has no submission to read failed off; it reads failed by being marked
-        // ended in the store. The order is the one a submission's run keeps: the agent still holding
-        // the granted tools is gone before its run is written off, and nothing starts before that.
-        // The submission starts with no acknowledgement, because the question's failure went with
-        // the chat (RUNS-003, QUERY-005).
+        // ended in the store. The agent still holding the granted tools is gone before its run is
+        // written off, as a submission's is.
         var terminated = after.Journal.When($"terminated {TheAgent.ProcessId}");
+        var readsFailed = after.Journal.When($"run {runId} ended");
+
+        Assert.True(terminated >= 0 && readsFailed >= 0);
+        Assert.True(terminated < readsFailed, "the agent is terminated before its run reads failed");
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-006")]
+    public async Task Restart_StartsNothing_BeforeAnInterruptedQuestionsRunReadsFailed()
+    {
+        var (after, runId, waiting) = await RestartedWithAQuestionInterruptedAsync();
+
+        // The submission starts with no acknowledgement, because the question's failure went with
+        // the chat (RUNS-003, QUERY-005) — but not before the question's run is written off.
         var readsFailed = after.Journal.When($"run {runId} ended");
         var started = after.Journal.When($"dispatched {waiting.Id}");
 
-        Assert.True(terminated >= 0 && readsFailed >= 0 && started >= 0);
-        Assert.True(terminated < readsFailed, "the agent is terminated before its run reads failed");
+        Assert.True(readsFailed >= 0 && started >= 0);
         Assert.True(readsFailed < started, "nothing starts before that run has read failed");
     }
 
@@ -215,5 +223,30 @@ public sealed class AgentLifetimeTests
 
         // Its agent is long gone, and the number it had may belong to something else by now.
         Assert.Empty(after.Harness.Terminated);
+    }
+
+    private async Task<(FastHub After, Submission Interrupted, Submission Waiting)> RestartedWithASubmissionInterruptedAsync()
+    {
+        before.Harness.AgentProcess = TheAgent;
+        var interrupted = await before.AcceptedAsync("The text being worked when Grimoire was killed.");
+        before.Harness.ReportIn(interrupted.Id);
+        before.Clock.Advance(TimeSpan.FromMinutes(1));
+        var waiting = await before.AcceptedAsync("The text waiting behind it.");
+
+        var after = before.Restarted();
+        await after.AcknowledgeAsync(interrupted.Id);
+        return (after, interrupted, waiting);
+    }
+
+    private async Task<(FastHub After, Guid RunId, Submission Waiting)> RestartedWithAQuestionInterruptedAsync()
+    {
+        before.Harness.AgentProcess = TheAgent;
+        var question = await before.AskedAsync();
+        before.Harness.ReportIn(question.Id);
+        var runId = question.RunId!.Value;
+        before.Clock.Advance(TimeSpan.FromMinutes(1));
+        var waiting = await before.AcceptedAsync("The text waiting behind the question.");
+
+        return (before.Restarted(), runId, waiting);
     }
 }
