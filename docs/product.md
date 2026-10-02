@@ -78,8 +78,8 @@ first feature is a Later outcome, not an invariant.
 | OUT-01 | submit a text in the browser and afterwards find new, linked pages including a source page in the wiki  | Done   | INGEST, WIKI, GUARD, ACCESS, RUNS | 001-first-ingest, 002-ingest-queue |
 | OUT-02 | see for every run what it did, why it ended and what it cost                                            | Done   | RUNS                              | 003-live-run-record                |
 | OUT-16 | watch what the agent is doing while a run is in progress                                                | Done   | RUNS                              | 003-live-run-record                |
-| OUT-03 | ask a question and get an answer with references to wiki pages                                          | Now    | QUERY                             |                                    |
-| OUT-04 | trust that an agent only reaches what I have allowed                                                    | Later  | GUARD                             |                                    |
+| OUT-03 | ask a question and get an answer with references to wiki pages                                          | Done   | QUERY                             | 004-ask-the-wiki                   |
+| OUT-04 | trust that an agent only reaches what I have allowed                                                    | Now    | GUARD                             |                                    |
 | OUT-05 | submit a URL instead of a text                                                                          | Later  | INGEST, WIKI                      |                                    |
 | OUT-22 | submit a chat transcript as a source                                                                    | Later  | INGEST                            |                                    |
 | OUT-18 | follow every claim on a wiki page to the passage in its source page it rests on                         | Later  | WIKI, INGEST                      |                                    |

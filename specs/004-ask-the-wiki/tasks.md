@@ -737,7 +737,7 @@ Beyond what every phase follows:
       person): one `mutation-report.json` per project, with `killedBy` for every mutant — the deletions
       under "Later" (audit §6 a–e) are decided from which test killed what, and a rerun costs the same
       hour again — **Req:** Principle III.1
-- [ ] T092 The owner reads what **QUERY-004** is about — the only review-proven requirement of this
+- [x] T092 The owner reads what **QUERY-004** is about — the only review-proven requirement of this
       feature — against `instructions/question.md`: that the answer is written for the user to read,
       rests on what the wiki's pages say, names every page it rests on inside its prose as a link in
       the wiki's own form, says nothing is to be written, and where the wiki holds nothing says so
@@ -746,10 +746,10 @@ Beyond what every phase follows:
       Later outcome, with the trigger plan.md names: the first time a real chat fails because it
       outgrew a dispatch. `docs/product.md` is owner-written and an agent edits only an outcome's
       status and spec reference, so this is a proposal and not an edit (Constitution I.4, IV.4) — **Req:** Principle I.4
-- [ ] T094 Set **OUT-03** to Done and name the next Now, in **one** edit to `docs/product.md`,
+- [x] T094 Set **OUT-03** to Done and name the next Now, in **one** edit to `docs/product.md`,
       together with the spec reference — one edit, so exactly one outcome is Now at every commit
       (Constitution IV.4, I.1). Only after T095 — **Req:** Principle IV.4
-- [ ] T095 The owner exercises OUT-03 once with the real external systems in place, per plan.md
+- [x] T095 The owner exercises OUT-03 once with the real external systems in place, per plan.md
       §Quickstart and [quickstart.md](quickstart.md) Part 1 — a real wiki with pages in it, a
       signed-in `claude`, a pinned model, Obsidian with the vault open, no stand-ins — and walks
       quickstart.md Part 2's cases. **This is the last task of the feature; without it the feature is
