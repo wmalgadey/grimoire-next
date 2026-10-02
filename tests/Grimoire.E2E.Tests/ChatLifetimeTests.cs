@@ -44,6 +44,7 @@ public sealed class ChatLifetimeTests : PageTest
     [Trait("req", "QUERY-005")]
     public async Task Question_AppearsInEveryBrowserReadingTheChat()
     {
+        // Why a browser (III.4): two readers — two browsers sharing nothing but the hub.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -74,6 +75,7 @@ public sealed class ChatLifetimeTests : PageTest
     [Trait("req", "QUERY-005")]
     public async Task NewChat_EmptiesEveryBrowserReadingIt()
     {
+        // Why a browser (III.4): two readers — a new chat started in one browser empties both.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -105,6 +107,8 @@ public sealed class ChatLifetimeTests : PageTest
     [Trait("req", "RUNS-002")]
     public async Task Question_SaysItIsWaitingItsTurn_WhileASubmissionsRunIsUnderWay()
     {
+        // Why a browser (III.4): live push — the state changes on the open page when the run ahead
+        // of it ends.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -134,6 +138,9 @@ public sealed class ChatLifetimeTests : PageTest
     [Trait("req", "ACCESS-007")]
     public async Task Question_OffersTheOneControl_AfterItsRunGotNoAnswer()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — chat.js hides what a
+        // failed run wrote and offers the control on that question only; live push carries the
+        // queue moving on.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 

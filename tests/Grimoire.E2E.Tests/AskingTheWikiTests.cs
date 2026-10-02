@@ -33,6 +33,8 @@ public sealed class AskingTheWikiTests : PageTest
     [Trait("req", "ACCESS-007")]
     public async Task Answer_GrowsInPlace_WhileTheRunIsStillWriting()
     {
+        // Why a browser (III.4): geometry, DOM identity and live push — the answer arrives over the
+        // stream, grows in the text node that is already there, and nothing above it moves.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -54,37 +56,6 @@ public sealed class AskingTheWikiTests : PageTest
 
         await Expect(Turn(question).Locator(".answer")).ToHaveTextAsync("She wrote the first program, ");
 
-        hub.Agent.Said(question, "for Babbage's Analytical Engine.");
-
-        // One piece of prose, in the order it arrived. The text appeared while the run was under way,
-        // which is the whole of "an answer appears as the agent produces it".
-        await Expect(Turn(question).Locator(".answer"))
-            .ToHaveTextAsync("She wrote the first program, for Babbage's Analytical Engine.");
-
-        // **And the question above it has not moved.** This is the assertion this test exists for: the
-        // answer grows downwards into space of its own, and what the user was already reading stays
-        // where they were reading it (ACCESS-007, docs/ux.md).
-        var askedAfter = await Turn(question).Locator(".asked").BoundingBoxAsync();
-
-        Assert.Equal(askedBefore!.X, askedAfter!.X);
-        Assert.Equal(askedBefore.Y, askedAfter.Y);
-    }
-
-    [Fact]
-    [Trait("req", "ACCESS-007")]
-    public async Task Answer_IsNotRedrawn_WhileItGrows()
-    {
-        var token = TestContext.Current.CancellationToken;
-        await using var hub = await HubUnderTest.StartAsync(token);
-
-        var question = await hub.AskAsync(AboutAda, token);
-
-        await Page.GotoAsync($"{hub.Address}/chat.html");
-        await Expect(Turn(question)).ToBeVisibleAsync();
-
-        hub.Agent.Said(question, "She wrote ");
-        await Expect(Turn(question).Locator(".answer")).ToHaveTextAsync("She wrote ");
-
         // The very text node the first piece went into, marked so it can be recognised again. A page
         // that assigned `textContent` would replace this node on the next piece, and with it the user's
         // selection and their place in what they are reading.
@@ -97,9 +68,14 @@ public sealed class AskingTheWikiTests : PageTest
             """,
             question.ToString());
 
-        hub.Agent.Said(question, "the first program.");
-        await Expect(Turn(question).Locator(".answer")).ToHaveTextAsync("She wrote the first program.");
+        hub.Agent.Said(question, "for Babbage's Analytical Engine.");
 
+        // One piece of prose, in the order it arrived. The text appeared while the run was under way,
+        // which is the whole of "an answer appears as the agent produces it".
+        await Expect(Turn(question).Locator(".answer"))
+            .ToHaveTextAsync("She wrote the first program, for Babbage's Analytical Engine.");
+
+        // **In place**: the second piece went into the node the first one did ...
         var sameNode = await Page.EvaluateAsync<bool>(
             """
             (id) => document.querySelector(`#chat li[data-id="${id}"] .answer`).firstChild.__thisOne === true
@@ -107,12 +83,23 @@ public sealed class AskingTheWikiTests : PageTest
             question.ToString());
 
         Assert.True(sameNode, "the answer's text node was replaced, so what the user was reading moved");
+
+        // ... and the question above it has not moved: the answer grows downwards into space of its
+        // own, and what the user was already reading stays where they were reading it (ACCESS-007,
+        // docs/ux.md).
+        var askedAfter = await Turn(question).Locator(".asked").BoundingBoxAsync();
+
+        Assert.Equal(askedBefore!.X, askedAfter!.X);
+        Assert.Equal(askedBefore.Y, askedAfter.Y);
     }
 
     [Fact]
     [Trait("req", "ACCESS-009")]
     public async Task PageName_StandsInTheProseAsALink_WhenItArrivesMidSentence()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches and DOM identity —
+        // chat.js turns a reference arriving in pieces into a link without replacing the text
+        // before it.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync("Notes", "wiki", token);
 
@@ -159,6 +146,8 @@ public sealed class AskingTheWikiTests : PageTest
     [Trait("req", "ACCESS-008")]
     public async Task Cost_RisesBesideTheQuestionAgainstItsCeiling_WhileTheRunIsUnderWay()
     {
+        // Why a browser (III.4): geometry — a figure gaining digits moves neither the answer nor
+        // its own cell.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -202,6 +191,8 @@ public sealed class AskingTheWikiTests : PageTest
     [Trait("req", "ACCESS-008")]
     public async Task Total_StandsWithNoCeilingBesideIt_AndNoCurrencyAnywhere()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — chat.js writes the
+        // total and the per-question figures.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -234,6 +225,8 @@ public sealed class AskingTheWikiTests : PageTest
     [Trait("req", "ACCESS-007")]
     public async Task Chat_StandsAsTheHubHoldsIt_AfterTheConnectionWasLostAndRestored()
     {
+        // Why a browser (III.4): live push — EventSource reconnects by itself, and chat.js merges
+        // the fresh snapshot into a page already drawn.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 

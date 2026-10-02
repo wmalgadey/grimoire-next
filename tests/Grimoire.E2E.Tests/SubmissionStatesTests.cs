@@ -12,7 +12,7 @@ namespace Grimoire.E2E.Tests;
 /// (ACCESS-005).
 /// </summary>
 /// <remarks>
-/// Two scenarios, which is what a user story is allowed at this level (Constitution III.4). The
+/// Each test here names its browser-only reason (Constitution III.4). The
 /// response shape behind them is proven a level down, in the Fast suite; this is only about what a
 /// real browser renders from it — the state, and beside it the opening of the submitted text and
 /// when it was made (ACCESS-004).
@@ -29,6 +29,7 @@ public sealed class SubmissionStatesTests : PageTest
     [Trait("req", "ACCESS-005")]
     public async Task List_ShowsEachSubmissionInItsState()
     {
+        // Why a browser (III.4): live push — the open page is sent the state change.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -65,6 +66,8 @@ public sealed class SubmissionStatesTests : PageTest
     [Trait("req", "ACCESS-004")]
     public async Task List_ShowsTheModelAndBothFigures_ForARunThatHasEnded()
     {
+        // Why a browser (III.4): geometry — the opening of the text is rendered wide enough to read
+        // beside the figures.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -112,6 +115,8 @@ public sealed class SubmissionStatesTests : PageTest
     [Trait("req", "ACCESS-005")]
     public async Task List_ShowsNoRunFigures_ForASubmissionWaitingItsTurn()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — app.js draws no
+        // figures, not zeros, for a row with no run.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -133,6 +138,8 @@ public sealed class SubmissionStatesTests : PageTest
     [Trait("req", "ACCESS-005")]
     public async Task Figures_RiseWhileTheRunIsUnderWay_WithoutMovingTheRows()
     {
+        // Why a browser (III.4): geometry — a figure gaining a digit moves neither its row nor the
+        // row above.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -182,6 +189,8 @@ public sealed class SubmissionStatesTests : PageTest
     [Trait("req", "RUNS-003")]
     public async Task Row_IsNotRebuiltUnderTheUser_WhileTheListIsSentWhatHappens()
     {
+        // Why a browser (III.4): focus and DOM identity — the focused control survives the list
+        // being sent again.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -217,6 +226,8 @@ public sealed class SubmissionStatesTests : PageTest
     [Trait("req", "ACCESS-004")]
     public async Task List_PutsANewSubmissionFirst_WhileThePageIsOpen()
     {
+        // Why a browser (III.4): live push and JavaScript logic no other runner reaches — app.js
+        // moves a row it appended into the order the list was sent in.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 

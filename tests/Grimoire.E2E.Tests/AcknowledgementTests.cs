@@ -8,7 +8,7 @@ namespace Grimoire.E2E.Tests;
 /// The user clears a failure from the browser and the queue moves on (ACCESS-003, RUNS-003).
 /// </summary>
 /// <remarks>
-/// One scenario, of the two this user story is allowed (Constitution III.4). What the rule is —
+/// One scenario, bounded by its reason rather than a count (Constitution III.4). What the rule is —
 /// that nothing starts while a failure stands, and that the acknowledged run stays failed — is
 /// proven a level down against the real board. ACCESS-003 says "in the browser", and that half
 /// cannot be proven below a real one: this is a person finding the control on the right row and
@@ -22,6 +22,9 @@ public sealed class AcknowledgementTests : PageTest
     [Fact]
     public async Task Acknowledge_StartsTheWaitingSubmission_AndLeavesTheRunFailed()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — app.js offers the
+        // control on the failed row and on no other, and its click is what acknowledges; live push
+        // carries the queue moving on.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 

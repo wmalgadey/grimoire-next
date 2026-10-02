@@ -13,6 +13,8 @@ public sealed class SubmitTextTests : PageTest
     [Trait("req", "ACCESS-001")]
     public async Task Submit_ReportsTheSubmissionAccepted()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — app.js posts the form
+        // and writes what the hub answered.
         await using var hub = await HubUnderTest.StartAsync(TestContext.Current.CancellationToken);
 
         await Page.GotoAsync(hub.Address);

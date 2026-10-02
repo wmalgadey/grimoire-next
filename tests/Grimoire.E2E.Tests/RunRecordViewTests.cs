@@ -1,4 +1,3 @@
-using System.Text;
 using Grimoire.Agent;
 using Microsoft.Playwright;
 using Microsoft.Playwright.Xunit.v3;
@@ -10,9 +9,18 @@ namespace Grimoire.E2E.Tests;
 /// order it happened, with each result folded until they want it (ACCESS-006).
 /// </summary>
 /// <remarks>
+/// <para>
 /// The folding and the segmentation are the browser's, and only a real browser exercises them: the
 /// endpoint's answer is proven a level down, in the Fast suite, and what <c>run.js</c> makes of it is
-/// only observable here (DEC-019's precedent for ACCESS-001).
+/// only observable here (DEC-019's precedent for ACCESS-001). How one result is folded and segmented
+/// is <c>CallResultTests</c>, on one setup.
+/// </para>
+/// <para>
+/// That the record served is the file on disk, byte for byte, and that the file lies under Grimoire's
+/// state and never in the wiki, needs no browser: <c>RunRecordEndpointTests.Record_IsAnsweredWithItsBytesUnaltered</c>
+/// (Fast) and <c>MarkdownRunRecordTests.Record_IsAMarkdownFileNamedAfterTheRun</c> (Contract) prove it
+/// (Constitution III.4, III.6).
+/// </para>
 /// </remarks>
 [Trait("level", "e2e")]
 public sealed class RunRecordViewTests : PageTest
@@ -31,6 +39,8 @@ public sealed class RunRecordViewTests : PageTest
     [Trait("req", "ACCESS-006")]
     public async Task Run_IsOpenedFromItsRowAndReadInOrder()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — the row's link is
+        // app.js's, and the segments, the folded calls and the tail's table are run.js's.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -79,62 +89,11 @@ public sealed class RunRecordViewTests : PageTest
     }
 
     [Fact]
-    [Trait("req", "RUNS-009")]
-    [Trait("req", "ACCESS-006")]
-    public async Task Result_IsFoldedUntilTheUserOpensItAndIsThenWhole()
-    {
-        var token = TestContext.Current.CancellationToken;
-        await using var hub = await HubUnderTest.StartAsync(token);
-
-        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
-        hub.Agent.ReportIn(submission);
-        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
-        hub.Agent.Returned(submission, "read_page", ALongResult);
-        hub.Agent.End(submission, RunOutcome.Done);
-
-        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
-
-        // The result sits in the entry of the call it answers, folded under its one line.
-        var result = Segments().Nth(0).Locator("details.result");
-
-        // Folded: the user can follow what the run did without reading the results in full.
-        await Expect(result.Locator("pre")).Not.ToBeVisibleAsync();
-
-        await result.Locator("summary").ClickAsync();
-
-        // And whole once they reach for it — the fence and the heading inside it included, because
-        // nothing of a result is cut and nothing is escaped (RUNS-009).
-        await Expect(result.Locator("pre")).ToBeVisibleAsync();
-        await Expect(result.Locator("pre")).ToHaveTextAsync(ALongResult);
-    }
-
-    [Fact]
-    [Trait("req", "ACCESS-006")]
-    public async Task Result_IsOneSegment_WhenItHoldsALineStartingWithTwoHashes()
-    {
-        var token = TestContext.Current.CancellationToken;
-        await using var hub = await HubUnderTest.StartAsync(token);
-
-        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
-        hub.Agent.ReportIn(submission);
-        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
-        hub.Agent.Returned(submission, "read_page", ALongResult);
-        hub.Agent.End(submission, RunOutcome.Done);
-
-        await Page.GotoAsync($"{hub.Address}/run.html?submission={submission}");
-
-        // The result holds `## Ada Lovelace` at column one. A reader finds the fence first and skips
-        // to its close, so that line is no boundary and the result stays one moment
-        // (contracts/run-record.md, rule 4). Two entries: the call with its answer, and the tail.
-        await Expect(Segments()).ToHaveCountAsync(2);
-        await Expect(Heading(0)).ToContainTextAsync("called read_page");
-        await Expect(Segments().Nth(0).Locator("details.result")).ToHaveCountAsync(1);
-    }
-
-    [Fact]
     [Trait("req", "ACCESS-006")]
     public async Task AgentText_IsShownWhole_WhenItHoldsAFencedBlock()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — run.js tells prose from
+        // a result.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -164,6 +123,8 @@ public sealed class RunRecordViewTests : PageTest
     [Trait("req", "ACCESS-006")]
     public async Task Moments_ArriveBelowWhatIsThere_WithoutDisturbingIt()
     {
+        // Why a browser (III.4): scroll, geometry and live push — moments arrive while the user
+        // reads, and neither the scroll nor the opened result moves.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -239,57 +200,10 @@ public sealed class RunRecordViewTests : PageTest
 
     [Fact]
     [Trait("req", "RUNS-007")]
-    public async Task Record_ServedIsTheFileOnDisk_AndTheWikiHoldsNoneOfIt()
-    {
-        var token = TestContext.Current.CancellationToken;
-        await using var hub = await HubUnderTest.StartAsync(token);
-
-        var submission = await hub.SubmitAsync("Ada Lovelace wrote the first program.", token);
-        hub.Agent.ReportIn(submission);
-        hub.Agent.Called(submission, "read_page", """{"path":"ada.md"}""");
-        hub.Agent.Returned(submission, "read_page", ALongResult);
-        hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
-        hub.Agent.End(submission, RunOutcome.Done);
-
-        // What is on disk. One file, under the state directory Grimoire owns, named for the run.
-        var records = Directory.GetFiles(Path.Combine(hub.StateDirectory, "runs"), "*.md");
-        var onDisk = await File.ReadAllBytesAsync(Assert.Single(records), token);
-
-        // Byte for byte, which is what ACCESS-006 promises and what makes the browser a window onto
-        // the record rather than a second place the run lives. Compared as bytes and not as text: a
-        // line-by-line comparison would pass on a response that had been reordered, had a line
-        // repeated, or had its blank lines dropped — and the blank lines are what separate one segment
-        // from the next (US3, contracts/run-record.md).
-        Assert.Equal(onDisk, await hub.RecordBytesAsync(submission, token));
-
-        // The record really does hold the run, rather than both being empty and equal.
-        var text = Encoding.UTF8.GetString(onDisk);
-        Assert.Contains("Ada Lovelace already has a page.", text, StringComparison.Ordinal);
-        Assert.Contains("ended done", text, StringComparison.Ordinal);
-
-        // And the wiki holds none of it. Grimoire's bookkeeping in the user's repository would turn up
-        // in the version history that is their only undo (Invariants 1 and 3, DEC-023).
-        //
-        // Every file under the wiki, whatever it is called: a record written there under another name
-        // or another extension is the same mistake, and an assertion that only looked at `.md` files
-        // would pass on it.
-        var inTheWiki = Directory.GetFiles(hub.WikiDirectory, "*", SearchOption.AllDirectories);
-
-        foreach (var file in inTheWiki)
-        {
-            var held = await File.ReadAllTextAsync(file, token);
-
-            Assert.DoesNotContain($"# Run {Path.GetFileNameWithoutExtension(records[0])}", held, StringComparison.Ordinal);
-            Assert.DoesNotContain("ended done", held, StringComparison.Ordinal);
-            Assert.NotEqual(Path.GetFileName(records[0]), Path.GetFileName(file));
-        }
-    }
-
-    [Fact]
-    [Trait("req", "RUNS-007")]
     [Trait("req", "ACCESS-006")]
     public async Task View_SaysLinesAreMissing_WhenTheRecordCouldNotHoldThem()
     {
+        // Why a browser (III.4): live push — the gap is said on the open page as it happens.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -320,6 +234,8 @@ public sealed class RunRecordViewTests : PageTest
     [Trait("req", "ACCESS-006")]
     public async Task Answer_ArrivesWhileThePageIsOpen_InTheCallItAnswers()
     {
+        // Why a browser (III.4): live push and JavaScript logic no other runner reaches — an answer
+        // arrives inside a segment already drawn, and run.js nests it in its call.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -353,6 +269,8 @@ public sealed class RunRecordViewTests : PageTest
     [Trait("req", "ACCESS-006")]
     public async Task Turn_CountsItsCalls_WhenTheirAnswersAreWrittenBesideThem()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — run.js attributes
+        // answers written beside their calls.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -394,6 +312,9 @@ public sealed class RunRecordViewTests : PageTest
     [Trait("req", "ACCESS-006")]
     public async Task Record_OpensWhenTheRunBegins_WhereThePageWasOpenedBeforeIt()
     {
+        // Why a browser (III.4): live push and JavaScript logic no other runner reaches — run.js
+        // opens the record's stream when the list's stream says the run began, and asks nothing on
+        // a timer.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
