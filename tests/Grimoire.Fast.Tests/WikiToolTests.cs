@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Grimoire.Hub.Mcp;
-using Microsoft.AspNetCore.Http;
 
 namespace Grimoire.Fast.Tests;
 
@@ -28,7 +27,7 @@ public sealed class WikiToolTests
 
     public WikiToolTests() =>
         tools = new WikiToolsServer(
-            wiki, new RunAddress(new HttpContextAccessor(), FastHub.Model), FastSuite.Clock());
+            wiki, new PageProducer(FastHub.Model), FastSuite.Clock());
 
     [Fact]
     [Trait("req", "GUARD-002")]

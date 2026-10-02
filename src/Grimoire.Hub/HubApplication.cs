@@ -235,11 +235,9 @@ public static class HubApplication
         // The wiki tools, served from the hub itself over streamable HTTP. Putting them here keeps
         // the stamping, the grant and both ceilings in one place where Fast tests reach them, and
         // leaves the agent one door into the wiki (research.md R-02).
-        builder.Services.AddHttpContextAccessor();
         builder.Services.AddSingleton(clock);
         builder.Services.AddSingleton(wiki);
-        builder.Services.AddSingleton(sp => new RunAddress(
-            sp.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>(), options.Model));
+        builder.Services.AddSingleton(new PageProducer(options.Model));
         builder.Services.AddWikiToolSurfaces();
 
         // **The session's catalogue is its grant.** `WithTools` is deliberately not called: it builds

@@ -271,3 +271,7 @@ Stryker runs the Fast suite alone; these are killed by a Contract or E2E test th
   `IHttpContextAccessor` it reads and its registration at `HubApplication.cs:238`. Nothing built without a
   consumer (II.1); the deletion is not made here, because T091 classifies and this is a production
   change — it is an open question for the PR.
+
+  **Closed when closing 004 (code)**: deleted. No consumer was found in `src/` or `tests/`, so
+  `RunAddress.RunId`, the `IHttpContextAccessor` it read and its registration went (II.1). What was
+  left — the generation record's actor — is `PageProducer`, which says what it is.
