@@ -66,26 +66,28 @@ beside it.
 
 ### Session 2026-09-27 — decisions carried in with the brief
 
-Four things this feature contradicts, all the owner's decision (brief §5):
+Four things this feature contradicts (brief §5). The reworded requirements are written in
+`docs/capabilities/`, which is where requirement text is kept; what follows says what changed and
+where to read it:
 
-- OWNER DECISION: **RUNS-005 is contradicted.** It ends a run `done` only when `log.md` holds an
-  entry for that run. A question writes nothing in the wiki, so it can never satisfy that. The
-  done-condition, and the one nudge that precedes it, become properties of a run that is to change
-  the wiki rather than of every run. RUNS-005 keeps its ID and is reworded here.
-- OWNER DECISION: **RUNS-007 is contradicted**, and **RUNS-008 and RUNS-009** with it. RUNS-007 says
-  every run must have exactly one record of its own; RUNS-008 and RUNS-009 say what that record
-  holds. A question has no record. All three become properties of a run that is handed over —
-  today, a run a submission causes — rather than of every run. All three keep their IDs and are
-  reworded here. ACCESS-006, which is about reading a *submission's* record, is untouched.
-- OWNER DECISION: **GUARD-002 does not cover a question.** It is the grant for an ingest run and
-  says what that one allows. A question runs under a grant of its own, read-only: no page written,
-  no index written, no log appended. GUARD-002 is untouched; GUARD-005 is registered beside it.
-- OWNER DECISION: **DEC-032 is contradicted.** It makes reading a run a page that polls. Polling is
-  replaced by the browser being sent what happens — on the chat and on the two views that poll
-  today. The wording of ACCESS-005 and ACCESS-006 does not change: both already ask for figures
+- **RUNS-005 is contradicted.** It ends a run `done` only when `log.md` holds an entry for that
+  run. A question writes nothing in the wiki, so it can never satisfy that. The done-condition, and the one nudge that precedes it, become properties of a run that is to change
+  the wiki rather than of every run. RUNS-005 keeps its ID; its wording is in
+  `docs/capabilities/runs.md`.
+- **RUNS-007 is contradicted**, and **RUNS-008 and RUNS-009** with it. RUNS-007 says every run
+  must have exactly one record of its own; RUNS-008 and RUNS-009 say what that record holds. A question has no record. All three become properties of a run that is handed over —
+  today, a run a submission causes — rather than of every run. All three keep their IDs; their
+  wording is in `docs/capabilities/runs.md`. ACCESS-006, which is about reading a *submission's*
+  record, is untouched.
+- **GUARD-002 does not cover a question.** It is the grant for an ingest run and says what that
+  one allows. A question runs under a grant of its own, read-only: no page written,
+  no index written, no log appended. GUARD-002 is untouched; GUARD-005 is registered beside it in
+  `docs/capabilities/guard.md`.
+- **DEC-032 is contradicted**, and superseded by DEC-035. It makes reading a run a page that
+  polls. Polling is replaced by the browser being sent what happens — on the chat and on the two
+  views that poll today. The wording of ACCESS-005 and ACCESS-006 does not change: both already ask for figures
   that follow a run and for lines that arrive as they are appended. What changes is how, which is
-  the plan's decision and the plan's new entry in `docs/decisions.md`; both requirements are proven
-  again under it.
+  DEC-035; both requirements are proven again under it.
 
 ### Session 2026-09-27 — specify
 
@@ -104,9 +106,9 @@ Four things this feature contradicts, all the owner's decision (brief §5):
   the browser, and then asks again. A second acknowledgement path, or letting a question fail
   without blocking, were both rejected — they would make a question a run that plays by different
   rules, and RUNS-002 and RUNS-003 are untouched by this feature.
-- OWNER DECISION: **what the chat shows about a question is one requirement, not one per state.**
-  Waiting, being answered, answered, and got no answer and why are values inside ACCESS-007
-  (Constitution IV.7), as the four submission states are values inside ACCESS-005.
+- **What the chat shows about a question is one requirement, not one per state**, per Constitution
+  IV.7: waiting, being answered, answered, and got no answer and why are values inside ACCESS-007,
+  as the four submission states are values inside ACCESS-005.
 - Q: What happens to a question's run when the person asking it walks away mid-answer — the tab is
   closed, the connection drops — and what does the chat show when they come back? → A: **The run
   runs to its end like any other run, and the chat is held so the answer is there when they return.**

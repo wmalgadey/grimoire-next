@@ -309,7 +309,7 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Decision**: `SubmissionBoard` became `RunBoard`, holding one ordered list of `Queued`, of which `Submission` and `Question` are the two kinds. The queue rule reads that one list; `RunBoard.All` still answers with the submissions alone.
 
-**Reason**: RUNS-002 orders waiting work by when it was made across both kinds, and a list carries that order intrinsically — the same argument `TakeNext` already makes for list position over a clock that is not monotonic. Two lists would need a sequence number of our own beside the ordering the list already is. Two real implementations exist, which is when II.4 allows the abstraction. The board is named for what it holds, because a name naming one of its two kinds would be a comment that lies (research.md R-03).
+**Reason**: RUNS-002 orders waiting work by when it was made across both kinds, and a list carries that order intrinsically — the same argument `TakeNext` already makes for list position over a clock that is not monotonic. Two lists would need a sequence number of our own beside the ordering the list already is. Two real implementations exist, which is when II.4 allows the abstraction. The board is named for what it holds, because a name naming one of its two kinds would be a comment that lies. Declined: *keeping the name* — no rename diff, at the cost of the one class that decides what may run being named after half of what it holds; *two lists and a counter* — no rename and no base class, at the cost of a second ordering mechanism beside the list that already is one (research.md R-03).
 
 **Made by**: plan `004-ask-the-wiki`.
 
@@ -341,7 +341,7 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Decision**: the agent's text is appended to the answer as it arrives; the tool calls and what they returned are the steps, folded shut under it. Nothing new is parsed — `AgentTranscript` already reports the three moments (DEC-028).
 
-**Reason**: ACCESS-007 binds three things at once, and the third decides it: content arriving must not move what the user is already reading. "The final turn's prose" cannot stream, and "the newest prose, demoted when a call follows" moves text the user has read. Of the rules that survive that, this is the one with no exception in it (research.md R-08).
+**Reason**: ACCESS-007 binds three things at once, and the third decides it: content arriving must not move what the user is already reading. "The final turn's prose" cannot stream, and "the newest prose, demoted when a call follows" moves text the user has read. Of the rules that survive that, this is the one with no exception in it. *Only the final turn's prose* reads closer to the brief's walkthrough, but it cannot stream, which is the whole of US1; *everything but the opening block*, folded away as a preamble, is also decidable live and reads closer to the walkthrough, and was declined for the rule with no exception in it (research.md R-08).
 
 **Made by**: plan `004-ask-the-wiki`.
 
@@ -349,7 +349,7 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Decision**: `InstructionLoader` renders each earlier question and the answer it produced into the prompt. The steps are not included. Nothing is trimmed and there is no cap.
 
-**Reason**: a chat too large for one dispatch ends that run failed and the chat says so (QUERY-006) — the path every failed run takes, with a remedy that exists (a new chat) — while dropping the oldest turns would answer a follow-up in the light of less than the chat shows, silently. A cap, window or summary has no consumer until a real chat reaches the limit (II.1). V.1 keeps one thing putting text into a prompt. The steps are for the user to check, not context the next run needs, and a run's tool results are the largest thing in a chat (research.md R-07).
+**Reason**: a chat too large for one dispatch ends that run failed and the chat says so (QUERY-006) — the path every failed run takes, with a remedy that exists (a new chat) — while dropping the oldest turns would answer a follow-up in the light of less than the chat shows, silently. A cap, window or summary has no consumer until a real chat reaches the limit (II.1). V.1 keeps one thing putting text into a prompt. The steps are for the user to check, not context the next run needs, and a run's tool results are the largest thing in a chat. Declined beside dropping the oldest turns: *refusing the question* — honest, but it needs a fourth refusal in QUERY-003 and so a requirement the spec does not have (research.md R-07).
 
 **Made by**: plan `004-ask-the-wiki`.
 
@@ -365,7 +365,7 @@ Refusing the file was tried in `7a5aff0` and is reverted: it threw away exactly 
 
 **Decision**: `instructions/question.md`, reached by `--question-instruction <path>` with a default and assembled by `InstructionLoader`. `StartUpInputs` carries a third flag: a question is refused on the question instruction and the purpose description, a submission on the ingest instruction and the purpose description, each refusal naming exactly one thing. Where the wiki holds nothing about the question, the instruction has the agent say so plainly, name what it looked at, and stop.
 
-**Reason**: the same shape `--instruction` has, because both instructions are Grimoire's own and versioned here; V.1 keeps `InstructionLoader` the only thing that puts text into a prompt. An answer drawn from the model's own knowledge would not rest on the wiki, which QUERY-004 asks of it; the no-coverage clause refines that clause and adds no requirement id (IV.8) (research.md R-10).
+**Reason**: the same shape `--instruction` has, because both instructions are Grimoire's own and versioned here; V.1 keeps `InstructionLoader` the only thing that puts text into a prompt. An answer drawn from the model's own knowledge would not rest on the wiki, which QUERY-004 asks of it; the no-coverage clause refines that clause and adds no requirement id (IV.8). Declined: *answering from the model's own knowledge, marked as not from the wiki* — useful in the moment, but the answer would no longer rest on the wiki, and a marked sentence is a source with no page behind it (research.md R-10).
 
 **Made by**: plan `004-ask-the-wiki`.
 

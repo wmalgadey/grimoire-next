@@ -14,7 +14,7 @@ other two (ACCESS-010).
 
 | Change | Why |
 | --- | --- |
-| **Nothing polls any more.** Three `text/event-stream` endpoints replace the two one-second polls | The owner's decision, and **DEC-032 is superseded**. SignalR's browser client means npm or a vendored script, which DEC-019 rules out; `EventSource` is native and is exactly one-directional (`../research.md` R-01) |
+| **Nothing polls any more.** Three `text/event-stream` endpoints replace the two one-second polls | DEC-035, which supersedes **DEC-032**. SignalR's browser client means npm or a vendored script, which DEC-019 rules out; `EventSource` is native and is exactly one-directional (`../research.md` R-01) |
 | `GET /api/submissions/events` is new | ACCESS-005 — the same list, sent rather than asked for. **Its wording does not change**, and its tests are proven again across the stream |
 | `GET /api/submissions/{id}/record/events` is new | ACCESS-006 — the same record, sent as it is appended. Wording unchanged, proven again |
 | `GET /api/chat/events`, `POST /api/chat/questions`, `POST /api/chat` and `POST /api/chat/questions/{id}/acknowledgement` are new | QUERY-001, QUERY-005, QUERY-006, ACCESS-007, ACCESS-008, ACCESS-009 |
