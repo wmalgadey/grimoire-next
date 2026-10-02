@@ -34,7 +34,9 @@ at the end   scripts/mutation.sh                its table into specs/<NNN-slug>/
 A phase whose open tasks are all the owner's — the implement agent names them with
 `{"halt": null, "owner_tasks": [...]}`, and phasepr believes it only when the list is exactly the
 open tasks — goes through gates, PR and review all the same, and halts `owner-tasks` before the
-merge. A phase with no tasks ("Phase 1: Setup — There is none") is skipped. A phase whose tasks are all
+merge. If nothing is committed on the phase branch yet (a phase of owner tasks only), there is
+nothing for a PR to show: it halts `owner-tasks` before pushing, and the PR starts from the owner's
+commit on the rerun. A phase with no tasks ("Phase 1: Setup — There is none") is skipped. A phase whose tasks are all
 checked on the feature branch counts as done, whoever did it.
 
 ## Running it
@@ -224,7 +226,7 @@ owner has to make. Rerun it once that is decided.
 | `review-rounds` | the agent asks for a further round after the last allowed one, or threads are open after it | answers and resolves the threads; the rerun merges once a review of the head leaves none |
 | `gates-red` | the same gate failed twice in a row for the same reason (error lines, digits stripped) | fixes it, or leaves a hint in `memory.md` |
 | `agent-halt` | an agent ended with `{"halt": "…"}` — instructions, decisions, a blocking rule, unchecked checklists, spec and tasks disagreeing | decides what it names |
-| `owner-tasks` | the phase PR is reviewed, and the tasks still open are the ones the agent named as the owner's (`"owner_tasks"`) | does them on the phase branch, checks and commits them; the rerun has that head reviewed and merges |
+| `owner-tasks` | the tasks still open are the ones the agent named as the owner's (`"owner_tasks"`), and the phase PR is reviewed — or, with nothing committed on the phase branch yet, no PR is opened | does them on the phase branch, checks and commits them; the rerun has that head reviewed and merges |
 | `merge-conflict` | the phase PR conflicts with the feature branch | merges the feature branch in (no rebase) |
 | `circuit-breaker` | three agent iterations in a row without progress | reads the logs and the handoff |
 | `protocol-violation` | history rewritten, branch switched, another branch moved, a merge commit, another phase's checkbox moved | repairs by hand; nothing was reset |

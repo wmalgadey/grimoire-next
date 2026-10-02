@@ -468,9 +468,23 @@ FORBIDDEN_COMMANDS=("git push" "git reset" "git rebase" "git merge" "git commit 
 # Whether a command runs a forbidden one anywhere in it: an agent chains commands
 # (`git status; git reset --hard …`, `if …; then git reset …; fi`), and the refusal of such a chain
 # is the refusal it must get. `git merge-base` is not `git merge`. A miss halts the run as
-# permission-denied, which is safe; this is not a shell parser.
+# permission-denied, which is safe; this is not a shell parser. What is data — a here-document's
+# body, text in quotes — is taken out first: a forbidden command found there would let phasepr
+# swallow a denial that had a real reason. One run only inside quotes (`bash -c 'git push'`) is
+# then missed, and halts.
 forbidden_in() {
-    local s=$1 sep part f
+    local s=$1 sep part f line delim="" code=""
+    while IFS= read -r line; do
+        if [[ -n "$delim" ]]; then
+            [[ "${line#"${line%%[![:space:]]*}"}" == "$delim" ]] && delim=""
+            continue
+        fi
+        # `<<WORD`, `<<-'WORD'`; not the here-string `<<<`.
+        [[ "$line" =~ (^|[^\<])\<\<-?[[:space:]]*[\'\"]?([A-Za-z_][A-Za-z0-9_]*) ]] && delim=${BASH_REMATCH[2]}
+        code+="$line"$'\n'
+    done <<< "$s"
+    # Leftmost first, so an apostrophe inside double quotes stays inside them.
+    s=$(perl -0777 -pe 's/\x27[^\x27]*\x27|"(?:[^"\\]|\\.)*"/""/g' <<< "$code")
     for sep in '&&' '||' ';' '|' '&' '(' ')' '{' '}' '`'; do
         s=${s//"$sep"/$'\n'}
     done

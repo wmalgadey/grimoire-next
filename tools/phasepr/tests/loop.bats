@@ -521,6 +521,21 @@ setup() {
     [[ "$output" == *"refused, as it must be: for b in a; do GIT_DIR=.git git push origin"* ]]
 }
 
+@test "a forbidden command that is only quoted or here-document data is no excuse for a denial" {
+    jq -n '[{tool_name: "Bash", tool_input: {command: "printf %s '"'"'safe; git reset --hard is text only'"'"'"}},
+            {tool_name: "Bash", tool_input: {command: "git commit -F - <<'"'"'EOF'"'"'\nfix: no; git push here\nEOF"}}]' \
+        > "$BATS_TEST_TMPDIR/data.json"
+    scenario implement-phase.sh '
+        cp "$BATS_TEST_TMPDIR/data.json" "$FAKE_GH/denials.json"
+        echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: permission-denied"* ]]
+    [[ "$output" == *"git reset --hard is text only'"* ]]
+    [[ "$output" == *"git commit -F - <<'EOF'"* ]]
+}
+
 @test "a refused git merge-base is not a forbidden git merge" {
     scenario implement-phase.sh '
         printf "%s" "[{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"git merge-base --is-ancestor HEAD main\"}}]" > "$FAKE_GH/denials.json"
