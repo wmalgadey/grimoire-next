@@ -31,13 +31,18 @@ Test task:
   principle it follows (Constitution IV.5). No task without one.
 - **Level** *(mandatory, every test task)*: the test's level (Constitution III.3).
 - **Why not lower** *(mandatory, every test task)*: one line on why the level below cannot prove
-  this requirement (Constitution III.6). "Convenience" is not a reason.
+  this requirement (Constitution III.6). "Convenience" is not a reason. For an E2E task it names
+  which of these applies (Constitution III.4): geometry, focus, scroll, DOM identity, live push, two
+  readers, or JavaScript logic no other runner reaches. A reason a Fast test could satisfy means the
+  test belongs in Fast.
 - Include exact file paths in descriptions.
 
 **Levels** — Fast: in-process, state-based, real domain objects, in-memory adapters at owned ports.
-Contract: one suite per adapter against the real external thing. E2E: real processes, at most two
-scenarios per user story. Deploy: smoke checks on built artifacts, CI only, only
-for a deployment outcome, never in the default run.
+Contract: one suite per adapter against the real external thing. E2E: real processes and a real
+browser, only for what a browser alone shows or JavaScript logic no other runner reaches; no count
+per story, and two tests with the same setup that differ only in their assertion are one test.
+Deploy: smoke checks on built artifacts, CI only, only for a deployment outcome, never in the default
+run.
 
 **Not tested** (Constitution III.8) — do not write tasks for: framework or library behaviour,
 argument parsing as such, dependency wiring, static configuration or deployment content, generated
@@ -103,7 +108,7 @@ feature (Constitution II.1).
 
 ### Tests for User Story 2
 
-- [ ] T009 [P] [US2] [Test description] in [path] — **Req:** CAP-003 | **Level:** E2E — **Why not lower:** [only real processes exercise the path this requirement describes]
+- [ ] T009 [P] [US2] [Test description] in [path] — **Req:** CAP-003 | **Level:** E2E — **Why not lower:** [which browser-only reason applies, e.g. live push: the line appears without a reload]
 
 ### Implementation for User Story 2
 

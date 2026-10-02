@@ -99,9 +99,14 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    carries an unknown, retired, or reserved ID. **Verified:** `trace-check`
 3. Every test is marked with one of the four levels. **Verified:** `trace-check`
 4. The levels are: Fast — in-process, state-based, real domain objects, in-memory adapters at owned
-   ports. Contract — one suite per adapter against the real external thing. E2E — real processes, at
-   most two scenarios per user story. Deploy — smoke checks on built artifacts, run in CI only, only
-   for a feature whose outcome is deployment, never part of the default test run. **Verified:** review
+   ports. Contract — one suite per adapter against the real external thing. E2E — real processes and
+   a real browser, for what only a browser shows — geometry, focus, scroll, DOM identity, live push,
+   two readers — and for JavaScript logic that no other runner reaches (DEC-002, DEC-019). No count
+   per user story bounds E2E; the reason does. Every E2E task names in "Why not lower" which of
+   these applies, and a test whose reason a Fast test could satisfy sits at the wrong level. Two
+   tests with the same setup that differ only in their assertion are one test. Deploy — smoke checks
+   on built artifacts, run in CI only, only for a feature whose outcome is deployment, never part of
+   the default test run. **Verified:** review, tasks template field "Why not lower"
 5. E2E and Deploy tests must carry the requirement ID they prove. Fast and Contract tests may.
    **Verified:** `trace-check`
 6. Each test sits at the lowest level that can prove its requirement. **Verified:** tasks template
@@ -185,4 +190,4 @@ a required template field, or a gate. Two gates exist from the first feature: `t
    entry that names the tool behind it, and is not retroactive. Versioning is semantic: MAJOR removal
    or redefinition, MINOR new rule, PATCH wording. **Verified:** review
 
-**Version**: 2.1.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-10-01
+**Version**: 2.2.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-10-02

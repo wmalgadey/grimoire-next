@@ -44,10 +44,12 @@ requires an amendment that retires one.
       an existing analyzer does the job; and every interface added sits at a port to something
       outside the process, or has two real implementations. *(II.1, II.2, II.3, II.4)*
 
-- [ ] **7. Test shape** — Each test matches its level's definition, E2E stays within two scenarios
-      per user story, Deploy tests run only in CI and only for a deployment outcome, and agent
-      judgment is proven by evals in the separate runner rather than in the test suites.
-      *(III.4, III.10)*
+- [ ] **7. Test shape** — Each test matches its level's definition; every E2E test has a reason
+      only a browser satisfies — geometry, focus, scroll, DOM identity, live push, two readers, or
+      JavaScript logic no other runner reaches — named in its task's "Why not lower", no E2E test's
+      reason could be met by a Fast test, and no two E2E tests share a setup and differ only in their
+      assertion; Deploy tests run only in CI and only for a deployment outcome, and agent judgment is
+      proven by evals in the separate runner rather than in the test suites. *(III.4, III.10)*
 
 - [ ] **8. Tests we do not write** — No test added covers framework or library behaviour, argument
       parsing as such, dependency wiring, static configuration or deployment content, or generated
