@@ -60,7 +60,7 @@ setup() {
     run phasepr
     [ "$status" -eq 0 ]
     calls | grep '^claude ' | while read -r line; do
-        [[ "$line" == *"--permission-mode auto --output-format json --max-turns 200 --model test-model --disallowedTools Bash(git push:*) Bash(git reset:*) Bash(git rebase:*) Bash(git merge:*) Bash(git commit --amend:*) Bash(gh api:*) Bash(gh pr:*)" ]]
+        [[ "$line" == *"--permission-mode auto --output-format stream-json --verbose --max-turns 200 --model test-model --disallowedTools Bash(git push:*) Bash(git reset:*) Bash(git rebase:*) Bash(git merge:*) Bash(git commit --amend:*) Bash(gh api:*) Bash(gh pr:*)" ]]
     done
     [ "$(count_calls '^claude implement-phase')" -eq 2 ]
     [ "$(count_calls '^claude draft-body')" -eq 1 ]
@@ -158,6 +158,17 @@ setup() {
     run phasepr --feature 042-demo --status
     [ "$status" -eq 0 ]
     [[ "$output" == *"Phase 2 — Foundational — the base: 0/2 done"* ]]
+}
+
+@test "status counts a phase under way on its own branch as well" {
+    git checkout -q -b 042-demo-phase-2-base
+    sed "s/^- \[ \] T001 /- [X] T001 /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md
+    git commit -qam "feat(042): base"
+    run phasepr --status
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Phase 2 — Foundational — the base: 0/2 done (on 042-demo-phase-2-base: 1/2)"* ]]
+    grep -q 'Phase 3 — .*: 0/1 done$' <<< "$output"
 }
 
 # --- the review loop ---------------------------------------------------------------------------
@@ -381,6 +392,58 @@ setup() {
     [[ "$output" == *"Owner decision: T002 needs a requirement ID the spec does not have"* ]]
 }
 
+@test "owner tasks left open go through PR and review, and halt before the merge" {
+    scenario implement-phase.sh '
+        sed "s/^- \[ \] T001 /- [X] T001 /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md
+        echo base >> src-phase-2.txt; git add -A; git commit -qm "feat(042): base"
+        echo "{\"halt\": null, \"owner_tasks\": [\"T002\"]}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: owner-tasks"* ]]
+    [[ "$output" == *"left open are the owner's T002"* ]]
+    pr_json 102 | jq -e '.merged_at == null'
+    pr_json 102 | jq -e '.body | contains("**Open for the owner:** T002.")'
+    [ "$(count_calls '^claude implement-phase')" -eq 1 ]
+
+    sed "s/^- \[ \] T002 /- [X] T002 /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md
+    git commit -qam "docs(042): the owner did T002"
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    pr_json 102 | jq -e '.merged_at != null'
+    [ "$(count_calls '^claude implement-phase')" -eq 1 ]
+}
+
+@test "a phase of owner tasks only halts before a PR, and its PR starts from the owner's commit" {
+    scenario implement-phase.sh 'echo "{\"halt\": null, \"owner_tasks\": [\"T002\", \"T001\"]}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: owner-tasks"* ]]
+    [[ "$output" == *"Nothing is committed on '042-demo-phase-2-base' to review yet; all that is open are the owner's T001, T002"* ]]
+    [ ! -f "$FAKE_GH/pulls/102.json" ]
+
+    for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+    echo owner >> src-phase-2.txt; git add -A
+    git commit -qm "docs(042): the owner did T001 and T002"
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    pr_json 102 | jq -e '.merged_at != null'
+    [ "$(count_calls '^claude implement-phase')" -eq 1 ]
+}
+
+@test "owner tasks that are not exactly the open ones are not believed" {
+    scenario implement-phase.sh 'echo "{\"halt\": null, \"owner_tasks\": [\"T002\"]}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"named T002 as the owner's, but open are T001 T002; ignored"* ]]
+    [[ "$output" == *"phasepr halted: circuit-breaker"* ]]
+    [ ! -f "$FAKE_GH/pulls/102.json" ]
+}
+
 @test "an agent commit whose subject is not type(scope): subject halts, and nothing is rewritten" {
     scenario implement-phase.sh '
         for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
@@ -431,6 +494,58 @@ setup() {
     echo "$output"
     [ "$status" -eq 0 ]
     [[ "$output" == *"refused, as it must be: git push origin HEAD"* ]]
+}
+
+@test "a refused chain with a forbidden command anywhere in it is only logged" {
+    printf '%s' '[{"tool_name": "Bash", "tool_input": {"command": "git status --short; git reset --hard HEAD~1 && sed -n 1p x"}}]' > "$BATS_TEST_TMPDIR/reset.json"
+    scenario implement-phase.sh '
+        cp "$BATS_TEST_TMPDIR/reset.json" "$FAKE_GH/denials.json"
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git commit -qam "feat(042): base"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"refused, as it must be: git status --short; git reset --hard HEAD~1"* ]]
+}
+
+@test "a forbidden command after a control word or an assignment is recognised" {
+    printf '%s' '[{"tool_name": "Bash", "tool_input": {"command": "if git diff --quiet; then git reset --hard HEAD; fi"}}, {"tool_name": "Bash", "tool_input": {"command": "for b in a; do GIT_DIR=.git git push origin $b; done"}}]' > "$BATS_TEST_TMPDIR/ctl.json"
+    scenario implement-phase.sh '
+        cp "$BATS_TEST_TMPDIR/ctl.json" "$FAKE_GH/denials.json"
+        for id in T001 T002; do sed "s/^- \[ \] $id /- [X] $id /" specs/042-demo/tasks.md > t && mv t specs/042-demo/tasks.md; done
+        git commit -qam "feat(042): base"; echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"refused, as it must be: if git diff --quiet; then git reset --hard HEAD; fi"* ]]
+    [[ "$output" == *"refused, as it must be: for b in a; do GIT_DIR=.git git push origin"* ]]
+}
+
+@test "a forbidden command that is only quoted or here-document data is no excuse for a denial" {
+    jq -n '[{tool_name: "Bash", tool_input: {command: "printf %s '"'"'safe; git reset --hard is text only'"'"'"}},
+            {tool_name: "Bash", tool_input: {command: "git commit -F - <<'"'"'EOF'"'"'\nfix: no; git push here\nEOF"}},
+            {tool_name: "Bash", tool_input: {command: "git tag -F - v1 <<\\EOF\nnote: git push here\nEOF"}}]' \
+        > "$BATS_TEST_TMPDIR/data.json"
+    scenario implement-phase.sh '
+        cp "$BATS_TEST_TMPDIR/data.json" "$FAKE_GH/denials.json"
+        echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phasepr halted: permission-denied"* ]]
+    [[ "$output" == *"git reset --hard is text only'"* ]]
+    [[ "$output" == *"git commit -F - <<'EOF'"* ]]
+    [[ "$output" == *"git tag -F - v1 <<\EOF"* ]]
+}
+
+@test "a refused git merge-base is not a forbidden git merge" {
+    scenario implement-phase.sh '
+        printf "%s" "[{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"git merge-base --is-ancestor HEAD main\"}}]" > "$FAKE_GH/denials.json"
+        echo "{\"halt\": null}"'
+    run phasepr --phase 2
+    echo "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"The implement agent was refused: git merge-base --is-ancestor HEAD main."* ]]
 }
 
 @test "three iterations in a row without progress trip the circuit breaker" {

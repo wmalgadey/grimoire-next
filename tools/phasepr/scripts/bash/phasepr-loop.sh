@@ -241,6 +241,9 @@ S_HALT="none"
 S_HALT_SUMMARY="none"
 REREQUEST_ON_RESUME=false
 TRIAGE_DONE=false
+# The open tasks of the phase an implement agent named as the owner's, sorted, space-separated.
+# Not kept in state.md: a rerun asks the agent again, after the owner may have done some of them.
+S_OWNER_TASKS=""
 
 state_value() {
     local v
@@ -417,6 +420,15 @@ phase_branch_of() {
     printf '%s\n' "${b:-$FEATURE-phase-$1}"
 }
 
+open_tasks() { "$TASKS_SH" open "$TASKS" "$1" | sort | paste -sd' ' -; }
+
+# Every task checked, or every task still open named by the agent as the owner's: then the phase
+# goes to review, and only the merge waits for the owner.
+phase_ready() {
+    "$TASKS_SH" complete "$TASKS" "$1" && return 0
+    [[ -n "$S_OWNER_TASKS" && "$(open_tasks "$1")" == "$S_OWNER_TASKS" ]]
+}
+
 done_count() {
     local total open
     total=$("$TASKS_SH" ids "$TASKS" "$1" | wc -l)
@@ -453,6 +465,42 @@ TRUSTED_REVIEW_AUTHORS='["Copilot", "copilot-pull-request-reviewer", "copilot-pu
 # lets it answer the threads of its own PR and nothing else (PHASEPR_AGENT_PR).
 FORBIDDEN_COMMANDS=("git push" "git reset" "git rebase" "git merge" "git commit --amend" "gh api" "gh pr")
 
+# Whether a command runs a forbidden one anywhere in it: an agent chains commands
+# (`git status; git reset --hard …`, `if …; then git reset …; fi`), and the refusal of such a chain
+# is the refusal it must get. `git merge-base` is not `git merge`. A miss halts the run as
+# permission-denied, which is safe; this is not a shell parser. What is data — a here-document's
+# body, text in quotes — is taken out first: a forbidden command found there would let phasepr
+# swallow a denial that had a real reason. One run only inside quotes (`bash -c 'git push'`) is
+# then missed, and halts.
+forbidden_in() {
+    local s=$1 sep part f line delim="" code=""
+    while IFS= read -r line; do
+        if [[ -n "$delim" ]]; then
+            [[ "${line#"${line%%[![:space:]]*}"}" == "$delim" ]] && delim=""
+            continue
+        fi
+        # `<<WORD`, `<<-'WORD'`, `<<\WORD`; not the here-string `<<<`.
+        [[ "$line" =~ (^|[^\<])\<\<-?[[:space:]]*\\?[\'\"]?([A-Za-z_][A-Za-z0-9_]*) ]] && delim=${BASH_REMATCH[2]}
+        code+="$line"$'\n'
+    done <<< "$s"
+    # Leftmost first, so an apostrophe inside double quotes stays inside them.
+    s=$(perl -0777 -pe 's/\x27[^\x27]*\x27|"(?:[^"\\]|\\.)*"/""/g' <<< "$code")
+    for sep in '&&' '||' ';' '|' '&' '(' ')' '{' '}' '`'; do
+        s=${s//"$sep"/$'\n'}
+    done
+    while IFS= read -r part; do
+        part=${part#"${part%%[![:space:]]*}"}
+        # What can stand before a command without being one: a control word, `!`, an assignment.
+        while [[ "$part" =~ ^(then|do|else|elif|if|while|until|time|exec|command|!|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+(.*)$ ]]; do
+            part=${BASH_REMATCH[2]}
+        done
+        for f in "${FORBIDDEN_COMMANDS[@]}"; do
+            [[ "$part" == "$f" || "$part" == "$f "* ]] && return 0
+        done
+    done <<< "$s"
+    return 1
+}
+
 invoke_agent() {
     local kind=$1 prompt=$2 base
     next_log "$kind"
@@ -465,9 +513,11 @@ invoke_agent() {
 
 invoke_claude() {
     local kind=$1 prompt=$2 base=$3
-    local c forbidden
-    local -a cmd=(claude -p "$prompt" --permission-mode "$CFG_PERMISSION_MODE" --output-format json
-                  --max-turns "$CFG_MAX_TURNS")
+    local c denials
+    # stream-json, not json: an iteration runs for half an hour, and json writes nothing until it
+    # ends. The stream goes to <log>.jsonl as it happens; its last `result` event becomes <log>.json.
+    local -a cmd=(claude -p "$prompt" --permission-mode "$CFG_PERMISSION_MODE"
+                  --output-format stream-json --verbose --max-turns "$CFG_MAX_TURNS")
     [[ -n "$CFG_MODEL" ]] && cmd+=(--model "$CFG_MODEL")
     # Last: the option takes every argument up to the next option.
     cmd+=(--disallowedTools)
@@ -483,25 +533,34 @@ invoke_claude() {
         AGENT_DENIED=""
         return 0
     fi
-    log "agent: $kind (log $base.json)"
+    log "agent: $kind (follow: tail -f $base.jsonl)"
     set +e
     # The CLI's own OAuth sign-in, never an API key that happens to be exported: with one, every
     # iteration would be billed per token instead.
     # Only a triage agent has a PR to answer on; the others may not touch GitHub at all.
     local agent_pr=""
     [[ "$kind" == "triage" ]] && agent_pr=$S_PHASE_PR
-    env -u ANTHROPIC_API_KEY PHASEPR_AGENT_PR="$agent_pr" "${cmd[@]}" > "$base.json" 2> "$base.err" < /dev/null
+    env -u ANTHROPIC_API_KEY PHASEPR_AGENT_PR="$agent_pr" "${cmd[@]}" > "$base.jsonl" 2> "$base.err" < /dev/null
     AGENT_RC=$?
     set -e
+    # A line that is not JSON (a crash's last words) is skipped, not fatal.
+    jq -cR 'fromjson? | select(.type == "result")' "$base.jsonl" 2>/dev/null | tail -n1 > "$base.json" || true
     AGENT_RESULT=$(jq -r '.result // empty' "$base.json" 2>/dev/null || true)
-    forbidden=$(printf '%s|' "${FORBIDDEN_COMMANDS[@]}")
-    AGENT_DENIED=$(jq -r '.permission_denials[]?
-            | if .tool_name == "Bash" then (.tool_input.command // "" | split("\n")[0]) else .tool_name end' \
-        "$base.json" 2>/dev/null | sort -u || true)
-    if grep -qE "^(${forbidden%|})( |$)" <<< "$AGENT_DENIED"; then
-        log "refused, as it must be: $(grep -E "^(${forbidden%|})( |$)" <<< "$AGENT_DENIED" | paste -sd';' -)"
-    fi
-    AGENT_DENIED=$(grep -vE "^(${forbidden%|})( |$)" <<< "$AGENT_DENIED" || true)
+    # Each denial as one JSON string, so a multi-line command stays one denial.
+    denials=$(jq -c '.permission_denials[]?
+            | if .tool_name == "Bash" then (.tool_input.command // "") else .tool_name end' \
+        "$base.json" 2>/dev/null || true)
+    AGENT_DENIED=""
+    while IFS= read -r c; do
+        [[ -n "$c" ]] || continue
+        c=$(jq -r . <<< "$c")
+        if forbidden_in "$c"; then
+            log "refused, as it must be: ${c//$'\n'/ ; }"
+        else
+            AGENT_DENIED+="${c%%$'\n'*}"$'\n'
+        fi
+    done <<< "$denials"
+    AGENT_DENIED=$(sort -u <<< "$AGENT_DENIED" | sed '/^$/d')
     [[ "$AGENT_RC" -eq 0 ]] || log "agent exited $AGENT_RC ($(jq -r '.subtype // "no result"' "$base.json" 2>/dev/null || echo 'no JSON'))"
 }
 
@@ -575,7 +634,7 @@ gate_failure_block() {
 #region Phase steps
 
 implement_iteration() {
-    local n=$1 failure=$2 before branches others done_before prompt halt_reason progressed
+    local n=$1 failure=$2 before branches others done_before prompt halt_reason progressed owner
     if (( S_ITER >= CFG_MAX_IMPL )); then
         halt iteration-limit "Phase $n used all $CFG_MAX_IMPL implement iterations without being done (tasks checked, tree clean, gates green). Read $MEMORY and the logs in $LOG_DIR, then rerun or finish the phase by hand."
     fi
@@ -601,24 +660,36 @@ implement_iteration() {
     check_commit_subjects "$before"
     halt_reason=$(json_tail "$AGENT_RESULT" | jq -r '.halt // empty' 2>/dev/null || true)
     [[ -n "$halt_reason" ]] && halt agent-halt "$halt_reason"
-
+    owner=$(json_tail "$AGENT_RESULT" \
+        | jq -r 'select((.owner_tasks | type) == "array") | .owner_tasks | map(tostring) | sort | join(" ")' \
+        2>/dev/null || true)
     progressed=false
+    if [[ -n "$owner" ]]; then
+        # Believed only when it names exactly the tasks still open: anything else is the agent's.
+        if [[ "$owner" == "$(open_tasks "$n")" ]]; then
+            S_OWNER_TASKS=$owner
+            progressed=true
+            log "phase $n: left for the owner: $owner"
+        else
+            log "phase $n: the agent named $owner as the owner's, but open are $(open_tasks "$n"); ignored"
+        fi
+    fi
     if [[ "$(git rev-parse HEAD)" != "$before" || "$(done_count "$n")" != "$done_before" ]]; then
         progressed=true
     fi
     record_progress "$progressed" "implement iteration $S_ITER"
 }
 
-# Implements phase n until its tasks are all checked, the tree is clean and the gates are green.
+# Implements phase n until it is ready (phase_ready), the tree is clean and the gates are green.
 ensure_green() {
     local n=$1 failure="" head sig
     if [[ "$DRY_RUN" == "true" ]]; then
-        "$TASKS_SH" complete "$TASKS" "$n" || implement_iteration "$n" ""
+        phase_ready "$n" || implement_iteration "$n" ""
         run_gates
         return 0
     fi
     while :; do
-        if "$TASKS_SH" complete "$TASKS" "$n" && tree_clean; then
+        if phase_ready "$n" && tree_clean; then
             head=$(git rev-parse HEAD)
             [[ "$head" == "$S_GREEN_HEAD" ]] && return 0
             S_STEP=gates
@@ -673,7 +744,13 @@ open_phase_pr() {
             printf '## Goal\n\n%s\n\n' "$("$TASKS_SH" purpose "$TASKS" "$n" | sed 's/^$/—/')"
             printf '## Tasks\n\n%s\n\n' "$("$TASKS_SH" ids "$TASKS" "$n" | paste -sd, - | sed 's/,/, /g')"
             printf '## Requirements\n\n%s\n\n' "$("$TASKS_SH" reqs "$TASKS" "$n" | paste -sd, - | sed 's/,/, /g; s/^$/none named/')"
-            printf 'Opened by phasepr once every task of the phase was checked and `gates.sh` (build, '
+            if [[ -n "$S_OWNER_TASKS" ]]; then
+                printf '**Open for the owner:** %s. phasepr stops before the merge; once they are checked ' \
+                    "${S_OWNER_TASKS// /, }"
+                printf 'and committed here, a rerun has that head reviewed and merges.\n\n'
+            fi
+            printf 'Opened by phasepr once every task of the phase%s was checked and `gates.sh` (build, ' \
+                "${S_OWNER_TASKS:+ that is not the owner’s}"
             printf 'Fast suite within its time budget, trace-check) was green on %s.\n' "$(git rev-parse --short HEAD)"
         } > "$body"
         # "User Story 1 — Read back …" titles the PR as "phase 3 — read back …".
@@ -835,8 +912,17 @@ review_loop() {
     done
 }
 
+halt_owner_tasks() {
+    local n=$1 what=$2
+    S_STEP="owner-tasks"
+    halt owner-tasks "$what open are the owner's $(open_tasks "$n" | sed 's/ /, /g'). Do them on '$S_PHASE_BRANCH', check them in $TASKS, commit (type($FEATURE_NUM): …) and rerun: phasepr has that head reviewed, then merges."
+}
+
 merge_phase() {
     local n=$1 owner_paths rc
+    if [[ "$DRY_RUN" != "true" ]] && ! "$TASKS_SH" complete "$TASKS" "$n"; then
+        halt_owner_tasks "$n" "PR #$S_PHASE_PR is reviewed; left"
+    fi
     S_STEP=merge
     state_write
     run git fetch origin "$FEATURE"
@@ -917,6 +1003,12 @@ run_phase() {
     printf '\n=== phasepr: %s phase %s — %s (branch %s)\n' "$FEATURE" "$n" "$(phase_title "$n")" "$branch"
     ensure_phase_branch "$branch"
     ensure_green "$n"
+    # A phase of owner tasks only may have nothing committed yet, and GitHub opens no PR without a
+    # change: the PR then starts from the owner's commit.
+    if [[ -n "$S_OWNER_TASKS" && -z "$S_PHASE_PR" && "$DRY_RUN" != "true" ]] \
+        && [[ -z "$(git rev-list "origin/$FEATURE..HEAD")" ]]; then
+        halt_owner_tasks "$n" "Nothing is committed on '$branch' to review yet; all that is"
+    fi
     push_branch "$branch"
     open_phase_pr "$n"
     review_loop "$n"
@@ -1081,8 +1173,20 @@ show_status() {
     fi
     printf '\nPhases on %s:\n' "$FEATURE"
     tasks=$(feature_tasks)
-    "$TASKS_SH" phases "$tasks" | awk -F'\t' '{ printf "  Phase %s — %s: %s/%s done\n", $1, $2, $4, $3 }'
-    rm -f "$tasks"
+    local n title total checked branch on_branch branch_tasks
+    branch_tasks=$(mktemp)
+    while IFS=$'\t' read -r n title total checked; do
+        on_branch=""
+        # A phase under way is checked on its own branch until it merges; the feature branch
+        # alone would show it as not started.
+        branch=$(phase_branch_of "$n")
+        if [[ "$checked" -ne "$total" ]] && git show "$branch:$TASKS" > "$branch_tasks" 2>/dev/null; then
+            on_branch=$("$TASKS_SH" phases "$branch_tasks" | awk -F'\t' -v n="$n" '$1 == n { print $4 "/" $3 }')
+        fi
+        printf '  Phase %s — %s: %s/%s done%s\n' "$n" "$title" "$checked" "$total" \
+            "${on_branch:+ (on $branch: $on_branch)}"
+    done < <("$TASKS_SH" phases "$tasks")
+    rm -f "$tasks" "$branch_tasks"
 }
 
 #endregion
@@ -1111,7 +1215,9 @@ state_load
 if [[ "$S_HALT" != "none" ]]; then
     log "resuming after halt '$S_HALT' in phase ${S_PHASE:-none}, step $S_STEP"
     # A halt while waiting for or answering a review may have lost the review request.
-    [[ "$S_STEP" == "review" || "$S_STEP" == "triage" ]] && REREQUEST_ON_RESUME=true
+    # So may the owner's commit after an owner-tasks halt, which no review has seen yet.
+    [[ "$S_STEP" == "review" || "$S_STEP" == "triage" || "$S_STEP" == "owner-tasks" ]] \
+        && REREQUEST_ON_RESUME=true
     S_HALT=none
     S_HALT_SUMMARY=none
     S_NO_PROGRESS=0

@@ -42,9 +42,6 @@ Some things are not yours to decide. Halt — leave the work committed as far as
 
 - a checklist in `{{FEATURE_DIR}}/checklists/` has unchecked items, where the outline above would
   ask whether to proceed: there is nobody to ask;
-- a task is the owner's: exercising the outcome by hand, a statement only the owner can make, or an
-  outcome status in `docs/product.md` that waits on either (I.9, IV.4). Any change to
-  `docs/product.md` waits for the owner's review before its phase merges (I.1);
 - a task would change an instruction under `instructions/` (V.1), the constitution, or make a
   decision that neither the plan nor `docs/decisions.md` already makes (II.6);
 - spec, plan and tasks disagree, or a task cannot be done as written without a requirement ID the
@@ -63,5 +60,15 @@ or, when you halt, with the decision the owner has to make:
 
 `null` also when you got only partway through the phase: the next iteration continues from your
 handoff.
+
+A task that is the owner's — exercising the outcome by hand, a statement only the owner can make,
+or an outcome status in `docs/product.md` that waits on either (I.9, IV.4) — is not a reason to
+halt. Leave it unchecked and do every other task of the phase. When every task still open is of
+that kind, name them all, and nothing else:
+
+{"halt": null, "owner_tasks": ["T092", "T094", "T095"]}
+
+phasepr then runs the gates, opens the phase PR, has it reviewed, and stops before the merge for
+the owner. It believes the list only when it is exactly the phase's open tasks.
 
 {{GATE_FAILURE}}
