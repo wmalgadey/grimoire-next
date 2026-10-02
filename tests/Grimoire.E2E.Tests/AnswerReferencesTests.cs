@@ -139,7 +139,7 @@ public sealed class AnswerReferencesTests : PageTest
             question,
             "She wrote the first program ([people/ada-lovelace.md](people/ada-lovelace.md)).");
 
-        var reference = Turn(question).Locator(".references a").First;
+        var reference = Turn(question).Locator(".answer a").First;
         await Expect(reference).ToBeVisibleAsync();
 
         // **The page in the user's own wiki**: the vault they read it in, and the wiki's path inside
@@ -148,10 +148,10 @@ public sealed class AnswerReferencesTests : PageTest
             $"obsidian://open?vault={Vault}&file={WikiInTheVault}%2Fpeople%2Fada-lovelace.md",
             await reference.GetAttributeAsync("href"));
 
-        // The agent's own words are untouched: the link is drawn beside the prose, not into it, so
-        // nothing the user is reading was replaced to make it (ACCESS-007).
+        // The link stands where the agent put it, in the prose, and reads as the page's name: the
+        // Markdown around it is the agent's way of writing a link, not words for the user (US1-AS4).
         await Expect(Turn(question).Locator(".answer"))
-            .ToHaveTextAsync("She wrote the first program ([people/ada-lovelace.md](people/ada-lovelace.md)).");
+            .ToHaveTextAsync("She wrote the first program (people/ada-lovelace.md).");
     }
 
     [Fact]
@@ -178,7 +178,7 @@ public sealed class AnswerReferencesTests : PageTest
 
         // The page of this wiki is linked; the one that climbs out is not, and keeps its place in the
         // prose as plain text. Both are still readable — nothing of the agent's words is removed.
-        var references = Turn(question).Locator(".references a");
+        var references = Turn(question).Locator(".answer a");
 
         await Expect(references).ToHaveCountAsync(1);
         await Expect(references.First).ToHaveTextAsync("people/ada-lovelace.md");
@@ -206,7 +206,7 @@ public sealed class AnswerReferencesTests : PageTest
 
         hub.Agent.Said(question, "She wrote it ([people/ada-lovelace.md](people/ada-lovelace.md)).");
 
-        var reference = Turn(question).Locator(".references a").First;
+        var reference = Turn(question).Locator(".answer a").First;
         await Expect(reference).ToBeVisibleAsync();
 
         // The target stands alone: nothing is prefixed, and no empty segment is invented in front of
@@ -245,7 +245,7 @@ public sealed class AnswerReferencesTests : PageTest
         await Expect(Turn(question).Locator(".answer"))
             .ToContainTextAsync("people/ada-lovelace.md");
 
-        await Expect(Turn(question).Locator(".references a")).ToHaveCountAsync(0);
+        await Expect(Turn(question).Locator(".answer a")).ToHaveCountAsync(0);
 
         // And the chat says **once** that opening a page is not set up — so a reader can tell a setting
         // that is absent from a page that is simply not linkable (ACCESS-009).

@@ -110,6 +110,52 @@ public sealed class AskingTheWikiTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-009")]
+    public async Task PageName_StandsInTheProseAsALink_WhenItArrivesMidSentence()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var hub = await HubUnderTest.StartAsync("Notes", "wiki", token);
+
+        var question = await hub.AskAsync(AboutAda, token);
+
+        await Page.GotoAsync($"{hub.Address}/chat.html");
+        await Expect(Turn(question)).ToBeVisibleAsync();
+
+        hub.Agent.Said(question, "She wrote the first program (");
+        await Expect(Turn(question).Locator(".answer")).ToHaveTextAsync("She wrote the first program (");
+
+        // The text node the sentence began in, marked so it can be recognised again: the link that
+        // arrives next must be added after it, not drawn by replacing it (ACCESS-007).
+        await Page.EvaluateAsync(
+            """
+            (id) => { document.querySelector(`#chat li[data-id="${id}"] .answer`).firstChild.__thisOne = true; }
+            """,
+            question.ToString());
+
+        // The link arrives in pieces, split mid-target, as a stream may deliver it — and the sentence
+        // goes on after it.
+        hub.Agent.Said(question, "[people/ada-lovelace.md](people/");
+        hub.Agent.Said(question, "ada-lovelace.md)) for Babbage's engine.");
+
+        // **The page's name stands in the prose, as a link**, where the agent put it (US1-AS4).
+        await Expect(Turn(question).Locator(".answer"))
+            .ToHaveTextAsync("She wrote the first program (people/ada-lovelace.md) for Babbage's engine.");
+        await Expect(Turn(question).Locator(".answer a")).ToHaveTextAsync("people/ada-lovelace.md");
+
+        // **And no line beside it**: the turn is its question, the line about it, and the answer —
+        // nothing else holds the page's name.
+        await Expect(Turn(question).Locator(":scope > *")).ToHaveCountAsync(3);
+
+        var sameNode = await Page.EvaluateAsync<bool>(
+            """
+            (id) => document.querySelector(`#chat li[data-id="${id}"] .answer`).firstChild.__thisOne === true
+            """,
+            question.ToString());
+
+        Assert.True(sameNode, "the prose before the link was redrawn to make room for it");
+    }
+
+    [Fact]
     [Trait("req", "ACCESS-008")]
     public async Task Cost_RisesBesideTheQuestionAgainstItsCeiling_WhileTheRunIsUnderWay()
     {
