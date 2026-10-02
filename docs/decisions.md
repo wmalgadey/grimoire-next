@@ -51,6 +51,8 @@
 
 **Reason**: A test name is read in `docs/trace.md` and in CI failure output, where one glance has to show which behaviour broke and under which condition. Taking the subject from the spec rather than from a class means a rename in the code cannot make a name wrong, which is what keeps a test tied to the requirement it proves (III.1). CA1707 forbids the underscores and is switched off for the test projects alone, in `tests/.editorconfig`.
 
+**Amended after closing 004**: **Where** is a sixth condition word. It names a condition of the setting rather than of the moment — where the wiki is the vault, where a target leaves the wiki — which none of the five says as well; 004's tests had already used it eight times (test-audit.md §8).
+
 **Made by**: plan `001-first-ingest`.
 
 ## DEC-007 — The complexity ceiling is the SDK's own rule, as an absolute error
