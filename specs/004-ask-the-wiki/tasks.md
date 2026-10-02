@@ -877,3 +877,9 @@ than holding the close for them.
   (`li[data-state="no-answer"] .answer { display: none; }`) hiding the partial answer. The chat's own
   view could carry no answer for a failed question, which a Fast test would read (test-audit.md §7,
   QUERY-006).
+- **The reason a question's run that ends of its own accord carries** — `RunStateMachine.Exited` gives
+  it `RunEndedBecause.StoppedWithItsLogEntry` (`RunStateMachine.cs:305–312`), a placeholder: no log
+  entry was asked of it. Nothing shows it today — the chat and the next prompt name a reason only for
+  a question that got no answer — but since DEC-042's amendment a reason reaches the prompt, and one
+  more path to it would show the placeholder. Either a value of its own, or the reason why not
+  written down; `RunOutcomeTests` asserts nothing about it (closing 004, code).
