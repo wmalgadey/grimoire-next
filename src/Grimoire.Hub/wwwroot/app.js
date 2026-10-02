@@ -1,5 +1,6 @@
 // The browser half of ACCESS-001 and ACCESS-005: one form, posted with fetch, and one list of
-// states and figures, polled. No build step and no framework (research.md R-10).
+// states and figures, **sent** rather than asked for. No build step and no framework
+// (research.md R-10).
 
 const form = document.getElementById("submission");
 const text = document.getElementById("text");
@@ -9,15 +10,6 @@ const submissions = document.getElementById("submissions");
 // The cost ceiling, as the last list said it. Nothing is drawn before the first list arrives, so no
 // row is ever written against a ceiling this page invented.
 let costCeiling = 0;
-
-// How often the list asks. There is no push channel (contracts/hub-http-api.md), and a run takes
-// minutes, so a second is soon enough to feel live and rare enough to be nothing.
-const pollEveryMs = 1000;
-
-// Two refreshes can be in flight at once — the interval's and the one an accepted submission
-// starts — and they can answer out of order. The newest request's answer is the current one; an
-// older answer arriving after it would put a state back that has already moved on.
-let newestRequest = 0;
 
 function show(kind, words) {
   message.dataset.kind = kind;
@@ -43,10 +35,11 @@ form.addEventListener("submit", async (event) => {
   const body = await response.json().catch(() => null);
 
   // 202 means the submission is accepted and a run is under way; the user waits for none of it.
+  // Nothing is asked for afterwards: accepting a submission changes the board, and the board is what
+  // sends the list (ACCESS-005).
   if (response.status === 202) {
     text.value = "";
     show("accepted", "Submission accepted.");
-    refresh();
     return;
   }
 
@@ -203,6 +196,12 @@ function update(item, submission) {
 
 // Newest first, which is the order the server sends. Only ever reordered where the order has actually
 // changed — which is when a submission is added — because moving an element is a mutation too.
+//
+// And then only the rows that are in the wrong place. Re-appending all of them put every row through a
+// move, and moving an element the user has focused takes the focus with it: a new submission arriving
+// while the user was reaching for an Acknowledge button dropped what they were reaching for
+// (ACCESS-003, ACCESS-005). A new row is appended at the end and belongs at the top, so what this
+// costs is one move of that one row.
 function reorder(wanted) {
   const here = [...submissions.children].map((item) => item.dataset.id);
 
@@ -210,49 +209,36 @@ function reorder(wanted) {
     return;
   }
 
-  for (const id of wanted) {
-    submissions.append(submissions.querySelector(`li[data-id="${id}"]`));
-  }
+  wanted.forEach((id, at) => {
+    const item = submissions.querySelector(`li[data-id="${id}"]`);
+
+    // Already where it belongs. Asked of the list as it now stands rather than of the list as it was,
+    // because every move before this one has changed it.
+    if (submissions.children[at] === item) {
+      return;
+    }
+
+    submissions.insertBefore(item, submissions.children[at] ?? null);
+  });
 }
 
-// Acknowledging a failure is what lets the queue move on (RUNS-003). The list is refreshed
-// straight afterwards rather than waited for: the acknowledged row still reads failed, and the
-// control it offered is gone, which is the user's confirmation.
+// Acknowledging a failure is what lets the queue move on (RUNS-003). Nothing is asked for
+// afterwards: the acknowledgement changes the board and the board sends the list, so the row that
+// still reads failed with its control gone arrives by itself — which is the user's confirmation.
 async function acknowledged(id) {
   try {
     await fetch(`/api/submissions/${id}/acknowledgement`, { method: "POST" });
   } catch {
-    // Grimoire could not be reached. Nothing was acknowledged, the row still offers the control,
-    // and the next poll puts back what is true.
-    return;
+    // Grimoire could not be reached. Nothing was acknowledged and the row still offers the control;
+    // what is on the screen stays, because a state that has not been contradicted is still the last
+    // one known.
   }
-
-  refresh();
 }
 
-async function refresh() {
-  const request = ++newestRequest;
-
-  let response;
-  try {
-    // no-store, because a polled list answered from the browser's cache is a state that has
-    // already moved on.
-    response = await fetch("/api/submissions", { cache: "no-store" });
-  } catch {
-    // Grimoire could not be reached. The next poll tries again; what is on the screen stays,
-    // because a state that has not been contradicted is still the last one known.
-    return;
-  }
-
-  if (!response.ok) {
-    return;
-  }
-
-  const body = await response.json().catch(() => null);
-  if (!body || request !== newestRequest) {
-    return;
-  }
-
+// One list, drawn from what was sent. Every event carries the whole list — it is read as one instant
+// under the board's one lock, and a delta would break exactly that (ACCESS-005,
+// contracts/hub-http-api.md) — so this is the same function the poll used to hand its body to.
+function drawn(body) {
   // The ceiling every row's cost is written against. It comes with the list rather than being
   // written into this file, because it is the hub's value and not the browser's — the owner
   // revises it in `Ceilings.Fixed` and the page must not then show a figure out of a different
@@ -266,5 +252,13 @@ async function refresh() {
   reorder(body.submissions.map((s) => s.id));
 }
 
-setInterval(refresh, pollEveryMs);
-refresh();
+// **Nothing polls.** The list arrives as it changes, opening with a snapshot carrying the whole of it
+// (contracts/hub-http-api.md, research.md R-01) — which is also what a dropped connection is
+// answered with: `EventSource` reconnects by itself and the new snapshot is the list as it then
+// stands, so nothing here reconnects, replays or reads a `Last-Event-ID`.
+//
+// Rows are still updated in place, keyed by the submission's id, so a rising figure and the
+// Acknowledge control are untouched by an event arriving (ACCESS-005).
+const events = new EventSource("/api/submissions/events");
+
+events.addEventListener("submissions", (event) => drawn(JSON.parse(event.data)));

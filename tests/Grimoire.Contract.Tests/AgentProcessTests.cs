@@ -13,7 +13,7 @@ namespace Grimoire.Contract.Tests;
 /// Terminating a process is an act on the operating system, and no in-memory adapter can make it
 /// true — which is what puts this at the Contract level (Constitution III.4). The child is an
 /// ordinary long-lived process this suite starts, not <c>claude</c>: nothing here is about the
-/// CLI's protocol, so <b>no sign-in is needed and this runs in CI</b>, unlike the three tests
+/// CLI's protocol, so <b>no sign-in is needed and this runs in CI</b>, unlike the four tests
 /// DEC-021 excludes.
 /// </para>
 /// <para>

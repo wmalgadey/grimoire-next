@@ -7,7 +7,8 @@ namespace Grimoire.Hub.Mcp;
 
 /// <summary>Which run a tool call belongs to, read from the endpoint it arrived at.</summary>
 /// <remarks>
-/// The run identifier is in the path — <c>/mcp/runs/{runId}</c> — which is how a tool call is
+/// The run identifier is in the path — <c>/mcp/{door}/{runId}</c>, the door being the segment the
+/// run's grant records — which is how a tool call is
 /// attributed to its run. That is addressing, not authorisation: the endpoint is unauthenticated
 /// and bound to loopback, because <c>docs/product.md</c> §2 puts Grimoire inside a network the
 /// user trusts. The first feature that puts it on an untrusted network has to revisit this.
@@ -44,7 +45,7 @@ public sealed class RunAddress(IHttpContextAccessor accessor, string model)
 }
 
 /// <summary>
-/// The five tools a run may use, served over MCP at the run's own endpoint. This list is the
+/// The five tools an ingest run may use, served over MCP at the run's own endpoint. This list is the
 /// grant, and the grant is the agent's entire tool surface (GUARD-001, GUARD-002).
 /// </summary>
 /// <remarks>
@@ -56,40 +57,19 @@ public sealed class RunAddress(IHttpContextAccessor accessor, string model)
 public sealed class WikiToolsServer(IWikiStore wiki, RunAddress run, TimeProvider clock)
 {
     /// <summary>The bare names this server serves, in the order the grant records them.</summary>
-    public static IReadOnlyList<string> ServedNames =>
-    [
-        .. typeof(WikiToolsServer)
-            .GetMethods()
-            .Select(m => m.GetCustomAttributes(typeof(McpServerToolAttribute), inherit: false).FirstOrDefault())
-            .OfType<McpServerToolAttribute>()
-            .Select(a => a.Name!)
-            .Where(n => n is not null),
-    ];
+    public static IReadOnlyList<string> ServedNames => WikiReadToolsServer.NamesOf(typeof(WikiToolsServer));
 
     [McpServerTool(Name = "list_pages")]
     [Description("Every path in the wiki, relative to its root.")]
-    public async Task<object> ListPagesAsync(CancellationToken cancellationToken) =>
-        new { paths = await wiki.ListAsync(cancellationToken).ConfigureAwait(false) };
+    public Task<object> ListPagesAsync(CancellationToken cancellationToken) =>
+        WikiReads.ListPagesAsync(wiki, cancellationToken);
 
     [McpServerTool(Name = "read_page")]
     [Description("One file's full text, frontmatter included.")]
-    public async Task<object> ReadPageAsync(
+    public Task<object> ReadPageAsync(
         [Description("Path relative to the wiki root.")] string path,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var content = await wiki.ReadAsync(path, cancellationToken).ConfigureAwait(false);
-
-            return content is null
-                ? Refused("not-found", $"there is no \"{path}\" in the wiki")
-                : new { path, content };
-        }
-        catch (OutsideWikiException outside)
-        {
-            return Refused("outside-wiki", outside.Message);
-        }
-    }
+        CancellationToken cancellationToken) =>
+        WikiReads.ReadPageAsync(wiki, path, cancellationToken);
 
     [McpServerTool(Name = "write_page")]
     [Description("Create a page or replace it whole. Grimoire records who generated it and when.")]
@@ -164,5 +144,5 @@ public sealed class WikiToolsServer(IWikiStore wiki, RunAddress run, TimeProvide
         return new { appended = WikiFile.Log };
     }
 
-    private static object Refused(string reason, string message) => new { error = reason, message };
+    private static object Refused(string reason, string message) => WikiReads.Refused(reason, message);
 }

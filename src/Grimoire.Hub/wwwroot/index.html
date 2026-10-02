@@ -13,6 +13,10 @@
         padding: 2rem 1rem;
       }
       h1 { font-size: 1.25rem; font-weight: 600; }
+      /* A line of links, not a bar and not a menu: docs/ux.md withholds navigation chrome until a
+         second job exists, and a third exists now (ACCESS-010). */
+      .jobs { margin: 0 0 1.5rem; }
+      .jobs a { margin-right: 1rem; }
       textarea {
         box-sizing: border-box;
         font: inherit;
@@ -86,6 +90,11 @@
   </head>
   <body>
     <h1>Submit a text</h1>
+
+    <!-- The three jobs reach each other (ACCESS-010). -->
+    <p class="jobs">
+      <a href="chat.html">Ask the wiki</a>
+    </p>
 
     <form id="submission">
       <label for="text">Paste the text you want in the wiki.</label>

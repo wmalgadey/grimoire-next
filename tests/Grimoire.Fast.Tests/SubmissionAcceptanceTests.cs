@@ -29,6 +29,23 @@ public sealed class SubmissionAcceptanceTests
     }
 
     [Fact]
+    [Trait("req", "QUERY-003")]
+    [Trait("req", "INGEST-003")]
+    public async Task Submit_IsAccepted_WithoutTheQuestionInstruction()
+    {
+        var result = await hub.SubmitAsync(
+            "Ada Lovelace wrote the first program.",
+            StartUpInputs.BothPresent with { QuestionInstructionPresent = false });
+
+        // A submission is refused on the ingest instruction and the purpose description only: the
+        // question instruction is what a question's run is given, and an ingest run never reads it
+        // (query.md, QUERY-003). Missing, it refuses questions and nothing else.
+        Assert.NotNull(result.Accepted);
+        Assert.Null(result.Refused);
+        Assert.Equal([result.Accepted!.Id], hub.Harness.Dispatched.Select(d => d.SubmissionId));
+    }
+
+    [Fact]
     [Trait("req", "RUNS-006")]
     public async Task DispatchFails_StopsTheRunThatCouldNotStart()
     {

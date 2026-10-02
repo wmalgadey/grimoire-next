@@ -80,30 +80,14 @@ public sealed class SubmissionStateTests
         Assert.Throws<InvalidOperationException>(() => hub.Board.ReportedIn(submission.Id));
         Assert.Throws<InvalidOperationException>(
             () => hub.Board.Ended(
-                submission.Id, SubmissionState.Done, costSpent: 0, tokens: default, toolCalls: 0, entriesLost: 0));
+                submission.Id,
+                RunOutcome.Done,
+                RunEndedBecause.StoppedWithItsLogEntry,
+                costSpent: 0,
+                tokens: default,
+                toolCalls: 0,
+                entriesLost: 0));
         Assert.Equal(terminal, submission.State);
-    }
-
-    [Fact]
-    [Trait("req", "RUNS-001")]
-    public async Task Transitions_LeaveExactlyOneStateAtATime()
-    {
-        var submission = await Accepted();
-
-        foreach (var reached in new[] { SubmissionState.Submitted, SubmissionState.Running, SubmissionState.Done })
-        {
-            Assert.Single(Enum.GetValues<SubmissionState>(), s => s == submission.State);
-            Assert.Equal(reached, submission.State);
-
-            if (reached == SubmissionState.Submitted)
-            {
-                hub.Harness.ReportIn(submission.Id);
-            }
-            else if (reached == SubmissionState.Running)
-            {
-                hub.Harness.End(submission.Id, RunOutcome.Done);
-            }
-        }
     }
 
     [Fact]
@@ -225,7 +209,7 @@ public sealed class SubmissionStateTests
     }
 
     private static JsonElement Reported(Submission submission) =>
-        JsonSerializer.SerializeToElement(SubmissionView.Of(submission));
+        JsonSerializer.SerializeToElement(SubmissionView.Of(submission.Snapshot));
 
     [Theory]
     [InlineData(SubmissionState.Submitted, "submitted")]

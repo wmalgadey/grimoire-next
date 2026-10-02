@@ -14,7 +14,6 @@ namespace Grimoire.Fast.Tests;
 /// (research.md R-03, R-11).
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "RUNS-009")]
 public sealed class RunNarrativeTests
 {
     private readonly FastHub hub = new();
@@ -22,6 +21,7 @@ public sealed class RunNarrativeTests
     private static AgentTranscript Transcript() => new(ToolGrant.Ingest(FastSuite.Clock()));
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void ToolCall_IsReadWithItsNameAndItsArguments()
     {
         var read = Transcript().Read(RecordedTranscript.ToolCall);
@@ -35,6 +35,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void ToolResult_IsReadWhole()
     {
         var transcript = Transcript();
@@ -54,6 +55,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void AgentText_IsReadAsTheAgentsOwn()
     {
         var moment = Assert.Single(Transcript().Read(RecordedTranscript.AgentText).Moments);
@@ -63,6 +65,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void Blocks_AreEachAMomentInTheOrderTheyArrived()
     {
         // `message.content` is an array and the API allows several blocks. Each is its own moment, and
@@ -75,6 +78,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void ToolResult_IsTheTextOfItsBlocks_WhenTheContentIsAnArray()
     {
         var moment = Assert.Single(Transcript().Read(RecordedTranscript.ToolResultInBlocks).Moments);
@@ -83,6 +87,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void ToolResult_IsRecordedAsUnreadable_WhenItIsNeitherAStringNorBlocks()
     {
         var moment = Assert.Single(Transcript().Read(RecordedTranscript.ToolResultThatCannotBeRead).Moments);
@@ -95,6 +100,7 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
     public void Results_AreEachAttributedToTheirOwnCall_WhenOneTurnMakesSeveral()
     {
         var transcript = Transcript();
@@ -118,7 +124,7 @@ public sealed class RunNarrativeTests
         Assert.Empty(Transcript().Read(RecordedTranscript.Thinking).Moments);
 
     [Fact]
-    [Trait("req", "RUNS-005")]
+    [Trait("req", "RUNS-009")]
     public async Task Record_HoldsWhatTheRunDid_InTheOrderItHappened()
     {
         var submission = await hub.AcceptedAsync();
@@ -193,7 +199,6 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-009")]
     public async Task Result_IsPutUnderItsCall_WhenTheAgentMadeOneAndWaited()
     {
         var submission = await hub.AcceptedAsync();
@@ -212,7 +217,6 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-009")]
     public async Task Calls_SitInsideWhatTheAgentSaidBeforeThem()
     {
         var submission = await hub.AcceptedAsync();
@@ -241,7 +245,6 @@ public sealed class RunNarrativeTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-009")]
     public async Task Call_StaysAtTheTop_BeforeTheAgentHasSaidAnything()
     {
         var submission = await hub.AcceptedAsync();
@@ -255,6 +258,52 @@ public sealed class RunNarrativeTests
         var called = Assert.Single(hub.Record.MomentsOf(run.Id), m => m.Kind == RunMomentKind.ToolCalled);
 
         Assert.Equal(0, called.Depth);
+    }
+
+    [Fact]
+    public async Task Call_StaysAtTheTop_AfterGrimoiresNudge()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+        hub.Harness.Did(submission.Id, Said("Ich schreibe die Seite."));
+        hub.Harness.Called(submission.Id, "write_page", """{"path":"ada.md"}""");
+
+        // The agent stops without its log entry, Grimoire tells it so, and the agent carries on.
+        await hub.Harness.StoppedAsync(submission.Id);
+        hub.Harness.Called(submission.Id, "append_log", """{"entry":"one page"}""");
+
+        // The nudge closes the turn rather than opening one: the call after it is the agent's, and
+        // written inside a section headed "Grimoire" it would read as though Grimoire had made it
+        // (contracts/run-record.md, rule 1).
+        var after = hub.Record.MomentsOf(run.Id)[^1];
+
+        Assert.Equal("append_log", after.Tool);
+        Assert.Equal(0, after.Depth);
+    }
+
+    [Fact]
+    public async Task Result_IsNotPutUnderTheCallAbove_WhileAnEarlierCallStillWaits()
+    {
+        var submission = await hub.AcceptedAsync();
+        var run = hub.Conductor.Of(submission.Id)!;
+
+        hub.Harness.ReportIn(submission.Id);
+
+        // Two calls out, one answered — so one is still waiting when a third is made.
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"ada.md"}""");
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"hopper.md"}""");
+        hub.Harness.Did(submission.Id, Returned("# Ada"));
+        hub.Harness.Called(submission.Id, "read_page", """{"path":"lamarr.md"}""");
+        hub.Harness.Did(submission.Id, Returned("# Hopper"));
+
+        // The call above this result is the third, but two are waiting and results come oldest first,
+        // so it answers the second. Nested under the third it would say a call returned something it
+        // never returned; beside the calls, the order attributes it (contracts/run-record.md, rule 1).
+        var moments = hub.Record.MomentsOf(run.Id);
+
+        Assert.Equal(moments[^2].Depth, moments[^1].Depth);
     }
 
     private static TranscriptMoment Returned(string content) =>

@@ -15,10 +15,10 @@ namespace Grimoire.Fast.Tests;
 /// a rendering of it.
 /// </remarks>
 [Trait("level", "fast")]
-[Trait("req", "ACCESS-006")]
 public sealed class RunRecordEndpointTests
 {
     [Fact]
+    [Trait("req", "ACCESS-006")]
     public async Task Record_IsAnsweredWithItsBytesUnaltered()
     {
         await using var hub = new HostedHub();
@@ -41,6 +41,8 @@ public sealed class RunRecordEndpointTests
     }
 
     [Fact]
+    [Trait("req", "ACCESS-006")]
+    [Trait("req", "RUNS-007")]
     public async Task Record_IsAnsweredWhileTheRunIsStillUnderWay()
     {
         await using var hub = new HostedHub();
@@ -85,7 +87,6 @@ public sealed class RunRecordEndpointTests
     }
 
     [Fact]
-    [Trait("req", "RUNS-007")]
     public async Task Record_IsNotFound_WhenItWasNeverWrittenAtAll()
     {
         await using var hub = new HostedHub(recordEverythingFails: true);

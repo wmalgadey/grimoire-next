@@ -15,11 +15,14 @@ requires an amendment that retires one.
 - [ ] **2. Slice shape** — The feature is one vertical slice with a user-observable result and adds
       exactly one of: a new operation, a new user interaction, a new external system. *(I.6)*
 
-- [ ] **3. Standard scope and the instruction** — Where an external standard applies, only the
+- [ ] **3. Standard scope and the instructions** — Where an external standard applies, only the
       parts the capability requirements name are built, against the version pinned in
       `docs/product.md`. And where a capability requirement places the shape of an artifact on the
-      agent rather than on our code, does the instruction every run receives state that shape, in
-      full, as the requirement lists it? *(I.8)*
+      agent rather than on our code, does **each** instruction a run receives state that shape, in
+      full, as the requirement lists it? Asked of every one of them separately — today
+      `instructions/ingest.md` against INGEST's requirements and `instructions/question.md` against
+      QUERY-004 — because a run receives one of them and not the others, and an instruction that
+      states nothing is not corrected by a sibling that states everything. *(I.8)*
 
 - [ ] **4. Phase PRs and their review** — Was every phase PR merged into the feature branch before
       the next phase started, only once green and its review closed, and was no PR based on another
@@ -68,7 +71,11 @@ requires an amendment that retires one.
       action, work blocked by a rule was unblocked by an amendment rather than by an exception, and
       any amendment was its own PR touching only the constitution, the template overrides, this
       checklist and, where an amended rule describes a mechanism by its behaviour, the one
-      `docs/decisions.md` entry that names the tool behind it. *(Gov. 1, 2, 3, 4)*
+      `docs/decisions.md` entry that names the tool behind it. Does every decision this PR relies on
+      stand in `docs/decisions.md`, with no code, test, spec or research text in the diff stating one
+      of its own rather than citing a `DEC-NNN`; where the PR departs from a decision, a task or a
+      spec, does it implement an entry already in `docs/decisions.md` and name it in its description;
+      and does no answer to a review finding stand in for the owner's decision? *(II.7, Gov. 1, 2, 3, 4)*
 
 - [ ] **12. Requirement shape** — Is every requirement one observable behaviour, with the values it
       covers listed inside it and no two requirements differing only in a value? Did every

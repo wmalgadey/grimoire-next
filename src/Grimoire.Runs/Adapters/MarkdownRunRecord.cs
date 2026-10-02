@@ -132,7 +132,7 @@ public sealed class MarkdownRunRecord : IRunRecord
     /// <remarks>
     /// <c>File.AppendAllText</c> is not atomic: a read landing inside one would serve a segment cut in
     /// half, or a byte sequence that is not UTF-8 at all — and a record the browser cannot segment is
-    /// one it cannot show, on the very poll where the run is most alive (ACCESS-006).
+    /// one it cannot show, in the very moment where the run is most alive (ACCESS-006).
     /// </remarks>
     public byte[]? Read(Guid runId)
     {

@@ -41,15 +41,50 @@ internal sealed class FastHub
         Record = record;
         Harness = new InMemoryAgentHarness(journal);
         Clock = FastSuite.Clock();
-        Board = new SubmissionBoard(Clock, store);
+
+        // The same one the composition root builds, so a test reads the streams the browser reads —
+        // in process, as an IAsyncEnumerable, with no socket anywhere (research.md R-11).
+        Live = new LiveUpdates();
+        Chat = new Chat(() => Live.Changed(LiveUpdates.Chat));
+
+        // The same wiring the composition root ties, including that a question's change is recorded in
+        // the chat before its subscribers are woken (HubApplication.Build).
+        Board = new RunBoard(
+            Clock,
+            store,
+            queued =>
+        {
+            if (queued is Question)
+            {
+                // The run is read inside the board's lock and handed over: the chat never takes that
+                // lock from inside its own (HubApplication.Build, Chat.answering). The chat wakes its
+                // own readers.
+                Chat.QuestionChanged(queued.Id, queued.RunId);
+                return;
+            }
+
+            Live.Changed(LiveUpdates.Submissions);
+        },
+
+            // The same as the composition root: a question joins the chat inside the board's lock, in
+            // the same breath as it was accepted (RunBoard.Accepted).
+            queued =>
+            {
+                if (queued is Question asked)
+                {
+                    Chat.Ask(asked);
+                }
+            });
 
         // The same knot the composition root ties: a run that ends lets the next one start
         // (HubApplication.Build).
         RunQueue? queue = null;
-        Conductor = new RunConductor(Board, Harness, Wiki, Record, Clock, Model, () => queue!.PumpAsync());
-        queue = new RunQueue(Board, Conductor, Harness, Prompt);
+        Conductor = new RunConductor(
+            Board, Harness, Wiki, Record, Chat, Live, Clock, Model, () => queue!.PumpAsync());
+        queue = new RunQueue(Board, Conductor, Harness, Prompt, QuestionPrompt);
         Queue = queue;
         Intake = new SubmissionIntake(Board, Queue);
+        Asking = new ChatIntake(Board, Queue);
 
         HubApplication.RestoreAfterAStop(store, Board, Harness, Record, Clock);
 
@@ -89,7 +124,19 @@ internal sealed class FastHub
     /// <summary>Where this hub's runs leave their records (RUNS-007).</summary>
     public InMemoryRunRecord Record { get; }
 
-    public SubmissionBoard Board { get; }
+    /// <summary>What the browser would be sent (ACCESS-005, ACCESS-006, ACCESS-007).</summary>
+    public LiveUpdates Live { get; }
+
+    /// <summary>The one chat this hub holds (QUERY-005), waking its readers as the real one does.</summary>
+    public Chat Chat { get; }
+
+    /// <summary>
+    /// A question asked the way the chat's intake asks it, through the real
+    /// <see cref="ChatIntake"/> — so a test drives what the endpoint drives.
+    /// </summary>
+    public ChatIntake Asking { get; private set; } = null!;
+
+    public RunBoard Board { get; }
 
     public RunConductor Conductor { get; }
 
@@ -101,6 +148,15 @@ internal sealed class FastHub
     public static string Prompt(string text, Guid runId) =>
         InstructionLoader.Payload("THE INSTRUCTION", "THE PURPOSE", text, runId);
 
+    /// <summary>The same for a question's run, with the chat this hub holds (QUERY-002).</summary>
+    public string QuestionPrompt(string question, Guid runId) =>
+        InstructionLoader.QuestionPayload(
+            "THE QUESTION INSTRUCTION",
+            "THE PURPOSE",
+            InstructionLoader.ConversationSoFar(Chat, runId),
+            question,
+            runId);
+
     public Task<SubmissionResult> SubmitAsync(string text, StartUpInputs? inputs = null) =>
         Intake.SubmitAsync(text, inputs ?? StartUpInputs.BothPresent);
 
@@ -110,11 +166,36 @@ internal sealed class FastHub
     /// </summary>
     public Task AcknowledgeAsync(Guid submissionId)
     {
-        Board.Acknowledge(submissionId);
+        Board.AcknowledgeSubmission(submissionId);
+        return Queue.PumpAsync();
+    }
+
+    /// <summary>
+    /// A question's failure acknowledged, the way the chat's endpoint acknowledges it (QUERY-006).
+    /// </summary>
+    /// <remarks>
+    /// Its own helper, because the two doors are its own: the chat's acknowledgement addresses a
+    /// question and the list's a submission, and one that took either would let a test pass through a
+    /// door the browser does not have.
+    /// </remarks>
+    public Task AcknowledgeQuestionAsync(Guid questionId)
+    {
+        Board.AcknowledgeQuestion(questionId);
         return Queue.PumpAsync();
     }
 
     /// <summary>A submission that was accepted, with its run under way.</summary>
     public async Task<Submission> AcceptedAsync(string text = "A text.") =>
         (await SubmitAsync(text)).Accepted!;
+
+    /// <summary>
+    /// A question asked the way the chat's intake asks it: the board decides, and the queue is then
+    /// asked for the next run (QUERY-001, RUNS-002).
+    /// </summary>
+    public Task<QuestionResult> AskAsync(string text, StartUpInputs? inputs = null) =>
+        Asking.AskAsync(text, inputs ?? StartUpInputs.BothPresent);
+
+    /// <summary>A question that was accepted, with its run under way where nothing was ahead of it.</summary>
+    public async Task<Question> AskedAsync(string text = "What does the wiki say about Ada Lovelace?") =>
+        (await AskAsync(text)).Accepted!;
 }

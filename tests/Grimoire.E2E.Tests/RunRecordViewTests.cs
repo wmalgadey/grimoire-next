@@ -15,7 +15,6 @@ namespace Grimoire.E2E.Tests;
 /// only observable here (DEC-019's precedent for ACCESS-001).
 /// </remarks>
 [Trait("level", "e2e")]
-[Trait("req", "ACCESS-006")]
 public sealed class RunRecordViewTests : PageTest
 {
     /// <summary>
@@ -27,6 +26,9 @@ public sealed class RunRecordViewTests : PageTest
         "## Ada Lovelace\n\n```\nthe first program\n```\n\nShe wrote the first program.";
 
     [Fact]
+    [Trait("req", "RUNS-008")]
+    [Trait("req", "RUNS-009")]
+    [Trait("req", "ACCESS-006")]
     public async Task Run_IsOpenedFromItsRowAndReadInOrder()
     {
         var token = TestContext.Current.CancellationToken;
@@ -77,6 +79,8 @@ public sealed class RunRecordViewTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "RUNS-009")]
+    [Trait("req", "ACCESS-006")]
     public async Task Result_IsFoldedUntilTheUserOpensItAndIsThenWhole()
     {
         var token = TestContext.Current.CancellationToken;
@@ -105,7 +109,7 @@ public sealed class RunRecordViewTests : PageTest
     }
 
     [Fact]
-    [Trait("req", "RUNS-009")]
+    [Trait("req", "ACCESS-006")]
     public async Task Result_IsOneSegment_WhenItHoldsALineStartingWithTwoHashes()
     {
         var token = TestContext.Current.CancellationToken;
@@ -128,6 +132,7 @@ public sealed class RunRecordViewTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-006")]
     public async Task AgentText_IsShownWhole_WhenItHoldsAFencedBlock()
     {
         var token = TestContext.Current.CancellationToken;
@@ -156,6 +161,7 @@ public sealed class RunRecordViewTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-006")]
     public async Task Moments_ArriveBelowWhatIsThere_WithoutDisturbingIt()
     {
         var token = TestContext.Current.CancellationToken;
@@ -196,7 +202,8 @@ public sealed class RunRecordViewTests : PageTest
 
         var openedBefore = await Segments().Nth(0).BoundingBoxAsync();
 
-        // More happens while the page is left open. The page polls; nothing is pushed to it.
+        // More happens while the page is left open, and the page is sent the bytes appended since — it
+        // asks for nothing (contracts/hub-http-api.md).
         hub.Agent.Said(submission, "Ada Lovelace already has a page. I will add the date.");
         hub.Agent.Called(submission, "write_page", """{"path":"ada.md"}""");
 
@@ -280,6 +287,7 @@ public sealed class RunRecordViewTests : PageTest
 
     [Fact]
     [Trait("req", "RUNS-007")]
+    [Trait("req", "ACCESS-006")]
     public async Task View_SaysLinesAreMissing_WhenTheRecordCouldNotHoldThem()
     {
         var token = TestContext.Current.CancellationToken;
@@ -309,6 +317,7 @@ public sealed class RunRecordViewTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-006")]
     public async Task Answer_ArrivesWhileThePageIsOpen_InTheCallItAnswers()
     {
         var token = TestContext.Current.CancellationToken;
@@ -341,6 +350,7 @@ public sealed class RunRecordViewTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-006")]
     public async Task Turn_CountsItsCalls_WhenTheirAnswersAreWrittenBesideThem()
     {
         var token = TestContext.Current.CancellationToken;

@@ -19,6 +19,11 @@ Grimoire has no access control of its own: it assumes it runs inside a network t
 | ACCESS-005 | The browser MUST show, for every submission, exactly one of submitted, running, done or failed, and for a submission that has a run also that run's model, what it has spent against the cost ceiling it is held to, and the number of tool calls it has made; while a run is in progress these figures MUST follow it, and a figure changing MUST NOT move the rows of the list. | test |
 | ACCESS-006 | Users MUST be able to open a submission's run from the list and read its record in the browser — its frame, and what the run did in the order it happened — both while the run is in progress, where lines MUST arrive as they are appended, and after it has ended, where the record MUST be shown in the same shape. The user MUST be able to follow what the run did without reading the tool results in full and MUST be able to reach any one result when they want it; and where lines of the record could not be written, the view MUST say that something is missing. | test |
 
+| ACCESS-007 | The browser MUST show, for every question in the chat, exactly one of waiting its turn, being answered, answered, or got no answer and why; an answer MUST appear as the agent produces it, and what the agent did to reach it MUST be readable under it in the shape a run's record is read in (ACCESS-006) — shut by default and openable a step at a time — arriving as it happens; and content arriving MUST NOT move what the user is already reading. Where the browser's connection to Grimoire is lost and made again, the browser MUST show the chat as it then stands, including what arrived while it was away. | test |
+| ACCESS-008 | The browser MUST show, for every question that has a run, what that run has spent against the cost ceiling it is held to, and for the chat what its questions have spent altogether, the total without a ceiling beside it; while a question's run is in progress its figure MUST follow it, and a figure changing MUST NOT move what the user is reading. | test |
+| ACCESS-009 | Users MUST be able to open a wiki page an answer references, from the answer, in the editor the wiki is open in, without that opening changing anything in the wiki. Where Grimoire has not been told what that opening needs, the answer MUST still arrive, the page's name MUST still be readable in it, and the browser MUST say that opening a page is not set up. | test |
+| ACCESS-010 | Users MUST be able to reach each of submitting a source, reading a submission's run, and asking the wiki from the others, and to start a new chat from the chat. | test |
+
 ACCESS-004 is what a user tells one submission from another by, and ACCESS-003 is the one action
 they can take on one. The acknowledgement names the submission, which has exactly one run
 (INGEST-002), and so does the record endpoint ACCESS-006 serves: no run identifier reaches the
@@ -52,6 +57,61 @@ under it, which is how the user follows what the run did without reading the res
 reaches any one of them; the agent's own text is prose and is shown whole, fenced blocks in it
 included. Where the record could not hold something, the page says so — a gap that passed for an agent
 doing nothing would be worse than the gap (RUNS-007).
+
+ACCESS-007 is the chat, and it binds three things at once. The four values are the same four RUNS-001
+names, read in the chat's words and read from the run rather than stored, so the chat and the queue rule
+cannot disagree about a question. The answer appears **as the agent produces it**, which is what decides
+where the answer ends and the steps begin: every piece of the agent's own text is the answer and the tool
+calls are the steps, because that is the only split decidable at the moment a block arrives and never
+revised — and revising one would move text the user has already read, which the third clause forbids in
+as many words.
+
+The steps are read **in the shape a run's record is read in** (ACCESS-006), so there is one format to
+learn rather than two: shut by default, openable a step at a time, the call and what it returned whole.
+
+Its last clause is answered with no replay buffer behind it. Every stream opens with a snapshot carrying
+the whole of what the view shows, so a browser whose connection was lost and made again reads the chat as
+it then stands — `EventSource` reconnects by itself, and nothing is kept to be replayed to it.
+
+**ACCESS-008 stands apart from ACCESS-005 rather than extending it.** ACCESS-005 is a row in a list of
+submissions and the figures there are one run's; here there are two different quantities — a question's
+run against its ceiling, and the chat's total, which has **no ceiling** because every question carries
+its own. A total dressed as `x / y` would invent a ceiling that does not exist. A question waiting its
+turn carries no figure at all, not a zero: it has no run, so there is nothing true to say about one.
+
+The total includes a question whose run failed, because a run that failed still spent. Nothing is counted
+twice: each figure is the run's own (DEC-030, RUNS-010) and the total is a sum over the turns.
+
+ACCESS-009 is the one place OUT-03's promise "with references to wiki pages" becomes something the
+user can act on. **What the answer contains is the agent's** (QUERY-004); that the name in it can be
+followed is Grimoire's.
+
+The agent writes ordinary relative Markdown links, in the wiki's own link form (WIKI-001, OKF §6.1),
+and **the browser** makes them followable — so nothing new goes into a wiki page and the link form
+lives in one place. The prose stays as the agent wrote it, and each reference to a page of the wiki is
+drawn as a link in a line beside the answer, appended as the answer grows: rewriting the text the user
+is reading would replace it, which ACCESS-007 forbids. A reference's target is the page's path **relative to the wiki's root**, which is the one
+anchor an answer has: §6.1 writes a link relative to the page it sits on, and an answer sits on no
+page.
+
+The two values a link needs are start-up inputs, `--vault` and `--vault-root`, and they reach the
+browser on the chat stream's opening snapshot — they are the hub's and not the page's, the same
+argument the cost ceiling already makes. `--vault-root` exists because the owner defines the directory
+the in-vault paths hang off; an absolute-path form would have taken that decision away from them.
+
+**Their absence refuses nothing.** The answer still arrives and the page's name is still readable in
+it as plain text, with one line saying that opening a page is not set up. Refusing the way QUERY-003
+refuses a missing purpose description was declined: the purpose description is what the agent's
+judgment rests on, and this is a convenience. Saying nothing was declined too — a reader could not
+then tell a setting that is absent from a page that is simply not linkable.
+
+**A link to a page that does not exist is Grimoire's business in neither direction.** OKF requires
+readers to tolerate a broken link and nothing in Grimoire checks one (`docs/capabilities/wiki.md`);
+the link is built and the editor does what it does with a missing file.
+
+ACCESS-010 is where `docs/ux.md`'s "no navigation chrome until a second job exists" gets its consumer: a
+third job exists, so the three pages carry a line of links to each other. It stays a line of links — no
+bar and no menu — because that is what the pages already are.
 
 ## Retired
 

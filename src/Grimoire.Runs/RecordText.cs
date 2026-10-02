@@ -83,7 +83,9 @@ public static class RecordText
         var text = new StringBuilder();
         text.Append(CultureInfo.InvariantCulture, $"{level} {Moment(moment.At)} · {opening}\n\n");
 
-        if (moment.Content is not { } content)
+        var content = moment.Content;
+
+        if (content is null)
         {
             // Refused rather than read around: a result nobody could read is said to be one, and the
             // moment stays in the record (RUNS-009, data-model.md §RunMoment).

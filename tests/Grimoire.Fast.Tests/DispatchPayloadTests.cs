@@ -6,12 +6,12 @@ namespace Grimoire.Fast.Tests;
 /// What a run is given, and what does not reach it (INGEST-002, Constitution V.1).
 /// </summary>
 [Trait("level", "fast")]
-[Trait("req", "INGEST-002")]
 public sealed class DispatchPayloadTests
 {
     private readonly FastHub hub = new();
 
     [Fact]
+    [Trait("req", "INGEST-002")]
     public async Task Dispatch_CarriesTheInstructionThePurposeTheTextAndTheRunIdentifier()
     {
         await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -26,6 +26,7 @@ public sealed class DispatchPayloadTests
     }
 
     [Fact]
+    [Trait("req", "INGEST-002")]
     public async Task Dispatch_CarriesNothingBeyondThoseFour()
     {
         await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -44,6 +45,7 @@ public sealed class DispatchPayloadTests
     }
 
     [Fact]
+    [Trait("req", "INGEST-002")]
     public async Task Dispatch_RunsOnThePinnedModelTheHubWasStartedWith()
     {
         await hub.AcceptedAsync();
@@ -54,10 +56,29 @@ public sealed class DispatchPayloadTests
     }
 
     [Fact]
+    [Trait("req", "GUARD-001")]
     public async Task Dispatch_CarriesTheGrantTheRunRecorded()
     {
         var submission = await hub.AcceptedAsync();
 
         Assert.Equal(hub.Conductor.Of(submission.Id)!.Grant, hub.Harness.Dispatched.Single().Grant);
+    }
+
+    [Fact]
+    [Trait("req", "GUARD-002")]
+    public async Task Dispatch_CarriesTheIngestGrantAtItsDoor_ForASubmission()
+    {
+        await hub.AcceptedAsync();
+
+        var grant = hub.Harness.Dispatched.Single().Grant;
+
+        // Which grant a run gets follows from what caused it. A submission's run given the question's
+        // two reads would be dispatched at the questions door and could write nothing it was asked to
+        // write — and the grant read off the run it was recorded on would agree with itself all the
+        // same, so it is held against the five here (GUARD-002, GUARD-005).
+        Assert.Equal(
+            ["list_pages", "read_page", "write_page", "write_index", "append_log"],
+            grant.ToolNames);
+        Assert.Equal("runs", grant.Endpoint);
     }
 }

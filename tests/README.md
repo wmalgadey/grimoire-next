@@ -67,6 +67,19 @@ these projects, and only these: the underscores are what separate the three part
 about identifiers an API exposes, whereas a test method is called by the runner and by nobody
 else. It stays on everywhere else in the tree.
 
+## A test that had no red phase
+
+A test written before its code has been seen to fail. One that arrives any other way — moved to
+another suite, rewritten, taken over from another level — has not, and a test that has never been
+red may not be able to be. So it is shown red **once**: take out the guard it is there for, run it,
+watch it fail, put the guard back. The removal is not committed; the commit message or the PR says
+which guard was taken out and that the test failed without it.
+
+`MarkdownRunRecordTests.Record_TakesNoSecondTail_WhenTheRunIsEndedAgain` is the example. It came to
+the Contract suite in `fcd408c` from a Fast test that had proven the guard on the in-memory double
+only, so it had never failed against `MarkdownRunRecord`. With `if (!ended.Add(tail.RunId))` in
+`Ended` reduced to `ended.Add(tail.RunId);`, the second tail is appended and the test fails.
+
 ## How a surviving mutant is read
 
 `scripts/mutation.sh` and CI's `mutation` job produce the reports; a person reads them, and the

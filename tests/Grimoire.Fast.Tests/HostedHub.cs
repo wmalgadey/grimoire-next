@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using Grimoire.Hub;
 using Grimoire.Hub.Api;
 using Grimoire.Runs;
@@ -13,10 +15,17 @@ namespace Grimoire.Fast.Tests;
 /// <remarks>
 /// <para>
 /// <see cref="FastHub"/> is what almost every test here uses: it composes the board, the conductor and
-/// the intake directly, with no server and no files, which is what keeps the suite inside its 15 s.
-/// This one exists for the one thing that needs a request to reach an endpoint at all — the record
-/// endpoint of ACCESS-006 — and it is in the Fast suite because nothing outside the process is
+/// the intake directly, with no server and no files. This one is for what only a request can show —
+/// what an endpoint answers, and what a stream sends (ACCESS-005 to ACCESS-009, the question's
+/// refusals over HTTP) — and it is in the Fast suite because nothing outside the process is
 /// involved: loopback, in-memory adapters, and a clock a test moves itself.
+/// </para>
+/// <para>
+/// Thirteen classes use it, 47 test cases between them, and each builds a hub of its own. A build
+/// costs about 0.16 CPU-seconds once the host reads no configuration file (DEC-034; with the file
+/// watcher it was 0.43, most of it kernel time). Kestrel's own start is about 5 ms of that, so a server
+/// shared by a class would save next to nothing, and a hub shared across tests would share the state
+/// each test needs fresh (specs/004-ask-the-wiki/test-audit.md, §3).
 /// </para>
 /// <para>
 /// The two start-up inputs are real files, because <c>InstructionLoader</c> reads paths and is not
@@ -30,20 +39,44 @@ internal sealed class HostedHub : IAsyncDisposable
     private readonly HttpClient client;
     private readonly string directory;
 
-    public HostedHub(bool recordEverythingFails = false)
+    /// <summary>
+    /// A hub as a running server, optionally one that was <b>told the vault settings</b>.
+    /// </summary>
+    /// <param name="recordEverythingFails">Whether writing a run's record fails (ACCESS-006).</param>
+    /// <param name="vaultName">
+    /// The Obsidian vault the wiki is read in, or null where this hub was not told. A start-up input
+    /// like the instruction paths, so it is given here and not by a request: ACCESS-009 is about what
+    /// the browser is told when the two settings are there and when either is missing.
+    /// </param>
+    /// <param name="wikiPathInVault">
+    /// The wiki's own path <b>inside</b> that vault — <c>wiki</c>, not a filesystem path. The entry
+    /// point derives it from <c>--vault-root</c>; a test gives it directly, because what the browser
+    /// is told is what ACCESS-009 is about.
+    /// </param>
+    public HostedHub(
+        bool recordEverythingFails = false, string? vaultName = null, string? wikiPathInVault = null)
     {
         directory = Directory.CreateTempSubdirectory("grimoire-fast-hub-").FullName;
 
         var instruction = Path.Combine(directory, "ingest.md");
+        var questionInstruction = Path.Combine(directory, "question.md");
         var purpose = Path.Combine(directory, "purpose.md");
         File.WriteAllText(instruction, "# Instruction");
+        File.WriteAllText(questionInstruction, "# Question");
         File.WriteAllText(purpose, "# Purpose");
 
         Record.FailWrites = recordEverythingFails;
 
         app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, purpose, WikiRoot: directory, Model: FastHub.Model),
+            new HubOptions(
+                instruction,
+                questionInstruction,
+                purpose,
+                WikiRoot: directory,
+                Model: FastHub.Model,
+                VaultName: vaultName,
+                WikiPathInVault: wikiPathInVault),
             Agent,
             Wiki,
             Store,
@@ -55,6 +88,17 @@ internal sealed class HostedHub : IAsyncDisposable
         client = new HttpClient { BaseAddress = new Uri(app.Urls.First()) };
         Runs = new RunReference(Store);
     }
+
+    /// <summary>
+    /// The three start-up inputs are real files, because <c>InstructionLoader</c> reads paths and is not
+    /// behind a port. Deleting one is how a test reaches INGEST-003's and QUERY-003's "not at the path
+    /// the hub was started with", which is read per submission and per question rather than once.
+    /// </summary>
+    public void IngestInstructionIsGone() => File.Delete(Path.Combine(directory, "ingest.md"));
+
+    public void QuestionInstructionIsGone() => File.Delete(Path.Combine(directory, "question.md"));
+
+    public void PurposeDescriptionIsGone() => File.Delete(Path.Combine(directory, "purpose.md"));
 
     public InMemoryAgentHarness Agent { get; } = new();
 
@@ -89,8 +133,49 @@ internal sealed class HostedHub : IAsyncDisposable
         return Guid.Parse(accepted!.Id);
     }
 
+    /// <summary>
+    /// A question asked the way the chat asks it, answering with the accepted question's id. The intake
+    /// awaits the pump, so its run is dispatched by the time this returns (QUERY-001).
+    /// </summary>
+    public async Task<Guid> AskAsync(string text)
+    {
+        var response = await PostAsync("/api/chat/questions", new { text }).ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var accepted = await response.Content
+            .ReadFromJsonAsync<ChatTurnView>(TestContext.Current.CancellationToken)
+            .ConfigureAwait(false);
+
+        return Guid.Parse(accepted!.Id);
+    }
+
     public Task<HttpResponseMessage> GetAsync(string path) =>
         client.GetAsync(new Uri(path, UriKind.Relative), TestContext.Current.CancellationToken);
+
+    /// <summary>
+    /// A command the page sends with no body — the acknowledgement is the one there is.
+    /// </summary>
+    public Task<HttpResponseMessage> PostAsync(string path) =>
+        client.PostAsync(new Uri(path, UriKind.Relative), content: null, TestContext.Current.CancellationToken);
+
+    /// <summary>
+    /// A command the page sends with a JSON body, the way the page sends it.
+    /// </summary>
+    /// <remarks>
+    /// It exists so that the status and the wire names an endpoint answers with are read from the
+    /// endpoint rather than from the objects behind it. Those names are what the browser reads: a test
+    /// that asserted the enum the board returns would pass while the page was told something else — the
+    /// same shape of mistake that let a hub serving five tools at the question door pass its tests
+    /// (GUARD-005's history).
+    /// </remarks>
+    public Task<HttpResponseMessage> PostAsync<TBody>(string path, TBody body) =>
+        client.PostAsJsonAsync(new Uri(path, UriKind.Relative), body, TestContext.Current.CancellationToken);
+
+    /// <summary>
+    /// One of the hub's streams, opened the way the browser's <c>EventSource</c> opens it.
+    /// </summary>
+    public Task<EventStream> WatchAsync(string path) => EventStream.OpeningAsync(client, path);
 
     public async ValueTask DisposeAsync()
     {
@@ -105,4 +190,103 @@ internal sealed class RunReference(InMemorySubmissionStore store)
 {
     public StoredRun? Of(Guid submissionId) =>
         store.Load().FirstOrDefault(s => s.Id == submissionId)?.Run;
+}
+
+/// <summary>
+/// One <c>text/event-stream</c>, read event by event as a test asks for the next one (ACCESS-005,
+/// ACCESS-006, ACCESS-007).
+/// </summary>
+/// <remarks>
+/// <para>
+/// A reader of its own rather than an assertion on a whole body: a stream never ends, so a test that
+/// read it to completion would wait for ever. This one opens the response as soon as the headers are
+/// there and hands over each event as it arrives, which is also the order a test needs — subscribe,
+/// then make something happen, then read what was sent.
+/// </para>
+/// <para>
+/// That <c>TypedResults.ServerSentEvents</c> frames an event is framework behaviour and is not
+/// tested (Constitution III.8, research.md R-01). What is read here is the event name and its one
+/// line of JSON, because that is what we put on the stream.
+/// </para>
+/// </remarks>
+internal sealed class EventStream(HttpResponseMessage response, StreamReader lines) : IAsyncDisposable
+{
+    /// <summary>
+    /// How long a test waits for an event that should already be on its way. Generous enough not to
+    /// be flaky on a loaded machine and far inside the suite's own 15 s (Constitution III.7): a test
+    /// that reaches it has found a stream that sends nothing, which is a failure and not a slow pass.
+    /// </summary>
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(5);
+
+    public static async Task<EventStream> OpeningAsync(HttpClient client, string path)
+    {
+        var response = await client.GetAsync(
+            new Uri(path, UriKind.Relative),
+            HttpCompletionOption.ResponseHeadersRead,
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var stream = await response.Content
+            .ReadAsStreamAsync(TestContext.Current.CancellationToken).ConfigureAwait(false);
+
+        return new EventStream(response, new StreamReader(stream, Encoding.UTF8));
+    }
+
+    /// <summary>The next event: its name, and its <c>data</c> as the one line of JSON it is.</summary>
+    public async Task<(string Event, string Data)> NextAsync()
+    {
+        using var patience = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+
+        patience.CancelAfter(Patience);
+
+        var name = string.Empty;
+        var data = new StringBuilder();
+
+        while (await lines.ReadLineAsync(patience.Token).ConfigureAwait(false) is { } line)
+        {
+            // A blank line ends the event, which is the whole of the framing this reader knows.
+            if (line.Length == 0)
+            {
+                if (data.Length > 0)
+                {
+                    return (name, data.ToString());
+                }
+
+                continue;
+            }
+
+            if (line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                name = line["event:".Length..].Trim();
+            }
+            else if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                // One line of JSON per event, by this API's own rule, so several `data:` lines would
+                // be a shape the contract does not promise — joined with the newline SSE would put
+                // back, so a test that met one would see it rather than a silently mangled body.
+                data.Append(data.Length > 0 ? "\n" : string.Empty).Append(line["data:".Length..].TrimStart());
+            }
+        }
+
+        throw new InvalidOperationException("the stream ended without another event");
+    }
+
+    /// <summary>The next event's <c>data</c>, read as the shape the contract promises.</summary>
+    public async Task<T> NextAsync<T>(string expected)
+    {
+        var (name, data) = await NextAsync().ConfigureAwait(false);
+
+        Assert.Equal(expected, name);
+
+        return JsonSerializer.Deserialize<T>(data)!;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        lines.Dispose();
+        response.Dispose();
+        await Task.CompletedTask.ConfigureAwait(false);
+    }
 }

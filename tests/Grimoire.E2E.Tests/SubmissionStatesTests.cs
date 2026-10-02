@@ -23,11 +23,10 @@ namespace Grimoire.E2E.Tests;
 /// </para>
 /// </remarks>
 [Trait("level", "e2e")]
-[Trait("req", "ACCESS-005")]
-[Trait("req", "ACCESS-004")]
 public sealed class SubmissionStatesTests : PageTest
 {
     [Fact]
+    [Trait("req", "ACCESS-005")]
     public async Task List_ShowsEachSubmissionInItsState()
     {
         var token = TestContext.Current.CancellationToken;
@@ -54,14 +53,16 @@ public sealed class SubmissionStatesTests : PageTest
         await Expect(State(failed)).ToHaveTextAsync("failed");
         await Expect(State(done)).ToHaveTextAsync("done");
 
-        // The agent reports in while the page is open. The browser polls; nothing is pushed to it
-        // (contracts/hub-http-api.md).
+        // The agent reports in while the page is open, and the page is sent the list again — it asks
+        // for nothing (contracts/hub-http-api.md).
         hub.Agent.ReportIn(underWay);
 
         await Expect(State(underWay)).ToHaveTextAsync("running");
     }
 
     [Fact]
+    [Trait("req", "ACCESS-005")]
+    [Trait("req", "ACCESS-004")]
     public async Task List_ShowsTheModelAndBothFigures_ForARunThatHasEnded()
     {
         var token = TestContext.Current.CancellationToken;
@@ -108,6 +109,7 @@ public sealed class SubmissionStatesTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-005")]
     public async Task List_ShowsNoRunFigures_ForASubmissionWaitingItsTurn()
     {
         var token = TestContext.Current.CancellationToken;
@@ -128,6 +130,7 @@ public sealed class SubmissionStatesTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-005")]
     public async Task Figures_RiseWhileTheRunIsUnderWay_WithoutMovingTheRows()
     {
         var token = TestContext.Current.CancellationToken;
@@ -175,7 +178,9 @@ public sealed class SubmissionStatesTests : PageTest
 
     [Fact]
     [Trait("req", "ACCESS-003")]
-    public async Task Row_IsNotRebuiltUnderTheUser_WhileTheListPolls()
+    [Trait("req", "ACCESS-005")]
+    [Trait("req", "RUNS-003")]
+    public async Task Row_IsNotRebuiltUnderTheUser_WhileTheListIsSentWhatHappens()
     {
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
@@ -190,11 +195,16 @@ public sealed class SubmissionStatesTests : PageTest
         await Expect(acknowledge).ToBeVisibleAsync();
         await acknowledge.FocusAsync();
 
-        // Two polls' worth. The list used to call replaceChildren every second, which took the control
-        // out from under the user's finger and dropped the focus with it (research.md R-09). A row is
-        // written to now, not rebuilt, so what the user is reaching for stays where it is.
-        await Page.WaitForTimeoutAsync(2_200);
+        // The list is sent something while the control is under the user's finger. It used to call
+        // replaceChildren on every poll, which took the control away and dropped the focus with it
+        // (research.md R-09); a row is written to rather than rebuilt, so what the user is reaching for
+        // stays where it is however often an event arrives.
+        //
+        // A change is made rather than a delay waited out: with the poll gone there is no interval to
+        // wait two of, and waiting for a second that nothing happens in would prove nothing at all.
+        var second = await hub.SubmitAsync("Grace Hopper found the first bug in a relay.", token);
 
+        await Expect(Row(second)).ToBeVisibleAsync();
         await Expect(acknowledge).ToBeFocusedAsync();
 
         // And it still does what it is for.
@@ -204,6 +214,7 @@ public sealed class SubmissionStatesTests : PageTest
     }
 
     [Fact]
+    [Trait("req", "ACCESS-004")]
     public async Task List_PutsANewSubmissionFirst_WhileThePageIsOpen()
     {
         var token = TestContext.Current.CancellationToken;
@@ -216,7 +227,7 @@ public sealed class SubmissionStatesTests : PageTest
         await Expect(Row(first)).ToBeVisibleAsync();
 
         // Submitted from elsewhere while this page is open — a second browser, or the same user in
-        // another tab. The list polls; nothing is pushed to it.
+        // another tab. The page is sent the list; it asks for nothing.
         var second = await hub.SubmitAsync("Grace Hopper found the first bug in a relay.", token);
 
         await Expect(Row(second)).ToBeVisibleAsync();

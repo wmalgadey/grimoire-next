@@ -6,6 +6,7 @@ using Grimoire.Hub.Api;
 using Grimoire.Runs.Adapters;
 using Grimoire.Wiki.Adapters;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 
 namespace Grimoire.E2E.Tests;
 
@@ -88,8 +89,8 @@ internal sealed class DrivableHarness : IAgentHarness
     /// A submission does not start its run at the moment it is accepted: it starts when the queue
     /// reaches it, which for a text waiting behind a failure is after the acknowledgement the
     /// browser sent, on the hub's own thread and after the response was written (RUNS-002,
-    /// RUNS-003). A test drives the agent from outside, so it waits for the run the way the page's
-    /// own polling waits for the state.
+    /// RUNS-003). A test drives the agent from outside, so it waits for the run the way the page
+    /// waits to be sent the state.
     /// </remarks>
     private RunReport Of(Guid submissionId)
     {
@@ -152,7 +153,27 @@ internal sealed class HubUnderTest : IAsyncDisposable
     public DrivableHarness Agent { get; }
 
     public static Task<HubUnderTest> StartAsync(CancellationToken cancellationToken) =>
-        StartAsync(Directory.CreateTempSubdirectory("grimoire-e2e-").FullName, ownsTheDirectory: true, cancellationToken);
+        StartAsync(
+            Directory.CreateTempSubdirectory("grimoire-e2e-").FullName,
+            ownsTheDirectory: true,
+            cancellationToken);
+
+    /// <summary>
+    /// A hub told where the wiki is read, so that a page an answer names can be opened from it
+    /// (ACCESS-009).
+    /// </summary>
+    /// <remarks>
+    /// They are start-up inputs and both optional, and what the browser does with them present and
+    /// absent is the whole of ACCESS-009 — so a test needs a hub of each kind.
+    /// </remarks>
+    public static Task<HubUnderTest> StartAsync(
+        string vaultName, string wikiPathInVault, CancellationToken cancellationToken) =>
+        StartAsync(
+            Directory.CreateTempSubdirectory("grimoire-e2e-").FullName,
+            ownsTheDirectory: true,
+            cancellationToken,
+            vaultName,
+            wikiPathInVault);
 
     /// <summary>
     /// Grimoire stopped and started again over the same state, which is what a restart is — a
@@ -165,14 +186,19 @@ internal sealed class HubUnderTest : IAsyncDisposable
 
         await stopped.StopAsync(cancellationToken).ConfigureAwait(false);
 
-        return await StartAsync(stopped.directory, ownsTheDirectory: false, cancellationToken).ConfigureAwait(false);
+        return await StartAsync(stopped.directory, ownsTheDirectory: false, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>The hub goes down, and its directory stays where it is.</summary>
     public Task StopAsync(CancellationToken cancellationToken) => app.StopAsync(cancellationToken);
 
     private static async Task<HubUnderTest> StartAsync(
-        string directory, bool ownsTheDirectory, CancellationToken cancellationToken)
+        string directory,
+        bool ownsTheDirectory,
+        CancellationToken cancellationToken,
+        string? vaultName = null,
+        string? wikiPathInVault = null)
     {
         // Both texts every run receives (V.1). Their content does not matter here — the browser
         // door is ACCESS-001, ACCESS-005 and ACCESS-006; what a run is given is INGEST-002, proven a
@@ -186,25 +212,53 @@ internal sealed class HubUnderTest : IAsyncDisposable
         var state = Path.Combine(directory, "state");
         Directory.CreateDirectory(wiki);
         var instruction = Path.Combine(directory, "ingest.md");
+        var questionInstruction = Path.Combine(directory, "question.md");
         var purpose = Path.Combine(directory, "purpose.md");
         await File.WriteAllTextAsync(instruction, "# Instruction", cancellationToken).ConfigureAwait(false);
+        await File.WriteAllTextAsync(questionInstruction, "# Question", cancellationToken).ConfigureAwait(false);
         await File.WriteAllTextAsync(purpose, "# Purpose", cancellationToken).ConfigureAwait(false);
 
         var agent = new DrivableHarness();
 
         var app = HubApplication.Build(
             ["--urls", "http://127.0.0.1:0"],
-            new HubOptions(instruction, purpose, WikiRoot: wiki, Model: "claude-opus-4-5-20251101"),
+            new HubOptions(
+                instruction,
+                questionInstruction,
+                purpose,
+                WikiRoot: wiki,
+                Model: "claude-opus-4-5-20251101",
+                VaultName: vaultName,
+                WikiPathInVault: wikiPathInVault),
             agent,
             new FileSystemWikiStore(wiki),
             new SqliteSubmissionStore(state),
             new MarkdownRunRecord(state),
             TimeProvider.System);
 
+        var streams = new ChatStreamLine();
+        app.Use(streams.Through);
+
         await app.StartAsync(cancellationToken).ConfigureAwait(false);
 
-        return new HubUnderTest(app, agent, directory, app.Urls.First(), ownsTheDirectory);
+        return new HubUnderTest(app, agent, directory, app.Urls.First(), ownsTheDirectory) { chatStreams = streams };
     }
+
+    private ChatStreamLine chatStreams = null!;
+
+    /// <summary>
+    /// The browser loses its chat stream: every one open now is cut, and one opened again waits
+    /// until <see cref="ChatStreamRestored"/> (ACCESS-007's last clause).
+    /// </summary>
+    /// <remarks>
+    /// Cut here, at the hub, because the browser offers no way to: Playwright's offline switch stops
+    /// new requests but leaves a stream already open on loopback flowing. What the page sees is the
+    /// same either way — the connection drops, and <c>EventSource</c> makes it again.
+    /// </remarks>
+    public void ChatStreamLost() => chatStreams.Lost();
+
+    /// <summary>The line is back, and the stream the browser is waiting on opens.</summary>
+    public void ChatStreamRestored() => chatStreams.Restored();
 
     /// <summary>
     /// A text submitted the way the page submits it, answering with the accepted submission's id.
@@ -219,6 +273,24 @@ internal sealed class HubUnderTest : IAsyncDisposable
         response.EnsureSuccessStatusCode();
 
         var accepted = await response.Content.ReadFromJsonAsync<SubmissionView>(cancellationToken)
+            .ConfigureAwait(false);
+
+        return Guid.Parse(accepted!.Id);
+    }
+
+    /// <summary>
+    /// A question asked the way the chat asks it, answering with the accepted question's id. A question
+    /// the browser is to show has to exist before the browser can show it; that the form itself asks is
+    /// ACCESS-007's own, proven in <see cref="AskingTheWikiTests"/>.
+    /// </summary>
+    public async Task<Guid> AskAsync(string text, CancellationToken cancellationToken)
+    {
+        var response = await client.PostAsJsonAsync("/api/chat/questions", new { text }, cancellationToken)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var accepted = await response.Content.ReadFromJsonAsync<ChatTurnView>(cancellationToken)
             .ConfigureAwait(false);
 
         return Guid.Parse(accepted!.Id);
@@ -290,5 +362,70 @@ internal sealed class HubUnderTest : IAsyncDisposable
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+}
+
+/// <summary>The chat streams the hub is serving, which a test can cut and let through again.</summary>
+internal sealed class ChatStreamLine
+{
+    private readonly ConcurrentDictionary<HttpContext, byte> open = new();
+    private readonly Lock gate = new();
+    private TaskCompletionSource up = Up();
+
+    public async Task Through(HttpContext context, RequestDelegate next)
+    {
+        if (!context.Request.Path.Equals("/api/chat/events", StringComparison.Ordinal))
+        {
+            await next(context).ConfigureAwait(false);
+            return;
+        }
+
+        Task waitFor;
+
+        lock (gate)
+        {
+            waitFor = up.Task;
+        }
+
+        await waitFor.WaitAsync(context.RequestAborted).ConfigureAwait(false);
+
+        open[context] = 0;
+
+        try
+        {
+            await next(context).ConfigureAwait(false);
+        }
+        finally
+        {
+            open.TryRemove(context, out _);
+        }
+    }
+
+    public void Lost()
+    {
+        lock (gate)
+        {
+            up = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        foreach (var context in open.Keys)
+        {
+            context.Abort();
+        }
+    }
+
+    public void Restored()
+    {
+        lock (gate)
+        {
+            up.TrySetResult();
+        }
+    }
+
+    private static TaskCompletionSource Up()
+    {
+        var open = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        open.SetResult();
+        return open;
     }
 }

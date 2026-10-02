@@ -20,6 +20,58 @@ public sealed class RunRecordTests
 
     [Fact]
     [Trait("req", "RUNS-007")]
+    [Trait("req", "RUNS-008")]
+    [Trait("req", "RUNS-009")]
+    public async Task Record_IsNotWrittenForARunAQuestionCaused()
+    {
+        var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
+        var run = question.RunId!.Value;
+
+        hub.Harness.Did(question.Id, new TranscriptMoment(RunMomentKind.AgentSaid, null, "She wrote it."));
+        hub.Harness.Called(question.Id, "read_page", """{"path":"people/ada-lovelace.md"}""");
+
+        await hub.Harness.StoppedAsync(question.Id);
+        hub.Harness.Exit(question.Id, exitCode: 0);
+
+        // **No record at all** — no head, no moment, no tail. RUNS-007 as this feature rewords it gives
+        // one to every run **a submission causes**: a record exists because a run is handed over and
+        // reviewed afterwards, and a chat is read as it happens, so a file for it would be one nobody
+        // opens (Constitution II.1). RUNS-008 and RUNS-009 follow — they are properties of a record, and
+        // there is none here to hold a frame or what the run did.
+        Assert.False(hub.Record.Holds(run));
+        Assert.Null(hub.Record.HeadOf(run));
+        Assert.Empty(hub.Record.MomentsOf(run));
+        Assert.Null(hub.Record.TailOf(run));
+
+        // And nothing was lost either: no write failed, because none was attempted. `EntriesLost` is
+        // always zero for a question's run, which is what the figures on it say (RUNS-007, RUNS-010).
+        Assert.Equal(0, hub.Record.EntriesLost(run));
+        Assert.Equal(0, question.Figures!.EntriesLost);
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-007")]
+    public async Task Record_IsStillWrittenForARunASubmissionCaused_BesideAQuestion()
+    {
+        var submission = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
+        var question = await hub.AskedAsync("What does the wiki say about Ada Lovelace?");
+
+        // The submission's run holds the queue, so the question waits — and the one record that exists
+        // is the submission's. The rewording narrowed RUNS-007 and changed nothing about the runs it
+        // still covers.
+        Assert.True(hub.Record.Holds(submission.RunId!.Value));
+        Assert.Null(question.RunId);
+
+        hub.Harness.End(submission.Id, RunOutcome.Done, RunEndedBecause.StoppedWithItsLogEntry);
+        await Task.Yield();
+
+        Assert.NotNull(question.RunId);
+        Assert.True(hub.Record.Holds(submission.RunId!.Value));
+        Assert.False(hub.Record.Holds(question.RunId!.Value));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-007")]
     public async Task Record_IsOnePerRun()
     {
         var first = await hub.AcceptedAsync("Ada Lovelace wrote the first program.");
@@ -87,56 +139,6 @@ public sealed class RunRecordTests
 
     [Fact]
     [Trait("req", "RUNS-007")]
-    public async Task Record_TakesNoSecondTail_WhenTheRunIsReportedEndedAgain()
-    {
-        var submission = await hub.AcceptedAsync();
-        var run = hub.Conductor.Of(submission.Id)!;
-
-        hub.Harness.End(submission.Id, RunOutcome.Failed);
-        var once = hub.Record.Of(run.Id);
-
-        // A harness whose process died after the hub had already ended the run reports again. A run
-        // ends once, so nothing is written after the tail.
-        hub.Record.Ended(new RunFrameTail(
-            run.Id,
-            FastSuite.Start,
-            RunOutcome.Done,
-            RunEndedBecause.StoppedWithItsLogEntry,
-            TimeSpan.Zero,
-            CostSpent: 0,
-            Tokens: default,
-            run.Ceilings,
-            new Dictionary<string, ModelTokens>(StringComparer.Ordinal)));
-
-        Assert.Equal(once, hub.Record.Of(run.Id));
-        Assert.Single(hub.Record.Of(run.Id).OfType<RunFrameTail>());
-    }
-
-    [Fact]
-    [Trait("req", "RUNS-007")]
-    public async Task Record_TakesNoMoment_AfterItsTail()
-    {
-        var submission = await hub.AcceptedAsync();
-        var run = hub.Conductor.Of(submission.Id)!;
-
-        hub.Harness.ReportIn(submission.Id);
-        hub.Harness.End(submission.Id, RunOutcome.Failed);
-
-        var ended = hub.Record.Of(run.Id);
-
-        // A moment already in flight when the run ended: the conductor looks a run up and appends in
-        // two steps, so one can arrive after the ending that removed it. Nothing is written after the
-        // tail (contracts/run-record.md), and nothing is counted lost either — no write failed, the run
-        // was simply already over.
-        hub.Record.Append(new RunMoment(
-            run.Id, FastSuite.Start, RunMomentKind.AgentSaid, Tool: null, "one word too late"));
-
-        Assert.Equal(ended, hub.Record.Of(run.Id));
-        Assert.Equal(0, hub.Record.EntriesLost(run.Id));
-    }
-
-    [Fact]
-    [Trait("req", "RUNS-007")]
     public async Task Write_IsCountedAndDoesNotThrow_WhenTheRecordCannotBeWritten()
     {
         var submission = await hub.AcceptedAsync();
@@ -166,6 +168,7 @@ public sealed class RunRecordTests
 
     [Fact]
     [Trait("req", "RUNS-007")]
+    [Trait("req", "RUNS-005")]
     public async Task Record_AsksTheWikiForNothing()
     {
         var submission = await hub.AcceptedAsync();

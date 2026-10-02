@@ -24,6 +24,7 @@
        It is what the instruction argument defaults to, so it sits under the same base directory. -->
   <ItemGroup>
     <Content Include="../../instructions/ingest.md" Link="instructions/ingest.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../instructions/question.md" Link="instructions/question.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

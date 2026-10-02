@@ -1,0 +1,238 @@
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
+
+namespace Grimoire.Hub;
+
+/// <summary>
+/// How far through what it is watching one subscriber has been sent (research.md R-05).
+/// </summary>
+/// <remarks>
+/// The one thing a stream keeps per subscriber, and it exists for exactly one stream: a record
+/// reaches the low hundreds of kilobytes, so it is the one view whose events carry an increment
+/// rather than the whole of what the view shows (ACCESS-006). The submissions list and the chat
+/// leave it untouched.
+/// <para>
+/// Mutable, and moved by the delegate that made the payload: what was sent and how far that took
+/// the subscriber are one decision, and split in two a failure between them would either repeat
+/// bytes or skip them.
+/// </para>
+/// </remarks>
+public sealed class Sent
+{
+    /// <summary>How many bytes of what this subscriber watches it has already been given.</summary>
+    public int Bytes { get; set; }
+
+    /// <summary>How many lost entries this subscriber has already been told about.</summary>
+    public int EntriesLost { get; set; }
+
+    /// <summary>
+    /// How many of the chat's changes this subscriber has been told about (ACCESS-007).
+    /// </summary>
+    /// <remarks>
+    /// A position and not a copy of what was sent: the chat's changes are descriptors read forward, so
+    /// this is the same kind of bookkeeping <see cref="Bytes"/> is for a record. A subscriber starts at
+    /// the <em>end</em> of them, because its snapshot already carried everything before it.
+    /// </remarks>
+    public int Changes { get; set; }
+
+    /// <summary>
+    /// Which chat this subscriber's <see cref="Changes"/> counts into, so that a new chat is told apart
+    /// from the same chat having grown (QUERY-005).
+    /// </summary>
+    public int Generation { get; set; }
+}
+
+/// <summary>
+/// What the browser is sent while it has a page open (ACCESS-005, ACCESS-006, ACCESS-007).
+/// </summary>
+/// <remarks>
+/// <para>
+/// A plain class — <b>no port and no interface</b>. Nothing outside the process is behind it and no
+/// second implementation exists, which is when Constitution II.4 forbids one. What is outside the
+/// process is the connection each stream is written to, and that is the host's.
+/// </para>
+/// <para>
+/// One <see cref="Channel"/> per subscriber, drained by the endpoint serving that subscriber's
+/// stream. It holds <b>one</b> signal and drops what it cannot hold, which is exactly right rather
+/// than a compromise: a signal carries no payload, and what to send is worked out from the current
+/// state when the subscriber wakes — so one pending signal already says everything a hundred of
+/// them would. A subscriber that is far behind costs one byte, and a write never blocks the board
+/// under its lock (research.md R-05).
+/// </para>
+/// <para>
+/// <b>Nothing is replayed.</b> What is published while nobody is subscribed reaches nobody: the
+/// snapshot every stream opens with is what answers a reconnect, so a browser that comes back reads
+/// what it is looking at as it then stands, including what arrived while it was away (ACCESS-007,
+/// research.md R-01). There is therefore no buffer, no <c>Last-Event-ID</c> and nothing to expire.
+/// </para>
+/// </remarks>
+public sealed class LiveUpdates
+{
+    /// <summary>The submissions list — one topic, because every browser reading it reads the same list.</summary>
+    public const string Submissions = "submissions";
+
+    /// <summary>
+    /// The chat — one topic too, and for a stronger reason: there <b>is</b> exactly one chat, and
+    /// every browser reading it reads that same one (QUERY-005).
+    /// </summary>
+    public const string Chat = "chat";
+
+    /// <summary>
+    /// A signal, and the whole of what a channel carries. What to send is worked out per subscriber
+    /// when it wakes, which is what lets one pending signal stand for every change behind it.
+    /// </summary>
+    private const byte Something = 0;
+
+    /// <summary>
+    /// One signal held, and a write that cannot be held is dropped rather than waited for.
+    /// </summary>
+    /// <remarks>
+    /// Dropping loses nothing: the signal says only that something changed, and the subscriber reads
+    /// the state itself when it wakes. Waiting is what could not be allowed — <see cref="Changed"/> is
+    /// called by the board under its one lock and by the conductor under a run's, and a write that
+    /// blocked would hold one of those for as long as a browser is slow.
+    /// </remarks>
+    private static readonly BoundedChannelOptions OneSignal = new(capacity: 1)
+    {
+        FullMode = BoundedChannelFullMode.DropWrite,
+        SingleReader = true,
+    };
+
+    private readonly Lock gate = new();
+
+    /// <summary>
+    /// Every subscriber, by topic. A list rather than a dictionary keyed by subscriber: there is no
+    /// identity to key on and nothing addresses one subscriber — a change wakes all of them.
+    /// </summary>
+    private readonly Dictionary<string, List<Channel<byte>>> watchers = new(StringComparer.Ordinal);
+
+    /// <summary>One run's record, as a topic of its own.</summary>
+    public static string RecordOf(Guid runId) => $"record/{runId}";
+
+    /// <summary>
+    /// Something a stream shows has changed: every subscriber to that topic is woken, and each then
+    /// works out for itself what it has not been sent.
+    /// </summary>
+    /// <remarks>
+    /// It never blocks and it never throws. The callers are the board under its lock and the
+    /// conductor under a run's, and a publish that could wait would hold one of those for as long as
+    /// a browser is slow — so a channel that is already holding a signal drops this one, which says
+    /// the same thing.
+    /// </remarks>
+    public void Changed(string topic)
+    {
+        lock (gate)
+        {
+            if (!watchers.TryGetValue(topic, out var subscribers))
+            {
+                return;
+            }
+
+            foreach (var subscriber in subscribers)
+            {
+                subscriber.Writer.TryWrite(Something);
+            }
+        }
+    }
+
+    /// <summary>
+    /// One subscriber's stream: the opening payload, and then one payload per change that has
+    /// something to tell this subscriber.
+    /// </summary>
+    /// <param name="opening">
+    /// The snapshot, carrying the whole of what the view shows. Every stream opens with one, which
+    /// is what answers ACCESS-007's reconnect clause with no replay buffer behind it.
+    /// </param>
+    /// <param name="next">
+    /// What to send this subscriber now, and nothing where there is nothing it has not seen. It is
+    /// given this subscriber's own <see cref="Sent"/> and moves it.
+    /// <para>
+    /// Several rather than one, because one change can be two things to say: a record that grew
+    /// while entries of it were also lost is an <c>append</c> and a <c>missing</c>, and a chat that
+    /// gained a question whose run then started is two increments. Returning one would make the
+    /// second wait for a change that may never come.
+    /// </para>
+    /// </param>
+    /// <remarks>
+    /// The subscription is registered <b>before</b> the snapshot is taken, so a change between the
+    /// two wakes this subscriber and is worked out again rather than falling in the gap. The cost is
+    /// that a subscriber can be woken for a change its snapshot already carried, and
+    /// <paramref name="next"/> answering with nothing for that is what makes it cost nothing.
+    /// </remarks>
+    public async IAsyncEnumerable<T> Watch<T>(
+        string topic,
+        Func<Sent, IEnumerable<T>> opening,
+        Func<Sent, IEnumerable<T>> next,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(opening);
+        ArgumentNullException.ThrowIfNull(next);
+
+        var channel = Channel.CreateBounded<byte>(OneSignal);
+        var sent = new Sent();
+
+        Joined(topic, channel);
+
+        try
+        {
+            foreach (var first in opening(sent))
+            {
+                yield return first;
+            }
+
+            while (await channel.Reader.WaitToReadAsync(token).ConfigureAwait(false))
+            {
+                // The one signal taken before anything is made of it, so that a change arriving while
+                // `next` is reading the state leaves a signal behind and this loop comes round for it.
+                channel.Reader.TryRead(out _);
+
+                foreach (var increment in next(sent))
+                {
+                    yield return increment;
+                }
+            }
+        }
+        finally
+        {
+            // The page closed, or the host cancelled. Left on the list, the subscriber would be
+            // written to for the life of the process — a leak the owner would read as memory growing
+            // every time a tab is opened.
+            Left(topic, channel);
+        }
+    }
+
+    private void Joined(string topic, Channel<byte> channel)
+    {
+        lock (gate)
+        {
+            if (!watchers.TryGetValue(topic, out var subscribers))
+            {
+                subscribers = [];
+                watchers[topic] = subscribers;
+            }
+
+            subscribers.Add(channel);
+        }
+    }
+
+    private void Left(string topic, Channel<byte> channel)
+    {
+        lock (gate)
+        {
+            if (!watchers.TryGetValue(topic, out var subscribers))
+            {
+                return;
+            }
+
+            subscribers.Remove(channel);
+
+            // The last reader of a run's record gone means that topic is gone: a run whose page is
+            // never opened again would otherwise leave an entry behind for every run Grimoire has
+            // ever made.
+            if (subscribers.Count == 0)
+            {
+                watchers.Remove(topic);
+            }
+        }
+    }
+}

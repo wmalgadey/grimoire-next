@@ -7,7 +7,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 env_file="$root/.env"
 
-readonly KNOWN_KEYS="GRIMOIRE_WIKI GRIMOIRE_PURPOSE GRIMOIRE_MODEL GRIMOIRE_URLS GRIMOIRE_INSTRUCTION GRIMOIRE_STATE"
+readonly KNOWN_KEYS="GRIMOIRE_WIKI GRIMOIRE_PURPOSE GRIMOIRE_MODEL GRIMOIRE_URLS GRIMOIRE_INSTRUCTION GRIMOIRE_QUESTION_INSTRUCTION GRIMOIRE_STATE GRIMOIRE_VAULT GRIMOIRE_VAULT_ROOT"
 readonly REQUIRED_KEYS="GRIMOIRE_WIKI GRIMOIRE_PURPOSE GRIMOIRE_MODEL"
 
 usage() {
@@ -25,8 +25,16 @@ Start the hub against the wiki named in .env, for trying an ingest by hand.
   GRIMOIRE_PURPOSE      the description of what it is for       (required)
   GRIMOIRE_MODEL        a pinned model id, never an alias       (required)
   GRIMOIRE_URLS         where the hub listens; loopback only    (optional)
-  GRIMOIRE_INSTRUCTION  Grimoire's own instruction              (optional)
+  GRIMOIRE_INSTRUCTION  Grimoire's own ingest instruction       (optional)
+  GRIMOIRE_QUESTION_INSTRUCTION
+                        Grimoire's own question instruction     (optional)
   GRIMOIRE_STATE        where the queue is kept across a stop   (optional)
+  GRIMOIRE_VAULT        the Obsidian vault the wiki is read in  (optional)
+  GRIMOIRE_VAULT_ROOT   the directory you have open in Obsidian (optional)
+
+The two vault settings are what lets a page an answer names be opened from the
+chat. Both or neither: without them the answer still arrives and page names read
+as plain text, and the chat says that opening a page is not set up (ACCESS-009).
 
 A relative path is taken from the repository root. .env and local/ are ignored by
 git, so what you try here stays yours; .env-example is a copy to start from.
@@ -116,6 +124,26 @@ if [[ -n "${GRIMOIRE_INSTRUCTION:-}" ]]; then
   [[ -f "$instruction" ]] || die "No instruction at $instruction."
 fi
 
+if [[ -n "${GRIMOIRE_QUESTION_INSTRUCTION:-}" ]]; then
+  question_instruction="$(absolute "$GRIMOIRE_QUESTION_INSTRUCTION")"
+  [[ -f "$question_instruction" ]] || die "No question instruction at $question_instruction."
+fi
+
+# Both or neither, and said here rather than left to the hub: half of it is a setting the
+# owner meant to work, and finding out from a chat that says "not set up" is a long way
+# round (ACCESS-009).
+if [[ -n "${GRIMOIRE_VAULT:-}" && -z "${GRIMOIRE_VAULT_ROOT:-}" ]]; then
+  refuse "GRIMOIRE_VAULT is set but GRIMOIRE_VAULT_ROOT is not. Opening a page needs both."
+fi
+if [[ -z "${GRIMOIRE_VAULT:-}" && -n "${GRIMOIRE_VAULT_ROOT:-}" ]]; then
+  refuse "GRIMOIRE_VAULT_ROOT is set but GRIMOIRE_VAULT is not. Opening a page needs both."
+fi
+
+if [[ -n "${GRIMOIRE_VAULT_ROOT:-}" ]]; then
+  vault_root="$(absolute "$GRIMOIRE_VAULT_ROOT")"
+  [[ -d "$vault_root" ]] || die "No vault at $vault_root. GRIMOIRE_VAULT_ROOT is the directory you have open in Obsidian."
+fi
+
 # Where the submissions and their states outlive a stop (RUNS-004). Beside the hub by
 # default; never inside the wiki, because Grimoire's bookkeeping does not belong in the
 # history that is the user's only undo (docs/product.md §4).
@@ -170,12 +198,19 @@ command -v claude >/dev/null || echo "Warning: no claude on PATH — a submissio
 arguments=(--wiki "$wiki" --purpose "$purpose" --model "$GRIMOIRE_MODEL")
 [[ -n "${GRIMOIRE_URLS:-}" ]] && arguments+=(--urls "$GRIMOIRE_URLS")
 [[ -n "${GRIMOIRE_INSTRUCTION:-}" ]] && arguments+=(--instruction "$instruction")
+[[ -n "${GRIMOIRE_QUESTION_INSTRUCTION:-}" ]] && arguments+=(--question-instruction "$question_instruction")
 [[ -n "${GRIMOIRE_STATE:-}" ]] && arguments+=(--state "$state")
+[[ -n "${GRIMOIRE_VAULT:-}" ]] && arguments+=(--vault "$GRIMOIRE_VAULT" --vault-root "$vault_root")
 
 echo "wiki    $wiki"
 echo "purpose $purpose"
 echo "model   $GRIMOIRE_MODEL"
 echo "open    ${GRIMOIRE_URLS:-http://127.0.0.1:5057}"
+if [[ -n "${GRIMOIRE_VAULT:-}" ]]; then
+  echo "vault   $GRIMOIRE_VAULT, at $vault_root"
+else
+  echo "vault   not set — a page an answer names will read as plain text"
+fi
 echo
 
 exec dotnet run --project "$root/src/Grimoire.Hub" --configuration Release -- "${arguments[@]}"

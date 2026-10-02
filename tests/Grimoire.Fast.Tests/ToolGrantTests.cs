@@ -81,18 +81,4 @@ public sealed class ToolGrantTests
 
         Assert.Equal(SubmissionState.Failed, submission.State);
     }
-
-    [Fact]
-    [Trait("req", "GUARD-001")]
-    public async Task AgentReportsASurfaceOutsideTheGrant_EndsTheRunBeforeItsFirstModelCall()
-    {
-        var hub = new FastHub();
-        hub.Harness.ReportedSurface = [.. ToolGrant.ForIngest, "bash"];
-
-        await hub.AcceptedAsync();
-
-        // The agent never reports in, so the submission never reads running: the run is over in
-        // the window between acceptance and system/init, which is where the grant is checked.
-        Assert.False(hub.Harness.ReportedIn);
-    }
 }

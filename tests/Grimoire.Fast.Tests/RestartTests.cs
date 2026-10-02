@@ -24,7 +24,7 @@ public sealed class RestartTests
         return accepted;
     }
 
-    private static Submission In(FastHub hub, Guid id) => hub.Board.Find(id)!;
+    private static Submission In(FastHub hub, Guid id) => (Submission)hub.Board.Find(id)!;
 
     [Fact]
     [Trait("req", "RUNS-004")]
@@ -197,6 +197,29 @@ public sealed class RestartTests
         after.Harness.End(first.Id, RunOutcome.Done);
 
         Assert.Equal([first.Id, second.Id], after.Harness.Dispatched.Select(d => d.SubmissionId));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-003")]
+    [Trait("req", "QUERY-005")]
+    public async Task Restart_BlocksNothing_WhenAQuestionsRunFailedBeforeTheStop()
+    {
+        var question = await before.AskedAsync();
+        before.Harness.End(question.Id, RunOutcome.Failed, RunEndedBecause.CostCeiling);
+
+        // Held while Grimoire runs: the failure waits on the chat for the user to see it (RUNS-003).
+        var held = await SubmittedAsync("The text submitted while the failure waited.");
+
+        Assert.Null(In(before, held.Id).RunId);
+
+        var after = before.Restarted();
+
+        // **The block went with the chat.** The question was never acknowledged, but no chat survives
+        // a stop (QUERY-005), so there is nothing left on any screen to acknowledge it from; a block
+        // restored without its question is a queue nothing can clear (runs.md, RUNS-003's last clause).
+        // Its run's row is still in the store — only the chat is gone.
+        Assert.NotNull(In(after, held.Id).RunId);
+        Assert.Empty(after.Chat.Turns);
     }
 
     private static StoredSubmission Waiting(string text, DateTimeOffset submittedAt) =>
