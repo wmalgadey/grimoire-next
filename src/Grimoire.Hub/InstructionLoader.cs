@@ -1,3 +1,4 @@
+using Grimoire.Hub.Api;
 using Grimoire.Runs;
 
 namespace Grimoire.Hub;
@@ -114,10 +115,15 @@ public sealed class InstructionLoader(
     /// to check, not context the next run needs, and a run's tool results are the largest thing in a
     /// chat by far (research.md R-07).
     /// <para>
-    /// Three turns are left out, and each for its own reason. This run's own, because it is the question
-    /// being asked and the payload carries that whole at the end. One still being answered or waiting,
-    /// because there is nothing settled to hand on. And <b>one that got no answer</b>: QUERY-006 says
-    /// nothing such a run produced is presented as its answer, and half a sentence from a failed run is
+    /// Two turns are left out, and each for its own reason. This run's own, because it is the question
+    /// being asked and the payload carries that whole at the end. And one still being answered or
+    /// waiting, because there is nothing settled to hand on.
+    /// </para>
+    /// <para>
+    /// <b>A turn that got no answer is handed on as asked</b>, with why it got none where its answer
+    /// would stand — in the words the chat shows it in. An agent not told that the question was
+    /// already asked and failed walks the same way again (DEC-042). Nothing its run produced goes in:
+    /// QUERY-006 says none of it is presented as its answer, and half a sentence from a failed run is
     /// no more an answer to the next question than it is to its own. A run that ended done with no text
     /// is <i>not</i> such a turn: its question was asked and answered, if emptily, and the next run is
     /// told so rather than left to think it was never asked.
@@ -136,7 +142,15 @@ public sealed class InstructionLoader(
             "\n\n",
             chat.Turns
                 .Where(turn => turn.Question.RunId != runId)
-                .Where(turn => turn.Question.State == QuestionState.Answered)
-                .Select(turn => $"Asked: {turn.Question.Text}\n\nAnswered: {turn.Answer}"));
+                .Select(turn => (turn, status: turn.Question.Status))
+                .Where(asked => asked.status.State is QuestionState.Answered or QuestionState.NoAnswer)
+                .Select(asked => $"Asked: {asked.turn.Question.Text}\n\n{Outcome(asked.turn, asked.status)}"));
     }
+
+    // State and reason read as one status, so a turn is never rendered with a reason from a moment
+    // other than its state's.
+    private static string Outcome(ChatTurn turn, QuestionStatus status) =>
+        status.State == QuestionState.Answered
+            ? $"Answered: {turn.Answer}"
+            : $"Got no answer because {ChatTurnView.ReasonFor(status.Because!.Value)}.";
 }

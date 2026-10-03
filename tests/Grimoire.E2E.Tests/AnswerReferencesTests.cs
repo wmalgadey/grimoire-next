@@ -33,6 +33,8 @@ public sealed class AnswerReferencesTests : PageTest
     [Trait("req", "ACCESS-007")]
     public async Task Steps_AreShutUntilTheUserOpensOne()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — chat.js builds the
+        // folds, and "shut" is a details element's open state, which only a browser has.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -75,6 +77,8 @@ public sealed class AnswerReferencesTests : PageTest
     [Trait("req", "ACCESS-007")]
     public async Task Step_AppearsBelowWhatIsThere_WhileAStepTheUserOpenedStaysOpen()
     {
+        // Why a browser (III.4): scroll, geometry and DOM identity — a step arriving keeps the
+        // scroll, the opened step open, and the one above where it was.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(token);
 
@@ -121,12 +125,21 @@ public sealed class AnswerReferencesTests : PageTest
         Assert.Equal(firstBefore!.Y, firstAfter!.Y);
     }
 
-    [Fact]
+    [Theory]
     [Trait("req", "ACCESS-009")]
-    public async Task Reference_OpensThatPageInTheOwnersOwnWiki()
+    [InlineData(WikiInTheVault, "wiki%2Fpeople%2Fada-lovelace.md")]
+
+    // The owner opens the wiki directly in Obsidian, so it has no path *inside* the vault — it is the
+    // vault. An ordinary setup, and one an empty path is the honest answer for: the target stands
+    // alone, nothing is prefixed, and no empty segment is invented in front of it. Treated as "not
+    // given", this setup would have drawn no link at all and said opening was not set up.
+    [InlineData("", "people%2Fada-lovelace.md")]
+    public async Task Reference_OpensThatPageInTheOwnersOwnWiki(string wikiPath, string file)
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — chat.js builds the
+        // obsidian:// link from the snapshot's vault and the answer's target.
         var token = TestContext.Current.CancellationToken;
-        await using var hub = await HubUnderTest.StartAsync(Vault, WikiInTheVault, token);
+        await using var hub = await HubUnderTest.StartAsync(Vault, wikiPath, token);
 
         var question = await hub.AskAsync(AboutAda, token);
 
@@ -139,25 +152,30 @@ public sealed class AnswerReferencesTests : PageTest
             question,
             "She wrote the first program ([people/ada-lovelace.md](people/ada-lovelace.md)).");
 
-        var reference = Turn(question).Locator(".references a").First;
+        var reference = Turn(question).Locator(".answer a").First;
         await Expect(reference).ToBeVisibleAsync();
 
         // **The page in the user's own wiki**: the vault they read it in, and the wiki's path inside
         // that vault joined to the target the answer gave (ACCESS-009).
         Assert.Equal(
-            $"obsidian://open?vault={Vault}&file={WikiInTheVault}%2Fpeople%2Fada-lovelace.md",
+            $"obsidian://open?vault={Vault}&file={file}",
             await reference.GetAttributeAsync("href"));
 
-        // The agent's own words are untouched: the link is drawn beside the prose, not into it, so
-        // nothing the user is reading was replaced to make it (ACCESS-007).
+        // The link stands where the agent put it, in the prose, and reads as the page's name: the
+        // Markdown around it is the agent's way of writing a link, not words for the user (US1-AS4).
         await Expect(Turn(question).Locator(".answer"))
-            .ToHaveTextAsync("She wrote the first program ([people/ada-lovelace.md](people/ada-lovelace.md)).");
+            .ToHaveTextAsync("She wrote the first program (people/ada-lovelace.md).");
+
+        // Opening is set up, so nothing says otherwise.
+        await Expect(Page.Locator("#opening")).ToHaveTextAsync(string.Empty);
     }
 
     [Fact]
     [Trait("req", "ACCESS-009")]
     public async Task Reference_IsPlainText_WhereItsTargetLeavesTheWiki()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — chat.js decides which
+        // targets become links.
         var token = TestContext.Current.CancellationToken;
         await using var hub = await HubUnderTest.StartAsync(Vault, WikiInTheVault, token);
 
@@ -169,8 +187,9 @@ public sealed class AnswerReferencesTests : PageTest
         // A target that climbs out of the wiki names something a reference has no business addressing,
         // however the answer came by it. A reference's target is a path relative to the wiki's root —
         // that is what the contract fixes, and `FileSystemWikiStore` refuses the same shape one layer
-        // down. ACCESS-009's clause "a reference that leaves the wiki is shown as text and opens
-        // nothing" is what this proves.
+        // down. What this proves is the half-sentence the owner added to ACCESS-009 in #70, "a reference
+        // that leaves the wiki is shown as text and opens nothing" — docs/capabilities/access.md,
+        // ACCESS-009's row and the "Changed" note under it.
         hub.Agent.Said(
             question,
             "See ([../outside.md](../outside.md)), ([..\\outside.md](..\\outside.md)) "
@@ -178,7 +197,7 @@ public sealed class AnswerReferencesTests : PageTest
 
         // The page of this wiki is linked; the one that climbs out is not, and keeps its place in the
         // prose as plain text. Both are still readable — nothing of the agent's words is removed.
-        var references = Turn(question).Locator(".references a");
+        var references = Turn(question).Locator(".answer a");
 
         await Expect(references).ToHaveCountAsync(1);
         await Expect(references.First).ToHaveTextAsync("people/ada-lovelace.md");
@@ -191,38 +210,10 @@ public sealed class AnswerReferencesTests : PageTest
 
     [Fact]
     [Trait("req", "ACCESS-009")]
-    public async Task Reference_OpensThatPage_WhereTheWikiIsTheVault()
-    {
-        var token = TestContext.Current.CancellationToken;
-
-        // The owner opens the wiki directly in Obsidian, so it has no path *inside* the vault — it is
-        // the vault. An ordinary setup, and one an empty path is the honest answer for.
-        await using var hub = await HubUnderTest.StartAsync(Vault, string.Empty, token);
-
-        var question = await hub.AskAsync(AboutAda, token);
-
-        await Page.GotoAsync($"{hub.Address}/chat.html");
-        await Expect(Turn(question)).ToBeVisibleAsync();
-
-        hub.Agent.Said(question, "She wrote it ([people/ada-lovelace.md](people/ada-lovelace.md)).");
-
-        var reference = Turn(question).Locator(".references a").First;
-        await Expect(reference).ToBeVisibleAsync();
-
-        // The target stands alone: nothing is prefixed, and no empty segment is invented in front of
-        // it. Treated as "not given", this setup would have drawn no link at all and said opening was
-        // not set up (ACCESS-009).
-        Assert.Equal(
-            $"obsidian://open?vault={Vault}&file=people%2Fada-lovelace.md",
-            await reference.GetAttributeAsync("href"));
-
-        await Expect(Page.Locator("#opening")).ToHaveTextAsync(string.Empty);
-    }
-
-    [Fact]
-    [Trait("req", "ACCESS-009")]
     public async Task Reference_IsPlainTextAndSaysOpeningIsNotSetUp_WithoutTheVault()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — chat.js draws no link
+        // and says once that opening is not set up.
         var token = TestContext.Current.CancellationToken;
 
         // Neither vault input given, which is how Grimoire starts until the owner says otherwise.
@@ -245,7 +236,7 @@ public sealed class AnswerReferencesTests : PageTest
         await Expect(Turn(question).Locator(".answer"))
             .ToContainTextAsync("people/ada-lovelace.md");
 
-        await Expect(Turn(question).Locator(".references a")).ToHaveCountAsync(0);
+        await Expect(Turn(question).Locator(".answer a")).ToHaveCountAsync(0);
 
         // And the chat says **once** that opening a page is not set up — so a reader can tell a setting
         // that is absent from a page that is simply not linkable (ACCESS-009).

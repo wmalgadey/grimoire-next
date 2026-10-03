@@ -15,7 +15,7 @@ internal enum ProofKind
 internal sealed record Requirement(string Id, string Capability, string Text, ProofKind Proof, bool Retired);
 
 /// <summary>One test method, as its metadata describes it.</summary>
-internal sealed record TestMethod(string Suite, string TypeName, string MethodName, string? Level, IReadOnlyList<string> RequirementIds)
+internal sealed record TestMethod(string Suite, string TypeName, string MethodName, string? Level, IReadOnlyList<string> RequirementIds, bool NeedsSignIn = false)
 {
     public string DisplayName => $"{TypeName}.{MethodName}";
 }

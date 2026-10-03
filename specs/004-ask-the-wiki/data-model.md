@@ -121,10 +121,12 @@ entries from.
 **The schema change** is DEC-031's, as amended by this feature. A `runs` table that declares
 `submission_id NOT NULL` — every file 002 and 003 wrote — is rebuilt once with that column nullable
 and every other column as it was declared, inside one transaction, after a copy of the file to
-`submissions.db.before-rebuild`; then `PRAGMA user_version` is set to 1, which every file ends at.
-The columns that are missing are added afterwards by `PRAGMA table_info(runs)` and `ALTER TABLE`, as
-before. No column is renamed on disk, and an older file comes back with its submissions and their
-figures intact (research.md R-04).
+`submissions.db.before-rebuild` — taken before every rebuild, replacing an earlier one. The columns
+that are missing are added afterwards by `PRAGMA table_info(runs)` and `ALTER TABLE`, as before, and
+then `PRAGMA user_version` is set to 1, which every file ends at. All of that is the one step from
+`user_version` 0 to 1: a file at 1 or above is read by its number and not inspected (DEC-031,
+clarified after closing 004). No column is renamed on disk, and an older file comes back with its
+submissions and their figures intact (research.md R-04).
 
 ---
 

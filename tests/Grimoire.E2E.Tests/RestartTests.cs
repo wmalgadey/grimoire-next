@@ -8,7 +8,7 @@ namespace Grimoire.E2E.Tests;
 /// was in progress reads failed (RUNS-004).
 /// </summary>
 /// <remarks>
-/// One scenario, of the two this user story is allowed (Constitution III.4). The rule is proven in
+/// One scenario, bounded by its reason rather than a count (Constitution III.4). The rule is proven in
 /// the Fast suite and the file in the Contract suite; what only a real hub started twice over one
 /// state can show is that the two are wired to each other — that what the board wrote really went
 /// into the file, and that what the second process read really came back out of it (research.md
@@ -23,6 +23,9 @@ public sealed class RestartTests : PageTest
     [Trait("req", "ACCESS-003")]
     public async Task Restart_ShowsEverySubmission_WithTheRunThatWasInProgressFailed()
     {
+        // Why a browser (III.4): JavaScript logic no other runner reaches — after a second process
+        // read the state, app.js offers the control on the row that failed, and its click moves the
+        // queue.
         var token = TestContext.Current.CancellationToken;
         await using var before = await HubUnderTest.StartAsync(token);
 

@@ -74,7 +74,8 @@ internal static class TestCatalogue
     }
 
     /// <summary>
-    /// One test, as the traits it carries describe it. The class's traits come before the
+    /// One test, as the traits it carries describe it — its level, its requirement ids, and whether
+    /// it needs the owner's sign-in (DEC-021). The class's traits come before the
     /// method's, which is the order a level is read in. A method carrying none is a test with no
     /// level, which the gate has something to say about (Constitution IV.3) — so this says it
     /// rather than refusing to describe the method.
@@ -87,7 +88,9 @@ internal static class TestCatalogue
             [.. traits.Where(t => t.Name.Equals("req", StringComparison.OrdinalIgnoreCase))
                       .Select(t => t.Value)
                       .Distinct(StringComparer.Ordinal)
-                      .Order(StringComparer.Ordinal)]);
+                      .Order(StringComparer.Ordinal)],
+            traits.Any(t => t.Name.Equals("requires", StringComparison.OrdinalIgnoreCase)
+                         && t.Value.Equals("signin", StringComparison.OrdinalIgnoreCase)));
 
     /// <summary>A method xunit would run: <c>[Fact]</c>, <c>[Theory]</c>, or anything deriving from them.</summary>
     private static bool IsTest(IList<CustomAttributeData> attributes) =>

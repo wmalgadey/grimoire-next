@@ -57,11 +57,15 @@ order:
 | The question instruction | Grimoire's own, versioned in this repository at `instructions/question.md`. Changing it is an owner decision named in the PR. Where the wiki holds nothing about the question, it has the agent **say so plainly, name what it looked at, and stop** — an acceptance criterion of QUERY-004's "rests on what the wiki's pages say", not a further id (Constitution IV.8) | QUERY-004 |
 | The purpose description | The user's. Grimoire neither creates nor changes it | QUERY-002 |
 | The run's identifier | Grimoire's | QUERY-002 |
-| What has been asked and answered in this chat before it | The user's questions and the agent's answers, in order | QUERY-002 |
+| What has been asked and answered in this chat before it | The user's questions and the agent's answers, in order; a question that got no answer is there as asked, with "got no answer because <reason>" where its answer would stand | QUERY-002 |
 | The question | The user's, whole, as they typed it | QUERY-001, QUERY-002 |
 
 **The steps are not included** — what the agent did to reach an earlier answer is for the user to
 check, not context the next run needs, and a run's tool results are the largest thing in a chat.
+
+**A question that got no answer is included** — as it was asked, with the reason its run ended in
+the words the chat shows, and nothing its run produced (QUERY-006). An agent not told the question
+was already asked and failed walks the same way again (DEC-042, amended after closing 004).
 
 **Nothing is trimmed and there is no cap.** The whole chat goes in. A chat too large for a dispatch
 ends that run failed, and the chat says that question got no answer and why — the path every failed

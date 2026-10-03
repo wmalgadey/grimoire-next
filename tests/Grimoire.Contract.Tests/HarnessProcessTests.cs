@@ -19,13 +19,14 @@ namespace Grimoire.Contract.Tests;
 /// weights to what the CLI actually bills (DEC-015, DEC-021).
 /// </para>
 /// <para>
-/// Marked <c>requires=signin</c>: they need the owner's subscription sign-in, which CI does not
-/// have, so CI excludes them and they are run locally before the PR (research.md R-09). That is
-/// the Complexity Tracking entry in plan.md.
+/// Each marked <c>requires=signin</c> on the method, not the class: they need the owner's
+/// subscription sign-in, which CI does not have, so CI excludes them and they are run locally before
+/// the PR (research.md R-09). A fifth such test is one <c>trace-check</c> fails on (DEC-021), and on
+/// the method a new test in this class does not inherit the mark unseen. That is the Complexity
+/// Tracking entry in plan.md.
 /// </para>
 /// </remarks>
 [Trait("level", "contract")]
-[Trait("requires", "signin")]
 public sealed class HarnessProcessTests
 {
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(60);
@@ -34,6 +35,7 @@ public sealed class HarnessProcessTests
     [Trait("req", "GUARD-001")]
     [Trait("req", "GUARD-002")]
     [Trait("req", "WIKI-002")]
+    [Trait("requires", "signin")]
     public async Task Run_ReachesTheWikiAndNothingElse()
     {
         await using var run = await RealRun.StartAsync(TestContext.Current.CancellationToken);
@@ -82,6 +84,7 @@ public sealed class HarnessProcessTests
 
     [Fact]
     [Trait("req", "RUNS-005")]
+    [Trait("requires", "signin")]
     public async Task Nudge_ContinuesTheSameRun_AfterTheAgentStops()
     {
         await using var run = await RealRun.StartAsync(TestContext.Current.CancellationToken);
@@ -121,6 +124,7 @@ public sealed class HarnessProcessTests
 
     [Fact]
     [Trait("req", "GUARD-004")]
+    [Trait("requires", "signin")]
     public async Task Interrupt_EndsARunInFlight()
     {
         await using var run = await RealRun.StartAsync(TestContext.Current.CancellationToken);
@@ -178,6 +182,7 @@ public sealed class HarnessProcessTests
 
     [Fact]
     [Trait("req", "GUARD-004")]
+    [Trait("requires", "signin")]
     public async Task Cost_WeighsAModelUsageAsTheCliBillsIt()
     {
         // What the ceiling counts is input-token equivalents: the four token classes weighted by

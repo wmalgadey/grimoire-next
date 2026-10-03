@@ -402,6 +402,99 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         AssertRebuiltToTakeAQuestionsRun(store);
     }
 
+    [Fact]
+    [Trait("req", "RUNS-004")]
+    public void CopyBeforeTheRebuild_HoldsTheFileAsItWas()
+    {
+        WriteAFile(Guid.NewGuid(), Guid.NewGuid(), "The 003 record wrote this.", columnsAdded: Columns003Added);
+        AddASubmissionByHand("And this one never ran.");
+
+        _ = Reopened();
+
+        // The copy is the file **before** the rebuild: both submissions, the run, and `submission_id`
+        // still declared NOT NULL — what the owner goes back to if the rebuilt file is not what they
+        // had (DEC-031 as amended).
+        using var copy = OpenTheCopy();
+
+        Assert.Equal(2L, Count(copy, "SELECT COUNT(*) FROM submissions"));
+        Assert.Equal(1L, Count(copy, "SELECT COUNT(*) FROM runs"));
+        Assert.Equal(1L, Count(copy, "SELECT \"notnull\" FROM pragma_table_info('runs') WHERE name = 'submission_id'"));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-004")]
+    public void FailedRebuild_NamesTheCopy()
+    {
+        WriteAFile(Guid.NewGuid(), Guid.NewGuid(), "The 002 queue wrote this.", columnsAdded: []);
+
+        // The rebuild creates `runs_new`; one already there makes its transaction fail.
+        LeaveARunsNewTableBehind();
+
+        var refused = Assert.Throws<InvalidOperationException>(Reopened);
+
+        // The error names the copy, and the copy is there and holds what the file held.
+        Assert.Contains(CopyPath, refused.Message, StringComparison.Ordinal);
+
+        using var copy = OpenTheCopy();
+
+        Assert.Equal(1L, Count(copy, "SELECT COUNT(*) FROM submissions"));
+
+        // And the file is as it was: the transaction rolled back, and nothing stamped it.
+        Assert.Equal(0L, UserVersion());
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-004")]
+    public void SecondRebuild_NamesAFreshCopy_AfterTheFirstFailed()
+    {
+        WriteAFile(Guid.NewGuid(), Guid.NewGuid(), "The 002 queue wrote this.", columnsAdded: []);
+        LeaveARunsNewTableBehind();
+
+        Assert.Throws<InvalidOperationException>(Reopened);
+
+        // The file changes before the next attempt, as the owner's file would while they look into it.
+        AddASubmissionByHand("Added after the first attempt.");
+
+        var refused = Assert.Throws<InvalidOperationException>(Reopened);
+        Assert.Contains(CopyPath, refused.Message, StringComparison.Ordinal);
+
+        // **The copy the error names is the file as it was before this attempt**, not the one before
+        // the first: a stale copy named by an error would mislead (DEC-031, clarified after closing 004).
+        using var copy = OpenTheCopy();
+
+        Assert.Equal(2L, Count(copy, "SELECT COUNT(*) FROM submissions"));
+    }
+
+    [Fact]
+    [Trait("req", "RUNS-004")]
+    public void StampedFile_IsNotInspected_WhereAColumnIsMissing()
+    {
+        // A file this Grimoire wrote, stamped `user_version` 1, from which a column has since gone.
+        _ = Reopened();
+
+        using (var connection = OpenTheFile())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "ALTER TABLE runs DROP COLUMN entries_lost";
+            command.ExecuteNonQuery();
+        }
+
+        // Opening it does not repair it: once stamped, the store reads the number and nothing else
+        // (DEC-031, clarified after closing 004).
+        var store = Reopened();
+
+        using (var connection = OpenTheFile())
+        {
+            Assert.Equal(0L, Count(connection, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name = 'entries_lost'"));
+        }
+
+        // It is an error, and the error says which column the file lacks.
+        var failed = Assert.Throws<SqliteException>(() => store.Load());
+
+        Assert.Contains("no such column", failed.Message, StringComparison.Ordinal);
+        Assert.Contains("entries_lost", failed.Message, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// What both fixtures must show once reopened: a question's run is accepted and read back, the
     /// file reads schema 1, and the copy taken before the rebuild lies beside it (DEC-031 as amended).
@@ -428,6 +521,48 @@ public sealed class SqliteSubmissionStoreTests : IDisposable
         "tool_calls INTEGER NOT NULL DEFAULT 0",
         "entries_lost INTEGER NOT NULL DEFAULT 0",
     ];
+
+    private string CopyPath => Path.Combine(directory, "submissions.db.before-rebuild");
+
+    private SqliteConnection OpenTheCopy()
+    {
+        var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder
+            {
+                DataSource = CopyPath,
+                Mode = SqliteOpenMode.ReadOnly,
+                Pooling = false,
+            }.ToString());
+
+        connection.Open();
+        return connection;
+    }
+
+    private static long Count(SqliteConnection connection, string sql)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return (long)command.ExecuteScalar()!;
+    }
+
+    private void AddASubmissionByHand(string text)
+    {
+        using var connection = OpenTheFile();
+        using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO submissions VALUES ($id, $text, $at, 'submitted', NULL, NULL)";
+        command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString());
+        command.Parameters.AddWithValue("$text", text);
+        command.Parameters.AddWithValue("$at", Noon.ToString("O"));
+        command.ExecuteNonQuery();
+    }
+
+    private void LeaveARunsNewTableBehind()
+    {
+        using var connection = OpenTheFile();
+        using var command = connection.CreateCommand();
+        command.CommandText = "CREATE TABLE runs_new (id TEXT)";
+        command.ExecuteNonQuery();
+    }
 
     private SqliteConnection OpenTheFile()
     {

@@ -19,8 +19,9 @@ namespace Grimoire.Runs.Adapters;
 /// they have already made. The alternative is asking them to delete it, which throws their list away
 /// to save eight lines. So: <c>CREATE TABLE IF NOT EXISTS</c> as before, then
 /// <c>PRAGMA table_info(runs)</c> and one <c>ALTER TABLE runs ADD COLUMN</c> for each column that is
-/// not there. A table that cannot hold a question's run is rebuilt once first, and every file then
-/// reads <c>user_version</c> 1 (DEC-031 as amended). No version table and no ordered scripts. That a
+/// not there — both only in the one step from <c>user_version</c> 0 to 1, after which the store reads
+/// the number and inspects nothing. A table that cannot hold a question's run is rebuilt first in that
+/// step (DEC-031 as amended and clarified). No version table and no ordered scripts. That a
 /// committed <c>ALTER TABLE</c> survives is SQLite's decision and is not tested; that the files 002 and
 /// 003 wrote come back with their submissions and figures intact is ours, and the Contract suite
 /// proves it (research.md R-04, R-07).
@@ -88,8 +89,19 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
             );
             """);
 
+        // Once stamped, the store reads the number and nothing else: no column is looked for and none
+        // added. A stamped file that lacks one is an error, not something to repair (DEC-031, clarified
+        // after closing 004). The next feature that changes the schema adds its step from 1 to 2 here.
+        if (Scalar("PRAGMA user_version") is long and >= 1)
+        {
+            return;
+        }
+
+        // The one step there is, from 0 to 1: the rebuild first, then the columns, then the stamp. Each
+        // part is safe to do again, so a stop between two of them leaves a file the next start finishes.
         RebuildARunTableThatCannotHoldAQuestionsRun();
         BringTheRunTableUpToDate();
+        Execute("PRAGMA user_version = 1", inATransaction: false);
     }
 
     /// <summary>
@@ -111,44 +123,46 @@ public sealed class SqliteSubmissionStore : ISubmissionStore
     /// columns 002 had and lose 003's figures to their defaults.
     /// </para>
     /// <para>
-    /// Before the rebuild the file is copied to <c>submissions.db.before-rebuild</c> beside it, by
-    /// <c>VACUUM INTO</c> so that the copy is consistent whatever connection holds the file; where the
-    /// rebuild fails the error names that copy. Every file then reads <c>user_version</c> 1, which names
-    /// this schema: from here on the store tells one schema from another by that number and not by
-    /// inspecting columns, and the next feature that changes the schema reads 1, does its step and
-    /// writes 2.
+    /// Before <b>every</b> rebuild the file is copied to <c>submissions.db.before-rebuild</c> beside it,
+    /// replacing any copy an earlier attempt left — a stale copy named by an error would mislead
+    /// (DEC-031, clarified after closing 004). Where the rebuild fails the error names that copy. The
+    /// copy is made by <c>VACUUM INTO</c>, so that it is consistent whatever connection holds the file,
+    /// into a name of its own and then renamed over the old one: an attempt stopped half-way leaves the
+    /// previous copy or the new one, never half of one.
     /// </para>
     /// </remarks>
     private void RebuildARunTableThatCannotHoldAQuestionsRun()
     {
-        if (Scalar("PRAGMA user_version") is long and >= 1)
+        if (Scalar("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'submission_id' AND \"notnull\" = 1") is null)
         {
             return;
         }
 
-        if (Scalar("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'submission_id' AND \"notnull\" = 1") is not null)
+        var copy = DataSource + ".before-rebuild";
+        CopyTheFileTo(copy);
+
+        try
         {
-            var copy = DataSource + ".before-rebuild";
-
-            if (!File.Exists(copy))
-            {
-                Execute("VACUUM INTO $copy", inATransaction: false, ("$copy", copy));
-            }
-
-            try
-            {
-                Execute(RebuildOf(ColumnsOfTheRunTableAsDeclared()));
-            }
-            catch (SqliteException failed)
-            {
-                throw new InvalidOperationException(
-                    $"The runs table in \"{DataSource}\" could not be rebuilt to hold a question's run, "
-                    + $"and the file is as it was. A copy taken before the attempt is at \"{copy}\".",
-                    failed);
-            }
+            Execute(RebuildOf(ColumnsOfTheRunTableAsDeclared()));
         }
+        catch (SqliteException failed)
+        {
+            throw new InvalidOperationException(
+                $"The runs table in \"{DataSource}\" could not be rebuilt to hold a question's run, "
+                + $"and the file is as it was. A copy taken before the attempt is at \"{copy}\".",
+                failed);
+        }
+    }
 
-        Execute("PRAGMA user_version = 1", inATransaction: false);
+    private void CopyTheFileTo(string copy)
+    {
+        var underWay = copy + ".partial";
+
+        // Whatever an attempt stopped half-way left, since `VACUUM INTO` will not write over a file.
+        File.Delete(underWay);
+
+        Execute("VACUUM INTO $copy", inATransaction: false, ("$copy", underWay));
+        File.Move(underWay, copy, overwrite: true);
     }
 
     /// <summary>

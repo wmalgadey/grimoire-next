@@ -1,6 +1,5 @@
 using Grimoire.Hub.Mcp;
 using Grimoire.Wiki;
-using Microsoft.AspNetCore.Http;
 using YamlDotNet.RepresentationModel;
 
 namespace Grimoire.Fast.Tests;
@@ -210,7 +209,7 @@ public sealed class ProvenanceStampTests
         // say which model wrote the page and not that Grimoire had it written.
         var wiki = new InMemoryWikiStore();
         var tools = new WikiToolsServer(
-            wiki, new RunAddress(new HttpContextAccessor(), FastHub.Model), FastSuite.Clock());
+            wiki, new PageProducer(FastHub.Model), FastSuite.Clock());
 
         await tools.WritePageAsync("people/ada.md", Page("type: Person"), TestContext.Current.CancellationToken);
 

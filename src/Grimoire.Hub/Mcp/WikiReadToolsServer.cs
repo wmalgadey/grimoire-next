@@ -55,7 +55,7 @@ internal static class WikiReads
 /// its first model call.
 /// </para>
 /// <para>
-/// It takes no <c>RunAddress</c> and no clock. Those are for stamping what is written (WIKI-002), and
+/// It takes no <c>PageProducer</c> and no clock. Those are for stamping what is written (WIKI-002), and
 /// nothing here writes — a question's run is never attributed to anything in the wiki, because it puts
 /// nothing there.
 /// </para>

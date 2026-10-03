@@ -3,7 +3,8 @@
 //
 // The rule the whole file is written around: **an element once drawn is never replaced.** A turn is
 // drawn when its question arrives and only ever written into afterwards, the answer grows by appending
-// to the text node that is already there, and a step is added after the last one. That is what keeps
+// to the text node that is already there — a link it names is added after that node, never made by
+// rewriting it — and a step is added after the last one. That is what keeps
 // the scroll where the user put it, a step they have opened open, and text they are reading where they
 // are reading it (ACCESS-007, docs/ux.md: live content grows in place).
 
@@ -134,11 +135,95 @@ function turnFor(turn) {
   return item;
 }
 
+// What an answer has been sent so far, and the part of it not yet on the page, per answer element.
+// The page cannot be asked for the first: once a page name is drawn as a link, the Markdown it came in
+// is no longer in the text. The second is a reference still arriving — see `answerGrew`.
+const written = new WeakMap();
+
+function writtenOf(answer) {
+  if (!written.has(answer)) {
+    written.set(answer, { sent: "", heldBack: "" });
+  }
+
+  return written.get(answer);
+}
+
 // The answer grows by **appending to the text node that is there** — not by assigning textContent,
 // which replaces the node and takes the user's selection and the reader's place with it (ACCESS-007).
+// A page the answer names becomes a link where it stands in the prose (US1-AS4, ACCESS-009): the link
+// is added after the text node, the prose after it goes into a fresh one, and nothing already drawn is
+// touched to make room.
 function answerGrew(item, append) {
-  item.querySelector(".answer").firstChild.appendData(append);
-  referencesIn(item);
+  const answer = item.querySelector(".answer");
+  const so = writtenOf(answer);
+  so.sent += append;
+
+  // Nothing is made followable where Grimoire was not told both values: the page's name stays readable
+  // in the prose as plain text, and the one line below says why (ACCESS-009).
+  if (vault === null) {
+    answer.lastChild.appendData(append);
+    return;
+  }
+
+  let rest = so.heldBack + append;
+  so.heldBack = "";
+
+  while (rest !== "") {
+    const opening = rest.indexOf("[");
+
+    if (opening === -1) {
+      answer.lastChild.appendData(rest);
+      return;
+    }
+
+    answer.lastChild.appendData(rest.slice(0, opening));
+    rest = rest.slice(opening);
+
+    const whole = reference.exec(rest);
+
+    if (whole) {
+      const [markdown, words, target] = whole;
+      linkOrText(answer, markdown, words, target);
+      rest = rest.slice(markdown.length);
+    } else if (stillArriving.test(rest)) {
+      // **Held back**, not drawn: it may yet become a link, and drawing it as text now would mean
+      // replacing that text when the rest arrives. It is drawn as soon as it is known to be one or the
+      // other, and at the latest when the answer is finished (`finished`).
+      so.heldBack = rest;
+      return;
+    } else {
+      // A bracket that cannot become a reference any more is prose like the rest.
+      answer.lastChild.appendData("[");
+      rest = rest.slice(1);
+    }
+  }
+}
+
+// A reference that is whole: a link if it names a page of this wiki, and otherwise exactly the text
+// the agent wrote, in its place in the prose.
+function linkOrText(answer, markdown, words, target) {
+  if (!insideTheWiki(target)) {
+    answer.lastChild.appendData(markdown);
+    return;
+  }
+
+  const open = document.createElement("a");
+  open.href = opens(target);
+  open.textContent = words;
+
+  // The prose after the link goes into a node of its own, so the one before it is never written again.
+  answer.append(open, document.createTextNode(""));
+}
+
+// Whatever is still held back once the answer is finished could not become a link, and is prose.
+function finished(item) {
+  const answer = item.querySelector(".answer");
+  const so = writtenOf(answer);
+
+  if (so.heldBack !== "") {
+    answer.lastChild.appendData(so.heldBack);
+    so.heldBack = "";
+  }
 }
 
 // A Markdown link, as the wiki's own pages write one and as the question instruction asks the answer
@@ -147,8 +232,12 @@ function answerGrew(item, append) {
 //
 // Deliberately narrow: a target with a scheme, a protocol-relative one, or one starting at a root are
 // none of them a page of this wiki, and are left as they are rather than joined to the vault's path
-// and pointed somewhere that does not exist.
-const reference = /\[([^\]\n]+)\]\((?!\w+:|\/\/|\/)([^)\s]+)\)/g;
+// and pointed somewhere that does not exist. Anchored, because it is tried where a `[` stands.
+const reference = /^\[([^\]\n]+)\]\((?!\w+:|\/\/|\/)([^)\s]+)\)/;
+
+// The beginning of something `reference` could still match once more of the answer arrives: a `[`
+// with words after it, the `]` that closes them, or the target under way.
+const stillArriving = /^\[(?:[^\]\n]*|[^\]\n]+\]|[^\]\n]+\]\([^)\s]*)$/;
 
 // Whether a target is a page **of this wiki**. Its path is relative to the wiki's root, which is the
 // one anchor an answer has — so a segment that climbs out of it names something this link has no
@@ -181,44 +270,6 @@ function opens(target) {
   const inVault = wikiPath === "" ? target : `${wikiPath}/${target}`;
 
   return `obsidian://open?vault=${encodeURIComponent(vault.name)}&file=${encodeURIComponent(inVault)}`;
-}
-
-// The references in an answer, made followable. The answer's text node is left exactly as the agent
-// wrote it and the links are drawn **beside** it, because rewriting the node would replace what the
-// user is reading — which is the one thing this page never does (ACCESS-007).
-//
-// Nothing is drawn where Grimoire was not told both values: the page's name stays readable in the
-// prose as plain text, and the one line below says why (ACCESS-009).
-function referencesIn(item) {
-  if (vault === null) {
-    return;
-  }
-
-  const answer = item.querySelector(".answer");
-  const prose = answer.firstChild.data;
-
-  let links = item.querySelector(":scope > .references");
-  // Only the ones that name a page of this wiki. The rest stay as the agent wrote them.
-  const named = [...prose.matchAll(reference)].filter(([, , target]) => insideTheWiki(target));
-
-  if (named.length === 0) {
-    return;
-  }
-
-  if (!links) {
-    links = document.createElement("p");
-    links.className = "references";
-    answer.after(links);
-  }
-
-  // Appended, never rebuilt: a reference the user has already seen keeps its place, and one arriving
-  // as the answer grows joins the end (ACCESS-007).
-  for (const [, words, target] of named.slice(links.childElementCount)) {
-    const open = document.createElement("a");
-    open.href = opens(target);
-    open.textContent = words;
-    links.append(open);
-  }
 }
 
 // The steps, in the shape a run's record is read in: shut by default, one openable at a time, and the
@@ -280,6 +331,11 @@ function questionChanged(item, turn) {
   // Set on the item rather than by removing the element, because an element once drawn is never
   // replaced (ACCESS-007) — and a question can only reach this state once.
   item.dataset.state = turn.state;
+
+  // A finished answer has nothing more coming, so a reference still held back never will be one.
+  if (turn.state === "answered" || turn.state === "no-answer") {
+    finished(item);
+  }
 
   // The one control, and only on the question whose failure is still waiting to be acknowledged. A
   // question without it offers nothing: a control that did nothing would be a lie (ACCESS-003).
@@ -358,14 +414,17 @@ function drawn(body) {
 
     // The answer, brought up to what the snapshot says it is. Appended rather than assigned, for the
     // reason `answerGrew` exists: after a reconnection the page may already hold the beginning of it.
-    const held = item.querySelector(".answer").firstChild;
-    if (turn.answer.startsWith(held.data)) {
-      answerGrew(item, turn.answer.slice(held.data.length));
+    const answer = item.querySelector(".answer");
+    const sent = writtenOf(answer).sent;
+    if (turn.answer.startsWith(sent)) {
+      answerGrew(item, turn.answer.slice(sent.length));
     } else {
       // The answer on the page is not a beginning of the one the snapshot carries, which nothing in
       // this feature produces — an answer only grows. Replaced rather than guessed at: what the
       // snapshot says is what the chat holds.
-      held.replaceWith(document.createTextNode(turn.answer));
+      answer.replaceChildren(document.createTextNode(""));
+      written.delete(answer);
+      answerGrew(item, turn.answer);
     }
 
     const already = item.querySelectorAll(":scope > details.steps > details.step").length;
@@ -373,7 +432,6 @@ function drawn(body) {
       stepHappened(item, step);
     }
 
-    referencesIn(item);
     questionChanged(item, turn);
   }
 

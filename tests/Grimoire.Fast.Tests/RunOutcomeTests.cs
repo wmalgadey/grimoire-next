@@ -73,11 +73,11 @@ public sealed class RunOutcomeTests
         question.AgentStopped(Stopped(logEntry: false));
 
         // The verdict where a run actually ends. Stopping on its own inside both ceilings with a clean
-        // exit is the whole of done for a run that was to change nothing (RUNS-005).
+        // exit is the whole of done for a run that was to change nothing (RUNS-005). Nothing is said
+        // about the reason it carries: for such a run that is a placeholder (tasks.md, Later).
         var ending = question.Exited(exitCode: 0, TimeSpan.FromMinutes(1));
 
         Assert.Equal(RunOutcome.Done, ending.Outcome);
-        Assert.Equal(RunEndedBecause.StoppedWithItsLogEntry, ending.Because);
     }
 
     [Fact]
